@@ -6,26 +6,18 @@ entity ALU is
   port (
     --Input data and clock
 	 clk 					: in std_logic;
-	 RF_data_in_1 		: in std_logic_vector(15 downto 0); --data from RF data out 1
-	 RF_data_in_2 		: in std_logic_vector(15 downto 0); --data from RF data out 2
-	 WB_data				: in std_logic_vector(15 downto 0); --data forwarded from the WB stage 
-	 MEM_data			: in std_logic_vector(15 downto 0); --data forwarded from memory stage
-	 MEM_address		: in std_logic_vector(15 downto 0); --memory address forwarded directly from IF stage
-	 Value_immediate	: in std_logic_vector(15 downto 0); --immediate operand value forwarded through RF block
-																			--used to forward LD register value, shift value, and immediate value for addi & subi
+	 data_in_1 			: in std_logic_vector(15 downto 0); --data from RF data out 1
+	 data_in_2 			: in std_logic_vector(15 downto 0); --data from RF data out 2
 	 
 	 --Control signals
 	 reset_n					: in std_logic; --all registers reset to 0 when this goes low
 	 ALU_op					: in std_logic_vector(3 downto 0); --dictates ALU operation (i.e., OpCode)
-	 ALU_data_2_mux		: in std_logic_vector(1 downto 0); --used to control which data to send to ALU input 2
-	 ALU_out_reg_wr_en 	: in std_logic; --used to enable latching data into ALU output register
-	 ALU_OReg_mux_sel		: in std_logic; --used to select which input to latch into ALU output register
-													 --0=ALU result 1=data forwarded from ALU_data_in_1
+	 ALU_inst_sel			: in std_logic_vector(1 downto 0); --dictates what sub-function to execute
+	 
     --Outputs
     ALU_out   		: inout std_logic_vector(15 downto 0); --combinational output
 	 ALU_out_fwd   : out std_logic_vector(15 downto 0); --
-    ALU_status 	: out std_logic_vector(3 downto 0); --provides | Zero (Z) | Overflow (V) | Negative (N) | ??? |
-	 MEM_effective	: out std_logic_vector(15 downto 0)
+    ALU_status 	: out std_logic_vector(3 downto 0) --provides | Zero (Z) | Overflow (V) | Negative (N) | ??? |
     );
 end ALU;
 
@@ -48,40 +40,101 @@ end ALU;
 
 architecture behavioral of ALU is
 	
-	--import mux
-	component mux_4 is
+	--import add_sub unit
+	component add_sub is
 		port (
-			sel 		: in  std_logic_vector(3 downto 0);
-			--
-			in_0   	: in  std_logic_vector(15 downto 0);
-			in_1   	: in  std_logic_vector(15 downto 0);
-			in_2   	: in  std_logic_vector(15 downto 0);
-			in_3   	: in  std_logic_vector(15 downto 0);
-			--
-			data_out  : out std_logic_vector(15 downto 0)
-			);
-	end component mux_4;
+			add_sub		: IN STD_LOGIC ;
+			dataa			: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+			datab			: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+			cout			: OUT STD_LOGIC ;
+			overflow		: OUT STD_LOGIC ;
+			result		: OUT STD_LOGIC_VECTOR (15 DOWNTO 0)
+		);
+	end component add_sub;
 	
-	signal ALU_data_in_1		: std_logic_vector(15 downto 0); --wire between input mux and ALU input 1
-	signal ALU_data_in_2		: std_logic_vector(15 downto 0); --wire between input mux and ALU input 2
+	--import multiplier
+	component multiplier is
+		port
+			(
+				dataa		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+				datab		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+				result	: OUT STD_LOGIC_VECTOR (31 DOWNTO 0)
+			);
+	end component multiplier;
+	
+	--import divider	
+	component divider is
+		port
+			(
+				denom		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+				numer		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+				quotient	: OUT STD_LOGIC_VECTOR (15 DOWNTO 0);
+				remain	: OUT STD_LOGIC_VECTOR (15 DOWNTO 0)
+			);
+	end component divider;
+	
+	--import logic unit
+	component ALU_logic is
+		port
+			(
+				A_in 			: in unsigned(15 downto 0);
+				B_in 			: in unsigned(15 downto 0);
+				logic_func 	: in std_logic_vector(1 downto 0);
+				result 		: inout unsigned(15 downto 0);
+				zero, negative	: out std_logic
+			);
+	end component ALU_logic;
+	
+	--Add/Sub signal section
+	signal add_sub_c, add_sub_v 	: std_logic;
+	signal add_sub_result			: std_logic_vector(15 downto 0);
+	
+	--Multiplier signal section
+	signal mult_result				: std_logic_vector(31 downto 0);
+	
+	--Divider signal section
+	signal divide_result, divide_remainder	: std_logic_vector(15 downto 0);
+	
+	--Logic unit signals
+	signal logic_result	: unsigned(15 downto 0);
+	signal logic_neg, logic_zero	: std_logic;
 	
 begin
-	--ALU data input 2 mux
-	data_2_in_mux : mux_4
-   port map (
-      sel  => ALU_data_2_mux,
-		--
-      in_0  => RF_data_in_2,
-		in_1  => WB_data,
-		in_2  => MEM_data,
-		in_3  => ALU_out, --forward ALU output back to data_2_in_mux
-		--
-		data_out => ALU_data_in_2
-      );
-		
-	-- Combinational Logic Assignments
-	ALU_data_in_1 <= RF_data_in_1;
+	-- Adder/Subtracter
+	add_sub_inst	: add_sub
+	port map (
+		add_sub		=>	not(ALU_op(3)) and not(ALU_op(2)) and not(ALU_op(1)) and not(ALU_op(0)), -- "0000"=A "0001"=S, 1=A, 0=S
+		dataa			=> data_in_1,
+		datab			=> data_in_2,
+		cout			=> add_sub_c,
+		overflow		=> add_sub_v,
+		result		=> add_sub_result
+	);
 	
+	mult_inst 	: multiplier
+	port map (
+		dataa		=> data_in_1,
+		datab		=> data_in_2,
+		result	=> mult_result
+	);
+	
+	divider_inst	: divider
+	port map (
+		denom		=> data_in_2,
+		numer		=> data_in_1,
+		quotient	=> divide_result,
+		remain	=> divide_remainder
+	);
+	
+	logic_unit_inst	: ALU_logic
+	port map (
+		A_in 			=> unsigned(data_in_1),
+		B_in 			=> unsigned(data_in_2),
+		logic_func 	=> ALU_inst_sel,
+		result 		=> logic_result,
+		zero			=> logic_zero,
+		negative		=> logic_neg
+	);	
 	
 	-- Latching Logic Assignments
 	process(reset_n, clk, ALU_op)
@@ -90,42 +143,58 @@ begin
 		--maybe reset an ALU result register?
 		--RF <= (others => (others => '0'));
 	elsif clk'event and clk = '1' then
-		MEM_effective <= std_logic_vector(signed(MEM_address) + signed(ALU_data_in_2));
-	
-		if ALU_op = "0000" then
-			ALU_out <= std_logic_vector(signed(ALU_data_in_1) + signed(ALU_data_in_2));
+		
+		if ALU_op = "0000" then 
+		
+		
 		elsif ALU_op = "0001" then
-			ALU_out <= std_logic_vector(signed(ALU_data_in_1) + signed(Value_immediate));
+			
+			
 		elsif ALU_op = "0010" then
-			ALU_out <= std_logic_vector(signed(ALU_data_in_1) - signed(ALU_data_in_2));
+			
+			
 		elsif ALU_op = "0011" then
-			ALU_out <= std_logic_vector(signed(ALU_data_in_1) - signed(Value_immediate));
+			
+			
 		elsif ALU_op = "0100" then
-			ALU_out <= std_logic_vector(signed(ALU_data_in_1) * signed(ALU_data_in_2)); --multiply
+			
+			
 		elsif ALU_op = "0101" then
-			ALU_out <= std_logic_vector(signed(ALU_data_in_1) / signed(ALU_data_in_2)); --divide
+			
+			
 		elsif ALU_op = "0110" then
-			ALU_out <= std_logic_vector(shift_right(unsigned(ALU_data_in_1), unsigned(Value_immediate)));
+			
+			
 		elsif ALU_op = "0111" then
-			ALU_out <= ALU_data_in_1 sll unsigned(Value_immediate);
+			
+			
 		elsif ALU_op = "1000" then  --LD
-			ALU_out <= Value_immediate;  
+			
+			
 		elsif ALU_op = "1001" then  --ST
-			ALU_out <= ALU_data_in_1;--this forwards Reg1 data directly to ALU_out, see separate block for mem_eff calculation
+			
+			
 		elsif ALU_op = "1010" then  --BNEZ
-			ALU_out <= ALU_data_in_1 - "0000000000000000";
+			
+			
 		elsif ALU_op = "1011" then  --BNE
-			ALU_out <= ALU_data_in_1 - ALU_data_in_2; --look at status output 
+			
+			
 		elsif ALU_op = "1100" then  --JMP
-			ALU_out <= ALU_out;
+			
+			
 		elsif ALU_op = "1101" then
-			ALU_out <= ALU_out;
+			
+			
 		elsif ALU_op = "1110" then
-			ALU_out <= ALU_out;
+			
+			
 		elsif ALU_op = "1111" then
-			ALU_out <= ALU_out;
+		
+		
 		else
-			ALU_out <= ALU_out;
+			
+			
 		end if; --ALU_op
 	end if; -- clock
 	end process;
