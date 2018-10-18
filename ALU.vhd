@@ -15,9 +15,9 @@ entity ALU is
 	 ALU_inst_sel			: in std_logic_vector(1 downto 0); --dictates what sub-function to execute
 	 
     --Outputs
-    ALU_out   		: inout std_logic_vector(15 downto 0); --combinational output
-	 ALU_out_fwd   : out std_logic_vector(15 downto 0); --
-    ALU_status 	: out std_logic_vector(3 downto 0) --provides | Zero (Z) | Overflow (V) | Negative (N) | ??? |
+    ALU_out_1   	: out std_logic_vector(15 downto 0); --output for almost all logic functions
+	 ALU_out_2   	: out std_logic_vector(15 downto 0); --use for MULT MSBs and DIV remainder
+    ALU_status 	: out std_logic_vector(3 downto 0) --provides | Zero (Z) | Overflow (V) | Negative (N) | Carry (C) |
     );
 end ALU;
 
@@ -77,33 +77,48 @@ architecture behavioral of ALU is
 	component ALU_logic is
 		port
 			(
-				A_in 			: in unsigned(15 downto 0);
-				B_in 			: in unsigned(15 downto 0);
+				A_in 			: in std_logic_vector(15 downto 0);
+				B_in 			: in std_logic_vector(15 downto 0);
 				logic_func 	: in std_logic_vector(1 downto 0);
-				result 		: inout unsigned(15 downto 0);
+				result 		: inout std_logic_vector(15 downto 0);
 				zero, negative	: out std_logic
 			);
 	end component ALU_logic;
 	
 	--Add/Sub signal section
-	signal add_sub_c, add_sub_v 	: std_logic;
+	signal add_sub_c, add_sub_v 	: std_logic;	
 	signal add_sub_result			: std_logic_vector(15 downto 0);
+	signal add_sub_sel				: std_logic; -- selects whether to perform addition or subtraction
 	
 	--Multiplier signal section
 	signal mult_result				: std_logic_vector(31 downto 0);
+	alias  mult_MSB is mult_result(31 downto 16);
+	alias  mult_LSB is mult_result(15 downto 0);
 	
 	--Divider signal section
 	signal divide_result, divide_remainder	: std_logic_vector(15 downto 0);
 	
 	--Logic unit signals
-	signal logic_result	: unsigned(15 downto 0);
+	signal logic_result	: std_logic_vector(15 downto 0);
 	signal logic_neg, logic_zero	: std_logic;
+	
+	--function prototype
+	function zero_check (temp_result : in std_logic_vector(15 downto 0))
+		return std_logic is variable temp_zero : std_logic := '0';
+			begin
+				for i in 0 to temp_result'length-1 loop
+				temp_zero := temp_zero or temp_result(i);
+				end loop;
+				return not(temp_zero);
+			  
+	end function zero_check;
+
 	
 begin
 	-- Adder/Subtracter
 	add_sub_inst	: add_sub
 	port map (
-		add_sub		=>	not(ALU_op(3)) and not(ALU_op(2)) and not(ALU_op(1)) and not(ALU_op(0)), -- "0000"=A "0001"=S, 1=A, 0=S
+		add_sub		=>	add_sub_sel, -- "0000"=A "0001"=S, 1=A, 0=S
 		dataa			=> data_in_1,
 		datab			=> data_in_2,
 		cout			=> add_sub_c,
@@ -128,13 +143,15 @@ begin
 	
 	logic_unit_inst	: ALU_logic
 	port map (
-		A_in 			=> unsigned(data_in_1),
-		B_in 			=> unsigned(data_in_2),
+		A_in 			=> data_in_1,
+		B_in 			=> data_in_2,
 		logic_func 	=> ALU_inst_sel,
 		result 		=> logic_result,
 		zero			=> logic_zero,
 		negative		=> logic_neg
 	);	
+	
+	add_sub_sel <= not(ALU_op(3)) and not(ALU_op(2)) and not(ALU_op(1)) and not(ALU_op(0));
 	
 	-- Latching Logic Assignments
 	process(reset_n, clk, ALU_op)
@@ -143,21 +160,34 @@ begin
 		--maybe reset an ALU result register?
 		--RF <= (others => (others => '0'));
 	elsif clk'event and clk = '1' then
+	
+		--STATUS REGISTER: | Zero (Z) | Overflow (V) | Negative (N) | Carry (C) |
 		
-		if ALU_op = "0000" then 
-		
-		
-		elsif ALU_op = "0001" then
+		--ADD, ADDI, SUB, SUBI
+		if ALU_op = "0000" or ALU_op = "0001" then 
+			ALU_out_1 	<= add_sub_result;
+			ALU_status	<= zero_check(add_sub_result) & add_sub_v & add_sub_result(15) & add_sub_c;
 			
-			
+		--MUL
 		elsif ALU_op = "0010" then
-			
-			
+			ALU_out_1 	<= mult_LSB;
+			ALU_out_2	<= mult_MSB;
+			ALU_status	<= (zero_check(mult_LSB) and zero_check(mult_MSB))
+									& '0' & mult_result(31) & '0';	
+			--DEBUG PURPOSES ONLY					
+--			ALU_out_1 	<= "0000000000000001";
+--			ALU_out_2	<= "0000000000000010";
+--			ALU_status	<= "0001";
+			--DEBUG ONLY
+		--DIV
 		elsif ALU_op = "0011" then
-			
+			ALU_out_1 	<= divide_result;
+			ALU_out_2	<= divide_remainder;
+			ALU_status	<= (zero_check(divide_result) and zero_check(divide_remainder)) & '0' & divide_result(15) & '0';
 			
 		elsif ALU_op = "0100" then
-			
+			ALU_out_1 	<= logic_result;
+			ALU_status	<= logic_zero & '0' & logic_neg & '0';
 			
 		elsif ALU_op = "0101" then
 			
