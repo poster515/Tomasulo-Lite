@@ -5,9 +5,11 @@ use ieee.numeric_std.all;
 entity ALU is
   port (
     --Input data and clock
-	 clk 					: in std_logic;
+	 clk 					: in std_logic;	
+	 carry_in			: in std_logic; --carry in bit from the Control Unit Status Register
 	 data_in_1 			: in std_logic_vector(15 downto 0); --data from RF data out 1
 	 data_in_2 			: in std_logic_vector(15 downto 0); --data from RF data out 2
+	 reg2_field			: in std_logic_vector(4 downto 0);
 	 
 	 --Control signals
 	 reset_n					: in std_logic; --all registers reset to 0 when this goes low
@@ -85,6 +87,27 @@ architecture behavioral of ALU is
 			);
 	end component ALU_logic;
 	
+	--import logic unit
+	component rotate is
+		port
+			(
+				data			: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+				direction	: IN STD_LOGIC ;
+				distance		: IN STD_LOGIC_VECTOR (3 DOWNTO 0);
+				result		: OUT STD_LOGIC_VECTOR (15 DOWNTO 0)
+			);
+	end component rotate;
+	
+	component rotate_c is
+		port
+		(
+			data		: IN STD_LOGIC_VECTOR (16 DOWNTO 0);
+			direction		: IN STD_LOGIC ;
+			distance		: IN STD_LOGIC_VECTOR (4 DOWNTO 0);
+			result		: OUT STD_LOGIC_VECTOR (16 DOWNTO 0)
+		);
+	end component rotate_c;
+	
 	--Add/Sub signal section
 	signal add_sub_c, add_sub_v 	: std_logic;	
 	signal add_sub_result			: std_logic_vector(15 downto 0);
@@ -101,6 +124,10 @@ architecture behavioral of ALU is
 	--Logic unit signals
 	signal logic_result	: std_logic_vector(15 downto 0);
 	signal logic_neg, logic_zero	: std_logic;
+	
+	--Rotate unit signals
+	signal rotate_result	: std_logic_vector(15 downto 0);
+	signal rotate_c_result	: std_logic_vector(16 downto 0);
 	
 	--function prototype
 	function zero_check (temp_result : in std_logic_vector(15 downto 0))
@@ -151,6 +178,22 @@ begin
 		negative		=> logic_neg
 	);	
 	
+	rotate_inst	: rotate
+	port map (
+			data			=> data_in_1,
+			direction	=> ALU_inst_sel(0), --'0'=right, '1'=left
+			distance		=> reg2_field(3 downto 0),
+			result		=> rotate_result
+		);
+		
+	rotate_c_inst	: rotate_c
+	port map (
+			data			=> carry_in & data_in_1, -- carry included at MSB
+			direction	=> ALU_inst_sel(0),
+			distance		=> reg2_field,
+			result		=> rotate_c_result
+		);
+	
 	add_sub_sel <= not(ALU_op(3)) and not(ALU_op(2)) and not(ALU_op(1)) and not(ALU_op(0));
 	
 	-- Latching Logic Assignments
@@ -174,23 +217,26 @@ begin
 			ALU_out_2	<= mult_MSB;
 			ALU_status	<= (zero_check(mult_LSB) and zero_check(mult_MSB))
 									& '0' & mult_result(31) & '0';	
-			--DEBUG PURPOSES ONLY					
---			ALU_out_1 	<= "0000000000000001";
---			ALU_out_2	<= "0000000000000010";
---			ALU_status	<= "0001";
-			--DEBUG ONLY
 		--DIV
 		elsif ALU_op = "0011" then
 			ALU_out_1 	<= divide_result;
 			ALU_out_2	<= divide_remainder;
 			ALU_status	<= (zero_check(divide_result) and zero_check(divide_remainder)) & '0' & divide_result(15) & '0';
 			
+		--LOGIC
 		elsif ALU_op = "0100" then
 			ALU_out_1 	<= logic_result;
 			ALU_status	<= logic_zero & '0' & logic_neg & '0';
 			
-		elsif ALU_op = "0101" then
+		--ROTATE
+		elsif ALU_op = "0101" and ALU_inst_sel(1) = '0' then --only non-carry rotate
+			ALU_out_1	<= rotate_result;
+			ALU_status	<= zero_check(rotate_result) & '0' & rotate_result(15) & '0';
 			
+		--ROTATE WITH CARRY
+		elsif ALU_op = "0101" and ALU_inst_sel(1) = '1' then --carry included in rotate
+			ALU_out_1	<= rotate_c_result(15 downto 0);
+			ALU_status	<= zero_check(rotate_c_result(15 downto 0)) & '0' & rotate_c_result(15) & '0';
 			
 		elsif ALU_op = "0110" then
 			
