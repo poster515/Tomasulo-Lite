@@ -132,19 +132,19 @@ architecture behavioral of ALU is
 		);
 	end component shift_arith;
 	
-	component mux_2 is
-   port ( 
-		sel 		: in  std_logic;
-		--
-		in_0   	: in  std_logic_vector(15 downto 0);
-		in_1   	: in  std_logic_vector(15 downto 0);
-		--
-		data_out  : out std_logic_vector(15 downto 0)
-	);
-	end component mux_2;
+--	component mux_2 is
+--   port ( 
+--		sel 		: in  std_logic;
+--		in_0   	: in  std_logic_vector(15 downto 0);
+--		in_1   	: in  std_logic_vector(15 downto 0);
+--		sig_out  : out std_logic_vector(15 downto 0)
+--	);
+--	end component mux_2;
 	
 	signal ALU_data_in_2	: std_logic_vector(15 downto 0);	-- selected from either data_in_2 or immediate value
-																			-- used for ADDI, SUBI, MULTI, DIVI
+																			--used for ADDI, SUBI, MULTI, DIVI
+	--signal data_2_mux_in2 : std_logic_vector(15 downto 0); --2nd input to ALU input 2 mux. uses immediate value.
+	
 	--Add/Sub signal section
 	signal add_sub_c, add_sub_v 	: std_logic;	
 	signal add_sub_result			: std_logic_vector(15 downto 0);
@@ -193,7 +193,7 @@ begin
 	port map (
 		add_sub		=>	add_sub_sel, -- "0000"=A "0001"=S, 1=A, 0=S
 		dataa			=> data_in_1,
-		datab			=> ALU_data_in_2,
+		datab			=> ALU_data_in_2, --DEBUG DEBUG DEBUG SHOULD BE ALU_DATA_IN_2
 		cout			=> add_sub_c,
 		overflow		=> add_sub_v,
 		result		=> add_sub_result
@@ -258,17 +258,24 @@ begin
 			result		=> shift_arith_result
 		);
 	
-	data_2_mux	: mux_2
-		port map ( 
-			sel 		=> ALU_inst_sel(1), -- 0 = data_in_2, 1 = immediate_value 
-			--
-			in_0   	=> data_in_2,
-			in_1   	=> "00000000000" & value_immediate,
-			--
-			data_out => ALU_data_in_2
-		);
+--	data_2_mux	: mux_2
+--		port map ( 			
+--			sel 		=> ALU_inst_sel(1), -- 0 = data_in_2, 1 = immediate_value 
+--			in_0   	=> data_in_2,
+--			in_1   	=> data_2_mux_in2,
+--			sig_out  => ALU_data_in_2
+--		);
 	
 	add_sub_sel <= not(ALU_op(3)) and not(ALU_op(2)) and not(ALU_op(1)) and not(ALU_op(0));
+	--data_2_mux_in2	<= "00000000000" & value_immediate;
+	process(ALU_inst_sel, value_immediate)
+	begin
+		if (ALU_inst_sel(1) = '0') then
+			ALU_data_in_2 <= data_in_2;
+		else
+			ALU_data_in_2 <= "00000000000" & value_immediate;
+		end if;
+	end process;
 	
 	rotate_c_in <= carry_in & data_in_1;
 	
