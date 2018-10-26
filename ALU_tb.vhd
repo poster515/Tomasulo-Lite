@@ -87,9 +87,10 @@ signal value_immediate        : std_logic_vector(4 downto 0);
       data_in_2  <= "0000000000001111";
       wait for TIME_DELTA;
       
-      -- Add
+      -- Add Immediate
+      value_immediate <= "00010";
       ALU_op    <= "0000";
-      ALU_inst_sel  <= "10"; --test just to ensure this changing doesn't affect output
+      ALU_inst_sel  <= "10"; --
       data_in_1  <= "0000000000000001";
       data_in_2  <= "0000000000001111";
       wait for TIME_DELTA;
@@ -101,9 +102,10 @@ signal value_immediate        : std_logic_vector(4 downto 0);
       data_in_2  <= "0000000000001111";
       wait for TIME_DELTA;
       
-      -- Subtract
+      -- Subtract Immediate
+      value_immediate <= "00010";
       ALU_op    <= "0001";
-      ALU_inst_sel  <= "10"; --test just to ensure this changing doesn't affect output
+      ALU_inst_sel  <= "10"; --
       data_in_1  <= "0000000000000001";
       data_in_2  <= "0000000000001111";
       wait for TIME_DELTA;
@@ -122,6 +124,13 @@ signal value_immediate        : std_logic_vector(4 downto 0);
       data_in_2  <= "0000000010000000";
       wait for TIME_DELTA;
       
+      -- Mult Immediate -- 
+      ALU_op    <= "0010";
+      ALU_inst_sel  <= "10"; 
+      data_in_1  <= "0000000000000010";
+      value_immediate <= "00101";
+      wait for TIME_DELTA;
+      
       -- Divide
       ALU_op    <= "0011";
       ALU_inst_sel  <= "00";
@@ -136,6 +145,13 @@ signal value_immediate        : std_logic_vector(4 downto 0);
       data_in_2  <= "0000000000011111";
       wait for TIME_DELTA;
       
+      -- Divide Immediate -- 
+      ALU_op    <= "0011";
+      ALU_inst_sel  <= "10"; 
+      data_in_1  <= "0000000000001010";
+      value_immediate <= "00010";
+      wait for TIME_DELTA;
+      
       -- AND
       ALU_op    <= "0100";
       ALU_inst_sel  <= "00";
@@ -143,7 +159,7 @@ signal value_immediate        : std_logic_vector(4 downto 0);
       data_in_2  <= "0000000000011111";
       wait for TIME_DELTA;
       
-      -- OR --12 clock cycles total
+      -- OR --13 clock cycles total
       ALU_op    <= "0100";
       ALU_inst_sel  <= "01";
       data_in_1  <= "0000000011111000";
@@ -157,7 +173,7 @@ signal value_immediate        : std_logic_vector(4 downto 0);
       data_in_2  <= "0000000000011111";
       wait for TIME_DELTA;
       
-      -- AND -- 14 clock cycles total
+      -- AND -- 15 clock cycles total
       ALU_op    <= "0100";
       ALU_inst_sel  <= "11";
       data_in_1  <= "0000000011111000";
@@ -200,7 +216,7 @@ signal value_immediate        : std_logic_vector(4 downto 0);
       carry_in <= '1';
       wait for TIME_DELTA;
       
-      -- Shift Arithmetic (right)-- 20 clock cycles
+      -- Shift Arithmetic (right)-- 21 clock cycles
       ALU_op    <= "0111";
       ALU_inst_sel  <= "01"; 
       data_in_1  <= "1000000000000001";

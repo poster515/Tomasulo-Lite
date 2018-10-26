@@ -38,7 +38,7 @@ end ALU;
 --BNEZ		Branch if not zero	1010
 --BNE			Branch if not equal	1011
 --JMP			Jump						1100
---(unused)	N/A						1101  --potential floating point operation?
+--IO			R/W input/outputs		1101  
 --(unused)	N/A						1110
 --(unused)	N/A						1111
 
@@ -132,19 +132,8 @@ architecture behavioral of ALU is
 		);
 	end component shift_arith;
 	
---	component mux_2 is
---   port ( 
---		sel 		: in  std_logic;
---		in_0   	: in  std_logic_vector(15 downto 0);
---		in_1   	: in  std_logic_vector(15 downto 0);
---		sig_out  : out std_logic_vector(15 downto 0)
---	);
---	end component mux_2;
-	
 	signal ALU_data_in_2	: std_logic_vector(15 downto 0);	-- selected from either data_in_2 or immediate value
 																			--used for ADDI, SUBI, MULTI, DIVI
-	--signal data_2_mux_in2 : std_logic_vector(15 downto 0); --2nd input to ALU input 2 mux. uses immediate value.
-	
 	--Add/Sub signal section
 	signal add_sub_c, add_sub_v 	: std_logic;	
 	signal add_sub_result			: std_logic_vector(15 downto 0);
@@ -257,18 +246,12 @@ begin
 			overflow		=> shift_arith_overflow,
 			result		=> shift_arith_result
 		);
-	
---	data_2_mux	: mux_2
---		port map ( 			
---			sel 		=> ALU_inst_sel(1), -- 0 = data_in_2, 1 = immediate_value 
---			in_0   	=> data_in_2,
---			in_1   	=> data_2_mux_in2,
---			sig_out  => ALU_data_in_2
---		);
-	
+
+	--required signal for add/subtract unit, based on OpCode alone
 	add_sub_sel <= not(ALU_op(3)) and not(ALU_op(2)) and not(ALU_op(1)) and not(ALU_op(0));
-	--data_2_mux_in2	<= "00000000000" & value_immediate;
-	process(ALU_inst_sel, value_immediate)
+	
+	--this process will assign the immediate value as the input to ALU input 2.
+	process(ALU_inst_sel, data_in_2, value_immediate)
 	begin
 		if (ALU_inst_sel(1) = '0') then
 			ALU_data_in_2 <= data_in_2;
