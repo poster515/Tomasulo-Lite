@@ -72,12 +72,12 @@ architecture behavioral of RF is
 		out_7   	: out  std_logic_vector(15 downto 0);
 		out_8   	: out  std_logic_vector(15 downto 0);
 		out_9   	: out  std_logic_vector(15 downto 0);
-		out_10   	: out  std_logic_vector(15 downto 0);
-		out_11   	: out  std_logic_vector(15 downto 0);
-		out_12   	: out  std_logic_vector(15 downto 0);
-		out_13   	: out  std_logic_vector(15 downto 0);
-		out_14   	: out  std_logic_vector(15 downto 0);
-		out_15   	: out  std_logic_vector(15 downto 0)
+		out_10   : out  std_logic_vector(15 downto 0);
+		out_11   : out  std_logic_vector(15 downto 0);
+		out_12   : out  std_logic_vector(15 downto 0);
+		out_13   : out  std_logic_vector(15 downto 0);
+		out_14   : out  std_logic_vector(15 downto 0);
+		out_15   : out  std_logic_vector(15 downto 0)
 		);
 	end component demux_16;
 
