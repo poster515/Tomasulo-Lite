@@ -11,13 +11,14 @@ entity I2C_block is
     SLAVE_ADDR : std_logic_vector(6 downto 0)	:= "1111111"); --63 in decimal 
   port (
     scl, sda         : inout std_logic;
-    clk, rst      	: in    std_logic;
+    sys_clock, rst   : in    std_logic;
     -- User interface
-    read_req         : out   std_logic;
+	 write_begin		: in 	  std_logic;
+    --read_req         : out   std_logic;
     data_to_slave   	: in    std_logic_vector(15 downto 0);
     data_valid       : out   std_logic;
     data_from_slave 	: out   std_logic_vector(15 downto 0);
-	 slave_addr_OK		: out   std_logic);
+	 );
 end entity I2C_block;
 
 ------------------------------------------------------------
@@ -48,9 +49,9 @@ architecture arch of I2C_block is
   signal scl_falling_reg : std_logic := '0';
 
   -- Address and data received from slave
-  signal addr_reg             : std_logic_vector(6 downto 0) := (others => '0');
-  signal data_reg             : std_logic_vector(6 downto 0) := (others => '0');
-  signal data_from_slave_reg 	: std_logic_vector(7 downto 0) := (others => '0');
+  signal addr_reg             : std_logic_vector(14 downto 0) := (others => '0');
+  signal data_reg             : std_logic_vector(14 downto 0) := (others => '0');
+  signal data_from_slave_reg 	: std_logic_vector(15 downto 0) := (others => '0');
 
   signal scl_prev_reg : std_logic := '1';
   -- Master writes on scl
@@ -64,7 +65,7 @@ architecture arch of I2C_block is
   -- User interface
   signal data_valid_reg     : std_logic                    := '0';
   signal read_req_reg       : std_logic                    := '0';
-  signal data_to_master_reg : std_logic_vector(7 downto 0) := (others => '0');
+  signal data_to_slave_reg : std_logic_vector(15 downto 0) := (others => '0');
 begin
 
   -- debounce SCL and SDA
@@ -92,11 +93,13 @@ begin
       -- Delay debounced SCL and SDA by 1 clock cycle
       scl_prev_reg   <= scl_debounced;
       sda_prev_reg   <= sda_debounced;
+		
       -- Detect rising and falling SCL
       scl_rising_reg <= '0';
       if scl_prev_reg = '0' and scl_debounced = '1' then
         scl_rising_reg <= '1';
       end if;
+		
       scl_falling_reg <= '0';
       if scl_prev_reg = '1' and scl_debounced = '0' then
         scl_falling_reg <= '1';
@@ -105,15 +108,13 @@ begin
       -- Detect I2C START condition
       start_reg <= '0';
       stop_reg  <= '0';
-      if scl_debounced = '1' and scl_prev_reg = '1' and
-        sda_prev_reg = '1' and sda_debounced = '0' then
+      if scl_debounced = '1' and scl_prev_reg = '1' and sda_prev_reg = '1' and sda_debounced = '0' then
         start_reg <= '1';
         stop_reg  <= '0';
       end if;
 
       -- Detect I2C STOP condition
-      if scl_prev_reg = '1' and scl_debounced = '1' and
-        sda_prev_reg = '0' and sda_debounced = '1' then
+      if scl_prev_reg = '1' and scl_debounced = '1' and sda_prev_reg = '0' and sda_debounced = '1' then
         start_reg <= '0';
         stop_reg  <= '1';
       end if;
@@ -136,26 +137,51 @@ begin
 
       case state_reg is
 
-        when idle =>
-          if start_reg = '1' then
-            state_reg          <= get_address_and_cmd;
-            bits_processed_reg <= 0;
+		-- EXPECTED CASE STATEMENTS, NEED TO REVISE STATE TYPE
+			when idle =>
+				--if wr_en = '1' then
+				--	initiate write sequence (scl = '1', sda = '0')
+				-- write slave address
+				-- go to wait_for_ack state
+				-- end if;
 				
-          end if;
+			when wait_for_slave_ack =>
+				--wait for slave ack
+				--if received, go to either request data or send data
+				--else, use countdown to timeout and go to idle
+				
+			when send_data =>
+				--send data
+				--go to wait_for_slave_ack
 
-        when get_address_and_cmd =>
+			when receive_data => 
+				--listen to data lines to receive data
+				--go to ack_slave_data
+				
+			when wait_for_slave_ack
+				--initiate timout for slave_ack
+				--go to idle
+				
+			when ack_slave_data
+				--ack slave data
+				--go to idle
+			--EVERYTHING BELOW THIS LINE SHOULD BE OBSOLETE
+		
+		
+			--not sure any of this state is necessary
+			when get_address_and_cmd =>
           if scl_rising_reg = '1' then
 --			 slave_addr_OK <= '1';
-            if bits_processed_reg < 7 then
+            if bits_processed_reg < 15 then
               bits_processed_reg             <= bits_processed_reg + 1;
               addr_reg(6-bits_processed_reg) <= sda_debounced;
-            elsif bits_processed_reg = 7 then
+            elsif bits_processed_reg = 15 then
               bits_processed_reg <= bits_processed_reg + 1;
               cmd_reg            <= sda_debounced;
             end if;
           end if;
 
-          if bits_processed_reg = 8 and scl_falling_reg = '1' then
+          if bits_processed_reg = 16 and scl_falling_reg = '1' then
             bits_processed_reg <= 0;
             if addr_reg = SLAVE_ADDR then  -- check req address
 				  slave_addr_OK <= '1';
@@ -174,7 +200,7 @@ begin
           end if;
 
         ----------------------------------------------------
-        -- I2C acknowledge to master
+        -- I2C acknowledge to slave
         ----------------------------------------------------
         when answer_ack_start =>
           sda_wen_reg <= '1';
@@ -193,7 +219,7 @@ begin
         when write =>
           if scl_rising_reg = '1' then
             bits_processed_reg <= bits_processed_reg + 1;
-            if bits_processed_reg < 7 then
+            if bits_processed_reg < 15 then
               data_reg(6-bits_processed_reg) <= sda_debounced;
             else
               data_from_master_reg <= data_reg & sda_debounced;
@@ -211,11 +237,11 @@ begin
         ----------------------------------------------------
         when read =>
           sda_wen_reg <= '1';
-          sda_o_reg   <= data_to_master_reg(7-bits_processed_reg);
+          sda_o_reg   <= data_to_master_reg(15-bits_processed_reg);
           if scl_falling_reg = '1' then
-            if bits_processed_reg < 7 then
+            if bits_processed_reg < 15 then
               bits_processed_reg <= bits_processed_reg + 1;
-            elsif bits_processed_reg = 7 then
+            elsif bits_processed_reg = 15 then
               state_reg          <= read_ack_start;
               bits_processed_reg <= 0;
             end if;
@@ -267,7 +293,7 @@ begin
       if start_reg = '1' then
         state_reg          <= get_address_and_cmd;
         bits_processed_reg <= 0;
-		  data_valid_reg <= '0'; --debug
+		  data_valid_reg 		<= '0'; --debug
       end if;
 
       if stop_reg = '1' then
@@ -297,7 +323,7 @@ begin
   ----------------------------------------------------------
   -- Master writes
   data_valid       <= data_valid_reg;
-  data_from_master <= data_from_master_reg;
+  data_from_slave	 <= data_from_slave_reg;
   -- Master reads
   read_req         <= read_req_reg;
 end architecture arch;
