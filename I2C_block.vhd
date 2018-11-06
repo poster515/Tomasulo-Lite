@@ -14,9 +14,9 @@ entity I2C_block is
     clk, rst      	: in    std_logic;
     -- User interface
     read_req         : out   std_logic;
-    data_to_master   : in    std_logic_vector(7 downto 0);
+    data_to_slave   	: in    std_logic_vector(15 downto 0);
     data_valid       : out   std_logic;
-    data_from_master : out   std_logic_vector(7 downto 0);
+    data_from_slave 	: out   std_logic_vector(15 downto 0);
 	 slave_addr_OK		: out   std_logic);
 end entity I2C_block;
 
@@ -47,17 +47,17 @@ architecture arch of I2C_block is
   signal scl_rising_reg  : std_logic := '0';
   signal scl_falling_reg : std_logic := '0';
 
-  -- Address and data received from master
+  -- Address and data received from slave
   signal addr_reg             : std_logic_vector(6 downto 0) := (others => '0');
   signal data_reg             : std_logic_vector(6 downto 0) := (others => '0');
-  signal data_from_master_reg : std_logic_vector(7 downto 0) := (others => '0');
+  signal data_from_slave_reg 	: std_logic_vector(7 downto 0) := (others => '0');
 
   signal scl_prev_reg : std_logic := '1';
-  -- Slave writes on scl
+  -- Master writes on scl
   signal scl_wen_reg  : std_logic := '0';
   signal scl_o_reg    : std_logic := '0';
   signal sda_prev_reg : std_logic := '1';
-  -- Slave writes on sda
+  -- Master writes on sda
   signal sda_wen_reg  : std_logic := '0';
   signal sda_o_reg    : std_logic := '0';
 

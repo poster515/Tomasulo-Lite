@@ -25,10 +25,44 @@ end ION;
  
 architecture behavioral of ION is
 
-signal input_buffer, output_buffer	: std_logic_vector(15 downto 0);
+	--import I2C block
+	component I2C_block is
+	port
+	(
+		scl, sda         	: inout std_logic;
+		clk, rst      		: in    std_logic;
+		-- User interface
+		read_req         	: out   std_logic;
+		data_to_slave   	: in    std_logic_vector(15 downto 0);
+		data_valid       	: out   std_logic;
+		data_from_slave 	: out   std_logic_vector(15 downto 0);
+		slave_addr_OK		: out   std_logic
+	);
+	end component I2C_block;
+
+--buffers for GPIOs
+signal input_buffer, output_buffer		: std_logic_vector(15 downto 0);
+
+--I2C block-specific signals
+signal scl, sda, read_req 					: std_logic;
+signal data_to_slave, data_from_slave 	: std_logic_vector(15 downto 0);
+signal data_valid, slave_addr_OK			: std_logic;
 
 begin
 		
+	I2C_master : I2C_block
+	port map(
+		scl => scl, 
+		sda => sda,
+		clk => clk, 
+		rst => reset_n, --places I2C block in idle state
+		read_req         	=> read_req,
+		data_to_slave   	=> data_to_slave,
+		data_valid       	=> data_valid,
+		data_from_slave	=> data_from_slave,
+		slave_addr_OK		=> slave_addr_OK
+	);
+	
 	--process to constantly check the wr_en signal and B_bus and C_bus inputs selects
 	--such that we can buffer the incoming output data and write to the output buffer
 	digital_out <= output_buffer;
@@ -59,4 +93,9 @@ begin
 			end if; --bus select
 		end if; -- clock
 	end process;
+	
+	process (I2C_scl, I2C_sda)
+	begin
+	
+	end process; --I2C
 end behavioral;
