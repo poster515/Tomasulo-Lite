@@ -17,7 +17,7 @@ entity I2C_block is
 		read_begin				: in 	  	std_logic;
 		slave_address			: in 		std_logic_vector(6 downto 0);
 		data_to_slave   		: in    	std_logic_vector(7 downto 0); --
-		--data_valid       	: out   	std_logic; --may not need this because this is the master
+		read_error       		: out  	std_logic; --set high if we can't read from slave after ack, after slave_read_retry_max retries
 		data_from_slave 		: out   	std_logic_vector(7 downto 0);
 		slave_ack_success		: out 	std_logic_vector(1 downto 0)	:= "01" --00 = no ack success, 10 = successful ack, 01/10 = no result yet
 	);
@@ -28,7 +28,7 @@ architecture arch of I2C_block is
 	-- this assumes that system's clock is much faster than SCL
 	constant DEBOUNCING_WAIT_CYCLES : integer   := 4;
 
-	type state_t is (idle, write_slave, write_slave_addr, slave_ack, read_slave, send_stop, ack_slave, unknown);
+	type state_t is (idle, write_slave, write_slave_addr, slave_ack, read_slave, send_stop, ack_slave, start_scl, unknown);
 						 
 	-- I2C state management
 	signal state_reg          	: state_t              	:= idle;
@@ -63,15 +63,16 @@ architecture arch of I2C_block is
 	--constant to stop scl timer
 	constant scl_stop	: std_logic := '0';
 	
+	--number of retries for slave retransmission
+	constant	slave_read_retry_max	: integer := 5;
+	signal	slave_read_retry		: integer := 0;
+	signal 	data_valid				: std_logic := '1'; -- for knowing when a slave has transmitted any invalid bit (e.g., 'X', 'U', 'Z')
+	
 	signal scl_run, start_stop	: std_logic; --toggle scl_run to run second process below
 	signal scl_status : std_logic_vector(1 downto 0);
 	
-	--signal to track whether address and/or data were sent to slave
---	signal data_sent	: std_logic := '0';
+	--signal to track whether address was sent to slave
 	signal addr_sent	: std_logic := '0';
-	
-	--signal to detect whether scl was stopped
-	signal scl_stopped	: std_logic := '0';
 
 begin
 
@@ -121,25 +122,37 @@ begin
 					when idle =>
 						
 						start_stop <= '0';
-						
+						--scl_stopped = '1';
 						if write_begin = '1' then
 							--reset bits_processed
 							bits_processed_reg <= 0;
 							clk_reg <= clk_div;
-							state_reg <= write_slave_addr;
+							state_reg <= start_scl;
 						elsif read_begin = '1' then
 							--reset bits_processed
+							data_valid <= '1'; --assume all data is valid until proven otherwise in slave_read state
 							bits_processed_reg <= 0;
 							clk_reg <= clk_div;
-							state_reg <= write_slave_addr;
+							state_reg <= start_scl;
 						end if; --if write_begin
 						
-					when write_slave_addr =>
-						
-						if bits_processed_reg = 0 then --if we haven't started anything yet, send the sda line low to initiate start of transaction
+					when start_scl =>
+					
+						if bits_processed_reg = 0 and scl_o_reg = 'Z' then --if we haven't started anything yet, send the sda line low to initiate start of transaction
 							sda_o_reg <= '0';
 						end if; --bits_processed_reg
 						
+						if clk_reg = 0 then
+							clk_reg <= clk_div;
+						elsif clk_reg = clk_div - (clk_div / 4) then
+							clk_reg <= clk_div;
+							state_reg <= write_slave_addr;
+						else
+							clk_reg <= clk_reg - 1;
+						end if;
+						
+						
+					when write_slave_addr =>
 						start_stop <= '1';
 						
 						if clk_reg = 0 then
@@ -150,11 +163,11 @@ begin
 
 						if(scl_status = "01") then
 							if (bits_processed_reg < 7) then
-								report "Still writing slave address, bit: " & Integer'Image(bits_processed_reg);
+								--report "Still writing slave address, bit: " & Integer'Image(bits_processed_reg);
 								sda_o_reg <= addr_reg(6 - bits_processed_reg);
 								bits_processed_reg <= bits_processed_reg + 1;
 							elsif bits_processed_reg = 7 then
-								report "Writing last slave address, bit 0";
+								--report "Writing last slave address, bit 0";
 								sda_o_reg <= not(write_begin) or read_begin; -- LSB is '0' for write
 								bits_processed_reg <= bits_processed_reg + 1;
 							else 
@@ -215,9 +228,8 @@ begin
 						end if; --scl_start
 
 					when send_stop =>
-				
-						if(scl_stopped = '0') then
-						
+
+						if(start_stop = '1') then --scl still running
 							if clk_reg = 0 then
 								clk_reg <= clk_div;
 							else
@@ -229,11 +241,10 @@ begin
 								
 							elsif(scl_status = "10") then --rising edge
 								start_stop <= '0'; --stop scl clock
-								scl_stopped <= '1';
 								clk_reg <= clk_div / 2; --scl_o_reg <= 'Z'
 
-							end if; --scl_start
-						else 
+							end if; --scl_status
+						else --start_stop = 0
 							if clk_reg = 0 then
 								clk_reg <= clk_div;
 							else
@@ -242,7 +253,19 @@ begin
 							
 							if(clk_reg = 0) then
 								sda_o_reg <= 'Z';
-								state_reg <= idle;
+								if(data_valid = '1') then --if the slave didn't transmit valid data, ask for it again
+									state_reg <= idle;
+								else
+									if (slave_read_retry = slave_read_retry_max) then
+										read_error <= '1';
+										state_reg <= idle;
+									else 
+										slave_read_retry <= slave_read_retry + 1;
+										bits_processed_reg <= 0; --reset number of bits processed
+										data_valid <= '1';			--reset data_valid, assuming all data is valid until demonstrated otherwise
+										state_reg <= idle;
+									end if;
+								end if;
 							end if;
 						end if;
 						
@@ -256,17 +279,26 @@ begin
 						else
 							clk_reg <= clk_reg - 1;
 						end if;
-						
+
 						if(scl_status = "10") then --rising edge of scl
-							if (bits_processed_reg < 7) then
-								data_from_slave_reg(bits_processed_reg) <= sda;
+							if (bits_processed_reg < 8) then
+								--check validity of sda value
+								if (sda /= '0' and sda /= '1') then
+									data_valid <= '0';
+								end if;
+								--report "Writing bit " & Integer'Image(7 - bits_processed_reg) & ", which has a value of: " & Std_logic'Image(sda);
+								data_from_slave_reg(7 - bits_processed_reg) <= sda;
 								bits_processed_reg <= bits_processed_reg + 1;
 							else 
-								data_from_slave_reg(bits_processed_reg) <= sda;
-								--sda_o_reg <= 'Z'; 		--
 								state_reg <= ack_slave; --go nack slave data
 							end if; --bits_processed_reg
+						elsif (scl_status = "01") then
+							sda_o_reg <= 'Z'; 
 						end if; --scl_start
+						
+						if (bits_processed_reg = 8) then
+							state_reg <= ack_slave; --go nack slave data
+						end if;
 						
 					when ack_slave =>
 
@@ -277,9 +309,24 @@ begin
 						end if;
 						
 						if(scl_status = "01") then --halfway of low phase
-							sda_o_reg <= '1';
-							data_from_slave <= data_from_slave_reg;
-							state_reg <= send_stop;
+							if data_valid = '1' then
+								sda_o_reg <= '1';	--NACK the slave
+							else
+								sda_o_reg <= '0';	--ACK the slave, want data sent again
+							end if;
+							
+							--sda_o_reg <= '1' when (data_valid = '1') else '0';
+							
+							data_from_slave <= data_from_slave_reg; --output data to top level block
+							
+						elsif (scl_status = "10") then
+							if data_valid = '1' then
+								state_reg <= send_stop;
+							else
+								bits_processed_reg <= 0;
+								data_valid <= '1';
+								state_reg <= read_slave;
+							end if;
 						end if;
 						
 					when others =>
@@ -287,10 +334,7 @@ begin
 		            report ("I2C: error: ended in an impossible state.")
 							severity error;
 						state_reg <= idle;
---						
---					when ack_slave_data
---						--ack slave data
---						--go to idle
+
 				end case;
 			end if; --reset_n, rising_edge(clk)
   end process;

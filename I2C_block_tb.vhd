@@ -17,6 +17,7 @@ component I2C_block is
 		read_begin			       : in 	  	std_logic;
 		slave_address		     : in 		  std_logic_vector(6 downto 0);
 		data_to_slave       : in    	std_logic_vector(7 downto 0); --
+		read_error       		 : out  	 std_logic; --set high if we can't read from slave after ack, after slave_read_retry_max retries
 		data_from_slave     : out   	std_logic_vector(7 downto 0);
 		slave_ack_success		 : out 	  std_logic_vector(1 downto 0)	:= "01"
 
@@ -31,7 +32,7 @@ signal scl,sda : std_logic := 'Z';
 signal sys_clock, reset_n : std_logic := '0'; --these signals get debounced just in case
 
 -- User interface
-signal write_begin, read_begin  : std_logic; --0 = just write/read data to slave, 1 = expect register internal register also
+signal write_begin, read_begin, read_error  : std_logic; --0 = just write/read data to slave, 1 = expect register internal register also
 
 signal slave_address		  : std_logic_vector(6 downto 0);
 signal data_to_slave   	: std_logic_vector(7 downto 0); --
@@ -51,6 +52,7 @@ signal slave_ack_success  : std_logic_vector(1 downto 0) := "01";
 		    read_begin			   => read_begin,
 		    slave_address	  => slave_address,
 		    data_to_slave   => data_to_slave, --
+		    read_error      => read_error, --set high if we can't read from slave after ack, after slave_read_retry_max retries
 		    data_from_slave => data_from_slave,
 		    slave_ack_success		 => slave_ack_success
       );
@@ -69,30 +71,31 @@ signal slave_ack_success  : std_logic_vector(1 downto 0) := "01";
       read_begin <= '0';
       wait for TIME_DELTA * 2;
       
-      
-      -- --I2C MASTER WRITE CODE--
-      -- --Write to I2C 
-      --slave_address <= "1010101";
-      --reset_n <= '1';
-      --data_to_slave <= "11110000";
-      --write_begin   <= '1';
-      --wait for TIME_DELTA;
+      ---------------------------------------------------------------------------
+      --I2C MASTER WRITE CODE--
+      --Write to I2C 
+      slave_address <= "1010101";
+      reset_n <= '1';
+      data_to_slave <= "11110000";
+      write_begin   <= '1';
+      wait for TIME_DELTA;
       
       --ACK slave address
-      --wait for (2135 ns - (TIME_DELTA * 3));
-      --sda <= '0';
-      --wait for (TIME_DELTA * 12); --2255 ns
-      --sda <= 'Z'; 
+      wait for (2135 ns - (TIME_DELTA * 3));
+      sda <= '0';
+      wait for (TIME_DELTA * 12); --2255 ns
+      sda <= 'Z'; 
       
       --ACK receipt of data from master
-      --wait for 2220 ns; --4475 ns - 2255 ns = 2220 ns
-      --sda <= '0';
-      --wait for (TIME_DELTA * 12); --4595 ns 
-      --sda <= 'Z';
-      --write_begin <= '0';
-      --wait for 1000 ns; --just wait for long time, so simulation doesn't repeat
+      wait for 2220 ns; --4475 ns - 2255 ns = 2220 ns
+      sda <= '0';
+      wait for (TIME_DELTA * 12); --4595 ns 
+      sda <= 'Z';
+      write_begin <= '0';
+      wait for 400 ns; --just wait for long time, so simulation doesn't repeat
       
       -- --END I2C MASTER WRITE CODE--
+      ------------------------------------------------------------------------------
       
       --I2C MASTER READ CODE--
       -- Write to I2C 
@@ -102,19 +105,57 @@ signal slave_ack_success  : std_logic_vector(1 downto 0) := "01";
       read_begin   <= '1';
       wait for TIME_DELTA;
       
-      --ACK slave address
+      -- --slave ACKs address
       wait for (2135 ns - (TIME_DELTA * 3));
       sda <= '0';
       wait for (TIME_DELTA * 12); --2255 ns
       sda <= 'Z'; 
       
-      --Master ACK receipt of data from slave
-      --TODO: simulate and find when to set SDA to provide pseudo slave data
-      wait for 2220 ns; --4475 ns - 2255 ns = 2220 ns
+      -- --Pseudo data from 'slave'
+      wait for 170 ns; --2390 ns - 2255 ns = 170 ns, low phase of slave read cycle
       sda <= '0';
-      wait for (TIME_DELTA * 12); --4595 ns 
+      wait for (TIME_DELTA * 26); --takes us to next low phase 
+      sda <= '1';
+      wait for (TIME_DELTA * 26); --
+      sda <= '0';
+      wait for (TIME_DELTA * 26); --takes us to next low phase 
+      sda <= '1';
+      wait for (TIME_DELTA * 26); --takes us to next low phase 
+      sda <= '1';
+      wait for (TIME_DELTA * 26); --
+      sda <= 'X';
+      wait for (TIME_DELTA * 26); --takes us to next low phase 
+      sda <= '1';
+      wait for (TIME_DELTA * 26); --takes us to next low phase 
+      sda <= '1';
+      
+      --Slave Relinquishes SDA line
+      wait for (TIME_DELTA * 12); --takes us to next low phase
       sda <= 'Z';
-      write_begin <= '0';
+      
+      --retransmit data
+      wait for 450 ns; --(7 * 26 * 10)
+      sda <= '0';
+      wait for (TIME_DELTA * 26); --takes us to next low phase 
+      sda <= '1';
+      wait for (TIME_DELTA * 26); --
+      sda <= '0';
+      wait for (TIME_DELTA * 26); --takes us to next low phase 
+      sda <= '1';
+      wait for (TIME_DELTA * 26); --takes us to next low phase 
+      sda <= '1';
+      wait for (TIME_DELTA * 26); --
+      sda <= '0';
+      wait for (TIME_DELTA * 26); --takes us to next low phase 
+      sda <= '1';
+      wait for (TIME_DELTA * 26); --takes us to next low phase 
+      sda <= '1';
+      
+      --Slave Relinquishes SDA line
+      wait for (TIME_DELTA * 12); --takes us to next low phase
+      sda <= 'Z';
+      
+      read_begin <= '0'; --allow to go into idle state
       wait for 1000 ns; --just wait for write_begin   <= '1';
       
       --END I2C MASTER READ CODE--
