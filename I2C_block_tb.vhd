@@ -70,15 +70,37 @@ signal slave_ack_success  : std_logic_vector(1 downto 0) := "01";
       wait for TIME_DELTA * 2;
       
       
+      -- --I2C MASTER WRITE CODE--
+      -- --Write to I2C 
+      --slave_address <= "1010101";
+      --reset_n <= '1';
+      --data_to_slave <= "11110000";
+      --write_begin   <= '1';
+      --wait for TIME_DELTA;
       
+      --ACK slave address
+      --wait for (2135 ns - (TIME_DELTA * 3));
+      --sda <= '0';
+      --wait for (TIME_DELTA * 12); --2255 ns
+      --sda <= 'Z'; 
+      
+      --ACK receipt of data from master
+      --wait for 2220 ns; --4475 ns - 2255 ns = 2220 ns
+      --sda <= '0';
+      --wait for (TIME_DELTA * 12); --4595 ns 
+      --sda <= 'Z';
+      --write_begin <= '0';
+      --wait for 1000 ns; --just wait for long time, so simulation doesn't repeat
+      
+      -- --END I2C MASTER WRITE CODE--
+      
+      --I2C MASTER READ CODE--
       -- Write to I2C 
       slave_address <= "1010101";
       reset_n <= '1';
       data_to_slave <= "11110000";
-      write_begin   <= '1';
+      read_begin   <= '1';
       wait for TIME_DELTA;
-      
-      
       
       --ACK slave address
       wait for (2135 ns - (TIME_DELTA * 3));
@@ -86,14 +108,16 @@ signal slave_ack_success  : std_logic_vector(1 downto 0) := "01";
       wait for (TIME_DELTA * 12); --2255 ns
       sda <= 'Z'; 
       
-      
-      --ACK receipt of data from master
+      --Master ACK receipt of data from slave
+      --TODO: simulate and find when to set SDA to provide pseudo slave data
       wait for 2220 ns; --4475 ns - 2255 ns = 2220 ns
       sda <= '0';
       wait for (TIME_DELTA * 12); --4595 ns 
       sda <= 'Z';
       write_begin <= '0';
-      wait for 1000 ns; --just wait for a long time basically, so inputs don't repeat
+      wait for 1000 ns; --just wait for write_begin   <= '1';
+      
+      --END I2C MASTER READ CODE--
     end process simulation;
 
 end architecture test;
