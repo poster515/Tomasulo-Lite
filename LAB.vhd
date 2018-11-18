@@ -48,25 +48,25 @@ architecture arch of LAB is
 	--type declaration for actual LAB, which has 5 entries, one for each pipeline stage
 	type LAB_actual is array(4 downto 0) of LAB_entry;
 		
-	--create array of LAB_entry to create LAB, and initialize to all zeroes
-	signal LAB	: LAB_actual;
+	signal LAB, LAB2	: LAB_actual;
+	signal MOAB			: MOAB_actual;
 	
 	--input buffer for PM (i.e., program instructions)
 	signal PM_data_reg	: std_logic_vector(15 downto 0);
 	
-	--PM output register
+	--Program counter (PC) register
 	signal PC_reg		: std_logic_vector(10 downto 0);
 	
 	--signal to denote that LAB is full and we need to stall PM input clock
 	signal LAB_full	: std_logic := '0';
 	
-	--register for IW output
+	--register for IW output to first pipeline stage
 	signal IW_reg		: std_logic_vector(15 downto 0);
 	
 	--signal to denote that the next IW is actually a memory or auxiliary value, and should go to MOAB
 	signal next_IW_to_MOAB : std_logic := '0';
 	
-	--signal for last LAB spot found
+	--signal for last open LAB spot found
 	signal last_LAB_spot	: integer := 0;
 	
 --	component PM is
@@ -102,9 +102,8 @@ architecture arch of LAB is
 	function find_LAB_spot(	 	LAB_in	: in 	LAB_actual 		) 
 		return integer is
 								
-		variable i 			: integer 								:= 0;	
-		variable LAB_temp : LAB_actual 							:= LAB_in;
-		variable IW_temp	: std_logic_vector(15 downto 0) 	:= IW;
+		variable i 			: integer 		:= 0;	
+		variable LAB_temp : LAB_actual 	:= LAB_in;
 		
 	begin
 		
@@ -139,36 +138,58 @@ architecture arch of LAB is
 	end function;
 	
 	--function to invalidate tag of instruction that has been completed
-	function commit_IW(	 	LAB_in	: in 	LAB_actual   ) 
+	function commit_IW(	 	LAB2_in	: in LAB_actual;
+									tag_in	: in integer		) 
 		return LAB_actual is
 								
-		variable i 			: integer 		:= 0;	
-		variable LAB_temp : LAB_actual 	:= LAB_in;
+		variable i 				: integer 		:= 0;	
+		variable LAB2_temp 	: LAB_actual 	:= LAB2_in;
+		variable tag_temp		: integer		:= tag_in;
 		
 	begin
-		--TODO
 		for i in 0 to 4 loop
-			if tag_to_commit_reg = LAB_temp(i).tag then
-				LAB_temp(i).valid = '0';
-				--TODO: find way to also clear MOAB entry for tag if it exists
+			if LAB2_temp(i).tag = tag_temp then
+				LAB2_temp(i).valid = '0';
 			end if; --if tag_to_commit_reg
 		end loop; --for i
 
-		return LAB_temp;
-	end function;
+		return LAB2_temp;
+	end function; --commit_IW
+	
+	--function to commit tag from MOAB
+	function commit_addr(	 	MOAB_in	: in MOAB_actual;
+										tag_in	: in integer		) 
+		return MOAB_actual is
+								
+		variable i 				: integer 		:= 0;	
+		variable MOAB_temp 	: MOAB_actual 	:= MOAB_in;
+		variable tag_temp		: integer		:= tag_in;
+		
+	begin
+		for i in 0 to 4 loop
+			if MOAB_temp(i).tag = tag_temp then
+				MOAB_temp(i).valid = '0';
+			end if; --if tag_to_commit_reg
+		end loop; --for i
+
+		return MOAB_temp;
+	end function; --commit_addr
 	
 	--function to dispatch next instruction from LAB
 	function dispatch_LAB0(	 	LAB_in	: in 	LAB_actual  	) 
 		return LAB_actual is
 								
 		variable LAB_temp : LAB_actual 	:= LAB_in;
-		
+		 
 	begin
 		
 		IW_reg <= LAB_temp(0).inst;
-		
+	
+		--now that the IW is no longer in LAB, can just invalidate it
 		LAB_temp(0).valid = '0';
-		--if we leave the loop, we haven't found a LAB spot. return 0.
+		
+		--
+		
 		return LAB_temp;
 	end function;
 	
@@ -206,7 +227,7 @@ architecture arch of LAB is
 										IW					: in std_logic_vector(15 downto 0)	) 
 		return MOAB_actual is
 								
-		variable MOAB_temp 				: MOAB_actual 							:= MOABB_in;
+		variable MOAB_temp 				: MOAB_actual 							:= MOAB_in;
 		variable last_LAB_spot_temp 	: integer 								:= last_LAB_spot;
 		variable IW_temp 					: std_logic_vector(15 downto 0) 	:= IW;
 	begin
@@ -221,6 +242,92 @@ architecture arch of LAB is
 		return MOAB_temp;
 	end function;
 	
+	function dispatch_MOAB0 ( 	MOAB_in	: in MOAB_actual;
+										tag_in	: in integer		)
+		return MOAB_actual is
+		
+		variable MOAB_temp	: MOAB _actual := MOAB_in;
+		variable tag_temp		: integer		:= tag_in;
+		variable i				: integer		:= '0';
+		begin
+			for i in 0 to 4 loop
+			if (MOAB_temp(i).tag = tag_temp) then
+				MEM_reg <= MOAB_temp(i).addr;
+				MOAB_temp(i).valid 	= '0';
+			end if;
+		end loop; --for i
+
+		return MOAB_temp;
+	end function;
+	
+	--function to check if LAB tag exists in MOAB
+	function check_MOAB_for_tag ( 	MOAB_in	: in MOAB_actual;
+												tag_in	: in integer		)
+		return std_logic is
+		
+		variable MOAB_temp	: MOAB _actual := MOAB_in;
+		variable tag_temp		: integer		:= tag_in;
+		variable i				: integer		:= '0';
+		begin
+			for i in 0 to 4 loop
+			if (MOAB_temp(i).tag = tag_temp) then
+				return '1';
+			end if;
+		end loop; --for i
+
+		--if we make it here, there is no tag in MOAB corresponding to LAB tag
+		return '0';
+	end function;
+	
+	
+	function shift_MOAB ( 	MOAB_in	: in MOAB_actual 	)
+		return MOAB_actual is
+		
+		variable MOAB_temp	: MOAB _actual := MOAB_in;
+		variable i, j, k		: integer		:= '0';
+		
+		begin
+			for i in 0 to 3 loop
+			if (MOAB_temp(i).valid = '0') then
+				for j in (i + 1) to 4 loop
+					if (MOAB_temp(j).valid = '1') then
+						MOAB_temp(i).addr 	<= MOAB_temp(j).addr;
+						--SWAP TAGS
+						k							<= MOAB_temp(i).tag;
+						MOAB_temp(i).tag 		<= MOAB_temp(j).tag;
+						MOAB_temp(j).tag		<= k;
+						--END SWAP TAGS
+						MOAB_temp(i).valid 	<= '1';
+						MOAB_temp(j).valid 	<= '0'; --invalidate so next loop can use it
+						exit; --exit if next instruction
+					end if;
+				end loop; --for j
+			end if;
+		end loop; --for i
+
+		return MOAB_temp;
+	end function;
+	
+	
+	function queue_LAB2(	 	LAB2_in	: in LAB_actual
+									inst_in	: in std_logic_vector(15 downto 0);
+									tag_in	: in integer									) 
+		return LAB_actual is
+								
+		variable LAB2_temp 	: LAB_actual 							:= LAB2_in;
+		variable tag_temp 	: integer 								:= tag_in;
+		variable inst_temp 	: std_logic_vector(15 downto 0) 	:= inst_in;
+	begin
+		for i in 0 to 4 loop
+			if (LAB2_temp(i).valid = '0') then
+				LAB2_temp(i).data 	= inst_temp;
+				LAB2_temp(i).tag 		= tag_temp;
+				LAB2_temp(i).valid 	= '1';
+			end if;
+		end loop; --for i
+
+		return LAB2_temp;
+	end function;
 begin
 
 	process(reset_n, sys_clock)
@@ -238,17 +345,44 @@ begin
 				next_IW_to_MOAB <= '0';
 			end if;
 			
+			--next, if an instruction needs to be committed, do that. this frees up a LAB spot.
+			if tag_to_commit_reg < 5 then
+				LAB2 	<= commit_IW(LAB, tag_to_commit_reg);
+				MOAB 	<= commit_addr(MOAB, tag_to_commit_reg);
+			end if; --tag_to_commit_reg
+			
 			--next, if pipeline isn't stalled, just get dispatch zeroth instruction
 			if stall_pipeline = '0' then 
 				--dispatch first (zeroth) instruction in LAB, if it exists
 				if ( LAB(0).valid = '1' ) then
-				
-					LAB 	<= dispatch_LAB0(LAB);
-					LAB 	<= shift_LAB(LAB);
-					
+					--if there is a memory address included, dispatch it too
+					if LAB(0).inst(15) and LAB(0).inst(1) = 1 then
+						--check if MOAB has corresponding memory address
+						if check_MOAB_for_tag(MOAB, LAB(0).tag) = '1' then
+							MOAB 	<= dispatch_MOAB0(MOAB, LAB(0).tag);
+							MOAB 	<= shift_MOAB(MOAB);
+							
+							--
+							LAB2 	<= queue_LAB2(LAB2, LAB.inst(0), LAB(0).tag);
+							--
+							LAB 	<= dispatch_LAB0(LAB);
+							LAB 	<= shift_LAB(LAB);
+						else
+							report "Memory address not yet buffered";
+						end if;
+					else --its any other instruction, just dispatch anyway
+						LAB2 	<= queue_LAB2(LAB2, LAB.inst(0), LAB(0).tag);
+						LAB 	<= dispatch_LAB0(LAB);
+						LAB 	<= shift_LAB(LAB);
+					end if;
+				else
+					--TODO do we need to output something LAB(0) is invalid?
 				end if;
-			end if;
+			else
+					--TODO do we need to output something if the pipeline is stalled?
+			end if; --stall_pipeline
 		
+			--now, try to find available spot in LAB
 			last_LAB_spot <= find_LAB_spot(LAB);
 			
 			if( last_LAB_spot < 5 ) then 
@@ -259,13 +393,13 @@ begin
 				PC_reg 	<= PC_reg + 1;
 				
 				--now check for whether or not there's another IW coming after this one that needs to go into MOAB
-				if (PM_data_reg(15) and PM_data_reg(1) = '1') then
+				if (PM_data_reg(15) and PM_data_reg(1) = '1') then --condition based on LD, ST, BNEZ, BNE, and JMP
 					next_IW_to_MOAB <= '1';
 				else
 					next_IW_to_MOAB <= '0';
 				end if; --PM_data_reg
 			else
-				--there is no spot in LAB
+				--there is no spot in LAB, no need to modify PC_reg
 				LAB_full <= '1';
 			
 			end if; --find_LAB_spot
@@ -278,6 +412,7 @@ begin
 	end process;
 		tag_to_commit_reg <= tag_to_commit;
 		PM_data_reg	<= PM_data_in;
-		PC <= PC_reg;
-		IW <= IW_reg;
+		PC 	<= PC_reg;
+		IW 	<= IW_reg;
+		MEM 	<= MEM_reg;
 end architecture arch;
