@@ -1,7 +1,5 @@
 -- Written by Joe Post
 
---Credit for a majority of this source goes to Peter Samarin: https://github.com/oetr/FPGA-I2C-Slave/blob/master/I2C_slave.vhd
-
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -10,13 +8,13 @@ entity LAB is
 	port (
 
 		sys_clock, reset_n  	: in std_logic;
-		stall_pipeline			: in std_logic; --needed when waiting for certain commands, should be formulated in top level CU module
-		ID_op1, ID_op2			: in std_logic_vector(4 downto 0); --source registers for instruction in ID stage
-		EX_op1, EX_op2			: in std_logic_vector(4 downto 0); --source registers for instruction in EX stage
-		MEM_op1, MEM_op2		: in std_logic_vector(4 downto 0); --source registers for instruction in MEM stage (results available)
-		WB_op1, WB_op2			: in std_logic_vector(4 downto 0); --source registers for instruction in WB stage (results available)
-		tag_to_commit			: in integer;	--input from WB stage, which denotes the tag of the instruction that has been written back, only valid for single clock
-
+		--stall_pipeline			: in std_logic; --needed when waiting for certain commands, should be formulated in top level CU module
+		ID_tag			: in std_logic_vector(4 downto 0); --source registers for instruction in ID stage
+		EX_tag			: in std_logic_vector(4 downto 0); --source registers for instruction in EX stage (results available)
+		MEM_tag			: in std_logic_vector(4 downto 0); --source registers for instruction in MEM stage (results available)
+		WB_tag			: in std_logic_vector(4 downto 0); --source registers for instruction in WB stage (results available)
+		
+		tag_to_commit	: in integer;	--input from WB stage, which denotes the tag of the instruction that has been written back, only valid for single clock
 		
 		PM_data_in		: in 	std_logic_vector(15 downto 0);
 		PC					: out std_logic_vector(10 downto 0);
@@ -48,7 +46,11 @@ architecture arch of LAB is
 	--type declaration for actual LAB, which has 5 entries, one for each pipeline stage
 	type LAB_actual is array(4 downto 0) of LAB_entry;
 		
-	signal LAB, LAB2	: LAB_actual;
+	signal LAB	: LAB_actual;
+	--signal LAB2	: LAB_actual;
+	--alias reg1	: std_logic_vector(3 downto 0) is LAB(0).inst(11 downto 8);
+	--alias reg2	: std_logic_vector(3 downto 0) is LAB(0).inst(7 downto 4);
+	
 	signal MOAB			: MOAB_actual;
 	
 	--input buffer for PM (i.e., program instructions)
@@ -149,7 +151,7 @@ architecture arch of LAB is
 	begin
 		for i in 0 to 4 loop
 			if LAB2_temp(i).tag = tag_temp then
-				LAB2_temp(i).valid = '0';
+				LAB2_temp(i).valid <= '0';
 			end if; --if tag_to_commit_reg
 		end loop; --for i
 
@@ -168,7 +170,7 @@ architecture arch of LAB is
 	begin
 		for i in 0 to 4 loop
 			if MOAB_temp(i).tag = tag_temp then
-				MOAB_temp(i).valid = '0';
+				MOAB_temp(i).valid <= '0';
 			end if; --if tag_to_commit_reg
 		end loop; --for i
 
@@ -180,16 +182,12 @@ architecture arch of LAB is
 		return LAB_actual is
 								
 		variable LAB_temp : LAB_actual 	:= LAB_in;
-		 
 	begin
-		
-		IW_reg <= LAB_temp(0).inst;
-	
-		--now that the IW is no longer in LAB, can just invalidate it
-		LAB_temp(0).valid = '0';
-		
-		--
-		
+		if LAB_temp(0).valid = '1' then
+			IW_reg <= LAB_temp(0).inst;
+			--now that the IW is no longer in LAB, can just invalidate it
+			LAB_temp(0).valid <= '0';
+		end if;
 		return LAB_temp;
 	end function;
 	
@@ -198,7 +196,7 @@ architecture arch of LAB is
 		return LAB_actual is
 								
 		variable LAB_temp : LAB_actual 	:= LAB_in;
-		variable i, j, k	: integer 		:= 0;
+		variable i, j		: integer 		:= 0;
 	begin
 		for i in 0 to 3 loop
 			if (LAB_temp(i).valid = '0') then
@@ -233,9 +231,9 @@ architecture arch of LAB is
 	begin
 		for i in 0 to 4 loop
 			if (MOAB_temp(i).valid = '0') then
-				MOAB_temp(i).data 	= IW_temp;
-				MOAB_temp(i).tag 		= last_LAB_spot_temp;
-				MOAB_temp(i).valid 	= '1';
+				MOAB_temp(i).data 	<= IW_temp;
+				MOAB_temp(i).tag 		<= last_LAB_spot_temp;
+				MOAB_temp(i).valid 	<= '1';
 			end if;
 		end loop; --for i
 
@@ -253,7 +251,7 @@ architecture arch of LAB is
 			for i in 0 to 4 loop
 			if (MOAB_temp(i).tag = tag_temp) then
 				MEM_reg <= MOAB_temp(i).addr;
-				MOAB_temp(i).valid 	= '0';
+				MOAB_temp(i).valid 	<= '0';
 			end if;
 		end loop; --for i
 
@@ -320,14 +318,118 @@ architecture arch of LAB is
 	begin
 		for i in 0 to 4 loop
 			if (LAB2_temp(i).valid = '0') then
-				LAB2_temp(i).data 	= inst_temp;
-				LAB2_temp(i).tag 		= tag_temp;
-				LAB2_temp(i).valid 	= '1';
+				LAB2_temp(i).data 	<= inst_temp;
+				LAB2_temp(i).tag 		<= tag_temp;
+				LAB2_temp(i).valid 	<= '1';
 			end if;
 		end loop; --for i
 
 		return LAB2_temp;
 	end function;
+	
+	--function to detect RAW, WAR, and WAW hazards
+	function data_haz_check(	LAB_in	: in LAB_actual;
+										LAB2_in	: in LAB_actual		)
+		return LAB_actual is
+		
+		variable LAB_temp			: LAB_actual  	:= LAB_in;
+		variable LAB2_temp		: LAB_actual  	:= LAB2_in;
+		variable i, j, tag_temp	: integer		:= 0;
+		variable LAB_entry_temp	: LAB_entry;
+		
+	begin
+		--TODO: check if EX tags match LAB(0)
+		
+		if EX_tag = LAB_temp(1).inst(11 downto 8) then
+			--SWAP LAB ENTRIES
+				LAB_entry_temp		<= LAB_temp(i + 1);
+				LAB_temp(i + 1) 	<= LAB_temp(i + 3);
+				LAB_temp(i + 3)	<= LAB_entry_temp;
+				
+		end if;
+		
+		--TODO: check if ID tags match LAB(0) or LAB(1)
+		
+		if ID_tag = LAB_temp(0).inst(11 downto 8) then
+			--SWAP LAB ENTRIES
+				LAB_entry_temp	<= LAB_temp(0);
+				LAB_temp(0) 	<= LAB_temp(3);
+				LAB_temp(3)		<= LAB_entry_temp;
+				
+		end if;
+		
+		if ID_tag = LAB_temp(1).inst(11 downto 8) then
+			--SWAP LAB ENTRIES
+				LAB_entry_temp		<= LAB_temp(i + 1);
+				LAB_temp(i + 1) 	<= LAB_temp(i + 3);
+				LAB_temp(i + 3)	<= LAB_entry_temp;
+				
+		end if;
+		
+		--TODO: do loop checking for WAW hazards
+			--TODO: if WAW hazard detected, check for RAW hazards
+		
+		--TODO: next, do another loop checking for RAW hazards
+		
+		for i in 0 downto 1 loop --
+			if LAB_temp(i).inst(11 downto 8) = LAB_temp(i + 1).inst(11 downto 8) then	--WAW: does the adjacent reg1 match?
+			
+				for j in i + 2 to 4 loop
+					
+					if LAB_temp(j).valid = '1' and LAB_temp(i).inst(11 downto 8) /= LAB_temp(j).inst(11 downto 8) then
+						LAB_entry_temp		<= LAB_temp(i + 1);
+						LAB_temp(i + 1) 	<= LAB_temp(j);
+						LAB_temp(j)			<= LAB_entry_temp;
+					end if;
+					
+				end loop;
+			
+				if LAB_temp(i + 2).valid = '0' then
+						
+					if LAB_temp(i + 2).valid = '0' then
+						--neither of the next two slots are valid, do nothing
+						
+					elsif LAB_temp(i + 2).valid = '1' and LAB_temp(i).inst(11 downto 8) = LAB_temp(i + 2).inst(11 downto 8) then
+						--i-th register1 matches next two instructions, can't do anything here. 
+						
+					elsif LAB_temp(i + 2).valid = '1' and LAB_temp(i).inst(11 downto 8) /= LAB_temp(i + 2).inst(11 downto 8) then
+						--just swap i + 1 and i + 2 tags for now
+						LAB_entry_temp		<= LAB_temp(i + 1);
+						LAB_temp(i + 1) 	<= LAB_temp(i + 2);
+						LAB_temp(i + 2)	<= LAB_entry_temp;
+						
+					end if; --i + 2 valid
+					
+				elsif LAB_temp(i + 3).valid = '1' then
+				
+					if LAB_temp(i + 2).valid = '0' then 
+					
+						if LAB_temp(i).inst(11 downto 8) /= LAB_temp(i + 3).inst(11 downto 8) then
+							--since i + 2 is free (i.e., not valid), just use this space
+							LAB_temp(i + 2) 	<= LAB_temp(i + 1);
+							LAB_temp(i + 1)	<= LAB_temp(i + 3);
+							LAB_temp(i + 3).valid	<= '0';
+						else 
+							
+					end if; --i + 2 valid
+					
+				end if;
+			end if;
+			
+			if LAB_temp(i).inst(11 downto 8) = LAB_temp(i + 2).inst(11 downto 8) and
+				LAB_temp(i).valid = '1' and LAB_temp(i + 2).valid = '1' then --Reg1 check
+				
+				--SWAP LAB ENTRIES
+				LAB_entry_temp		<= LAB_temp(i + 2);
+				LAB_temp(i + 2) 	<= LAB_temp(i + 3);
+				LAB_temp(i + 3)	<= LAB_entry_temp;
+				
+			end for;
+		end loop; --i
+		
+	return LAB_temp;
+	end function;
+	
 begin
 
 	process(reset_n, sys_clock)
@@ -406,7 +508,7 @@ begin
 			
 			--now try to reorganize now that the LAB has been dispatched and/or filled
 			--TODO
-			LAB <= data_haz_check(LAB);
+			LAB <= data_haz_check(LAB, LAB2);
 			
 		end if; --reset_n
 	end process;
