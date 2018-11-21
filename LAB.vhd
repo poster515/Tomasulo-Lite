@@ -5,6 +5,7 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 ------------------------------------------------------------
 entity LAB is
+	generic ( LAB_MAX	: integer	:= 5 	);
 	port (
 
 		sys_clock, reset_n  	: in std_logic;
@@ -332,100 +333,69 @@ architecture arch of LAB is
 										LAB2_in	: in LAB_actual		)
 		return LAB_actual is
 		
-		variable LAB_temp			: LAB_actual  	:= LAB_in;
-		variable LAB2_temp		: LAB_actual  	:= LAB2_in;
-		variable i, j, tag_temp	: integer		:= 0;
-		variable LAB_entry_temp	: LAB_entry;
+		variable LAB_temp				: LAB_actual  	:= LAB_in;
+		variable LAB2_temp			: LAB_actual  	:= LAB2_in;
+		variable i, j, k, tag_temp	: integer		:= 0;
+		variable LAB_entry_temp		: LAB_entry;
 		
 	begin
-		--TODO: check if EX tags match LAB(0)
+		--TODO: how to check for branches and jumps?
 		
-		if EX_tag = LAB_temp(1).inst(11 downto 8) then
+		if EX_tag = LAB_temp(0).inst(11 downto 8) then
 			--SWAP LAB ENTRIES
-				LAB_entry_temp		<= LAB_temp(i + 1);
-				LAB_temp(i + 1) 	<= LAB_temp(i + 3);
-				LAB_temp(i + 3)	<= LAB_entry_temp;
+				LAB_entry_temp		<= LAB_temp(0);
+				LAB_temp(0) 		<= LAB_temp(2);
+				LAB_temp(2)	<= LAB_entry_temp;
 				
 		end if;
-		
-		--TODO: check if ID tags match LAB(0) or LAB(1)
 		
 		if ID_tag = LAB_temp(0).inst(11 downto 8) then
 			--SWAP LAB ENTRIES
 				LAB_entry_temp	<= LAB_temp(0);
-				LAB_temp(0) 	<= LAB_temp(3);
-				LAB_temp(3)		<= LAB_entry_temp;
+				LAB_temp(0) 	<= LAB_temp(2);
+				LAB_temp(2)		<= LAB_entry_temp;
 				
 		end if;
 		
 		if ID_tag = LAB_temp(1).inst(11 downto 8) then
 			--SWAP LAB ENTRIES
-				LAB_entry_temp		<= LAB_temp(i + 1);
-				LAB_temp(i + 1) 	<= LAB_temp(i + 3);
-				LAB_temp(i + 3)	<= LAB_entry_temp;
+				LAB_entry_temp	<= LAB_temp(1);
+				LAB_temp(1) 	<= LAB_temp(3);
+				LAB_temp(3)		<= LAB_entry_temp;
 				
 		end if;
-		
-		--TODO: do loop checking for WAW hazards
-			--TODO: if WAW hazard detected, check for RAW hazards
-		
-		--TODO: next, do another loop checking for RAW hazards
-		
-		for i in 0 downto 1 loop --
-			if LAB_temp(i).inst(11 downto 8) = LAB_temp(i + 1).inst(11 downto 8) then	--WAW: does the adjacent reg1 match?
+
+		for i in 0 to (LAB_MAX - 1) loop
+			if ((LAB_temp(i).inst(11 downto 8) = LAB_temp(i + 1).inst(11 downto 8) or 	--WAW hazard
+				LAB_temp(i).inst(11 downto 8) = LAB_temp(i + 1).inst(7 downto 4))	and	--RAW hazard
+				LAB_temp(i + 1).valid = '1')	and 													--verify that i + 1 is valid, otherwise we don't care
+				LAB_temp(i + 1).inst(15 downto 12) /= "1010" and 								--if it's a BNEZ, we don't care about RAW/WAW
+				LAB_temp(i + 1).inst(15 downto 12) /= "1011" and 								--if it's a BNE, we don't care about RAW/WAW
+				LAB_temp(i + 1).inst(15 downto 12) /= "1100" and then							--if it's a JMP, we don't care about RAW/WAW				
 			
-				for j in i + 2 to 4 loop
-					
-					if LAB_temp(j).valid = '1' and LAB_temp(i).inst(11 downto 8) /= LAB_temp(j).inst(11 downto 8) then
+				for j in (i + 2) to (LAB_MAX - 1) loop
+					if LAB_temp(i + 1).inst(11 downto 8) /= LAB_temp(j).inst(11 downto 8) and
+						LAB_temp(i + 1).inst(11 downto 8) /= LAB_temp(j).inst(7 downto 4)  and
+						LAB_temp(j).valid = '1' 	then
+						
+						--put j into i + 1 space, and move entire LAB down, first save i + 1
 						LAB_entry_temp		<= LAB_temp(i + 1);
 						LAB_temp(i + 1) 	<= LAB_temp(j);
-						LAB_temp(j)			<= LAB_entry_temp;
-					end if;
-					
-				end loop;
-			
-				if LAB_temp(i + 2).valid = '0' then
 						
-					if LAB_temp(i + 2).valid = '0' then
-						--neither of the next two slots are valid, do nothing
+						--shift entire LAB down by one
+						for k in 0 to (j - i - 3) loop
+							LAB_temp(j - k) <= LAB_temp(j - 1 - k);
+						end loop; --end k loop
 						
-					elsif LAB_temp(i + 2).valid = '1' and LAB_temp(i).inst(11 downto 8) = LAB_temp(i + 2).inst(11 downto 8) then
-						--i-th register1 matches next two instructions, can't do anything here. 
-						
-					elsif LAB_temp(i + 2).valid = '1' and LAB_temp(i).inst(11 downto 8) /= LAB_temp(i + 2).inst(11 downto 8) then
-						--just swap i + 1 and i + 2 tags for now
-						LAB_entry_temp		<= LAB_temp(i + 1);
-						LAB_temp(i + 1) 	<= LAB_temp(i + 2);
 						LAB_temp(i + 2)	<= LAB_entry_temp;
-						
-					end if; --i + 2 valid
-					
-				elsif LAB_temp(i + 3).valid = '1' then
-				
-					if LAB_temp(i + 2).valid = '0' then 
-					
-						if LAB_temp(i).inst(11 downto 8) /= LAB_temp(i + 3).inst(11 downto 8) then
-							--since i + 2 is free (i.e., not valid), just use this space
-							LAB_temp(i + 2) 	<= LAB_temp(i + 1);
-							LAB_temp(i + 1)	<= LAB_temp(i + 3);
-							LAB_temp(i + 3).valid	<= '0';
-						else 
-							
-					end if; --i + 2 valid
-					
-				end if;
+						--exit j for loop
+						exit;
+					else
+						--if WAW or RAW are detected or j is invalid, do nothing this iteration, go to j + 1
+					end if;
+				end loop; --j loop
 			end if;
-			
-			if LAB_temp(i).inst(11 downto 8) = LAB_temp(i + 2).inst(11 downto 8) and
-				LAB_temp(i).valid = '1' and LAB_temp(i + 2).valid = '1' then --Reg1 check
-				
-				--SWAP LAB ENTRIES
-				LAB_entry_temp		<= LAB_temp(i + 2);
-				LAB_temp(i + 2) 	<= LAB_temp(i + 3);
-				LAB_temp(i + 3)	<= LAB_entry_temp;
-				
-			end for;
-		end loop; --i
+		end loop; --i loop
 		
 	return LAB_temp;
 	end function;
