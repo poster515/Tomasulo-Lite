@@ -376,7 +376,10 @@ architecture arch of LAB is
 				for j in (i + 2) to (LAB_MAX - 1) loop
 					if LAB_temp(i + 1).inst(11 downto 8) /= LAB_temp(j).inst(11 downto 8) and
 						LAB_temp(i + 1).inst(11 downto 8) /= LAB_temp(j).inst(7 downto 4)  and
-						LAB_temp(j).valid = '1' 	then
+						LAB_temp(j).valid = '1' 	and 													--verify that i + 1 is valid, otherwise we don't care
+						LAB_temp(j).inst(15 downto 12) /= "1010" and 								--if it's a BNEZ, we don't care about RAW/WAW
+						LAB_temp(j).inst(15 downto 12) /= "1011" and 								--if it's a BNE, we don't care about RAW/WAW
+						LAB_temp(j).inst(15 downto 12) /= "1100" and then							--if it's a JMP, we don't care about RAW/WAW				
 						
 						--put j into i + 1 space, and move entire LAB down, first save i + 1
 						LAB_entry_temp		<= LAB_temp(i + 1);
@@ -388,10 +391,16 @@ architecture arch of LAB is
 						end loop; --end k loop
 						
 						LAB_temp(i + 2)	<= LAB_entry_temp;
-						--exit j for loop
+						--exit j for loop, now that suitable substitute has been found and we've re-arranged the LAB. 
 						exit;
+						
+					elsif LAB_temp(j).inst(15 downto 12) /= "1010" or 								
+							LAB_temp(j).inst(15 downto 12) /= "1011" or 								
+							LAB_temp(j).inst(15 downto 12) /= "1100" or then				
+						exit; --if the found instruction not posing a RAW/WAW hazard is a branch/jump, exit j loop. 	 
+						
 					else
-						--if WAW or RAW are detected or j is invalid, do nothing this iteration, go to j + 1
+						--if WAW or RAW are detected or j is invalid, do nothing this iteration, go to j + 1		
 					end if;
 				end loop; --j loop
 			end if;
