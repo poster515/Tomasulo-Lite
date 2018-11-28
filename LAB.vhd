@@ -104,18 +104,20 @@ architecture arch of LAB is
 	--function to determine if there are any open LAB spots	
 	--if an open spot exists, take it:	(return [spot to take])
 	--if not, return a stall 			:	(return 5 since there is no fifth spot in LAB)
-	function find_LAB_spot(	 	LAB_in	: in 	LAB_actual 		) 
+	impure function find_LAB_spot(	 	LAB_in	: in 	LAB_actual 		) 
 		return integer is
 								
 		variable i 			: integer 		:= 0;	
 		
 	begin
 		
-		for i in 0 to 4 loop
-			if(LAB_in(i).valid	= '0') then
-			
-				return LAB_in(i).tag;
-				
+		for i in 0 to LAB_MAX - 2 loop
+			if(LAB_in(i).valid = '0') then
+				return i; 
+			elsif LAB_in(i).valid = '1' and LAB_in(i + 1).valid = '0' and stall_pipeline = '0' then
+				return i;
+			elsif LAB_in(i).valid = '1' and LAB_in(i + 1).valid = '1' and i = LAB_MAX - 2 then	
+				return 5;
 			end if;
 		end loop; --for i
 		
@@ -176,20 +178,6 @@ architecture arch of LAB is
 	end function; --commit_addr
 	
 	--function to dispatch next instruction from LAB
-	function dispatch_LAB0(	 	LAB_in	: in 	LAB_actual  	) 
-		return LAB_actual is
-								
-		variable LAB_temp : LAB_actual 	:= LAB_in;
-	begin
-		if LAB_temp(0).valid = '1' then
-			IW_reg <= LAB_temp(0).inst;
-			--now that the IW is no longer in LAB, can just invalidate it
-			LAB_temp(0).valid := '0';
-		end if;
-		return LAB_temp;
-	end function;
-	
-	--function to dispatch next instruction from LAB
 	function shift_LAB(	 	LAB_in	: in 	LAB_actual  	) 
 		return LAB_actual is
 								
@@ -231,24 +219,6 @@ architecture arch of LAB is
 				MOAB_temp(i).data 	:= IW;
 				MOAB_temp(i).tag 		:= last_LAB_spot;
 				MOAB_temp(i).valid 	:= '1';
-			end if;
-		end loop; --for i
-
-		return MOAB_temp;
-	end function;
-	
-	function dispatch_MOAB0 ( 	MOAB_in	: in MOAB_actual;
-										tag_in	: in integer		)
-		return MOAB_actual is
-		
-		variable MOAB_temp	: MOAB_actual  := MOAB_in;
-		variable i				: integer		:= 0;
-		
-		begin
-			for i in 0 to 4 loop
-			if (MOAB_temp(i).tag = tag_in) then
-				MEM_reg <= MOAB_temp(i).data;
-				MOAB_temp(i).valid 	:= '0';
 			end if;
 		end loop; --for i
 
@@ -336,48 +306,48 @@ architecture arch of LAB is
 		
 	begin
 		--TODO: how to check for branches and jumps?
-				if EX_tag_reg = LAB_temp(0).inst(11 downto 7) then
+		if EX_tag_reg = LAB_temp(0).inst(11 downto 7) then
 
 			--SWAP LAB ENTRIES
-				LAB_entry_temp		:= LAB_temp(0);
-				LAB_temp(0) 		:= LAB_temp(2);
-				LAB_temp(2)			:= LAB_entry_temp;
+			LAB_entry_temp		:= LAB_temp(0);
+			LAB_temp(0) 		:= LAB_temp(2);
+			LAB_temp(2)			:= LAB_entry_temp;
 				
 		end if;
 		
 		if ID_tag_reg = LAB_temp(0).inst(11 downto 7) then
 			--SWAP LAB ENTRIES
-				LAB_entry_temp	:= LAB_temp(0);
-				LAB_temp(0) 	:= LAB_temp(2);
-				LAB_temp(2)		:= LAB_entry_temp;
+			LAB_entry_temp	:= LAB_temp(0);
+			LAB_temp(0) 	:= LAB_temp(2);
+			LAB_temp(2)		:= LAB_entry_temp;
 				
 		end if;
 		
 		if ID_tag_reg = LAB_temp(1).inst(11 downto 7) then
 			--SWAP LAB ENTRIES
-				LAB_entry_temp	:= LAB_temp(1);
-				LAB_temp(1) 	:= LAB_temp(3);
-				LAB_temp(3)		:= LAB_entry_temp;
+			LAB_entry_temp	:= LAB_temp(1);
+			LAB_temp(1) 	:= LAB_temp(3);
+			LAB_temp(3)		:= LAB_entry_temp;
 				
 		end if;
 
 		for i in 0 to (LAB_MAX - 3) loop
 			if 	((LAB_temp(i).inst(11) = LAB_temp(i + 1).inst(11) and 
-					LAB_temp(i).inst(10) = LAB_temp(i + 1).inst(10) and
-					LAB_temp(i).inst(9) = LAB_temp(i + 1).inst(9) and
-					LAB_temp(i).inst(8) = LAB_temp(i + 1).inst(8) and
-					LAB_temp(i).inst(7) = LAB_temp(i + 1).inst(7)) or				--WAW hazard
-		
-					(LAB_temp(i).inst(11) = LAB_temp(i + 1).inst(6) and 
-					LAB_temp(i).inst(10) = LAB_temp(i + 1).inst(5) and 
-					LAB_temp(i).inst(9) = LAB_temp(i + 1).inst(4) and 
-					LAB_temp(i).inst(8) = LAB_temp(i + 1).inst(3) and 
-					LAB_temp(i).inst(7) = LAB_temp(i + 1).inst(2))) and 	--RAW hazard
-					
-					LAB_temp(i + 1).valid = '1'	and 							--verify that i + 1 is valid, otherwise we don't care
-					LAB_temp(i + 1).inst(15 downto 12) /= "1010" and 		--if it's a BNEZ, we don't care about RAW/WAW
-					LAB_temp(i + 1).inst(15 downto 12) /= "1011" and 		--if it's a BNE, we don't care about RAW/WAW
-					LAB_temp(i + 1).inst(15 downto 12) /= "1100" then		--if it's a JMP, we don't care about RAW/WAW				
+				LAB_temp(i).inst(10) = LAB_temp(i + 1).inst(10) and
+				LAB_temp(i).inst(9) = LAB_temp(i + 1).inst(9) and
+				LAB_temp(i).inst(8) = LAB_temp(i + 1).inst(8) and
+				LAB_temp(i).inst(7) = LAB_temp(i + 1).inst(7)) or				--WAW hazard
+	
+				(LAB_temp(i).inst(11) = LAB_temp(i + 1).inst(6) and 
+				LAB_temp(i).inst(10) = LAB_temp(i + 1).inst(5) and 
+				LAB_temp(i).inst(9) = LAB_temp(i + 1).inst(4) and 
+				LAB_temp(i).inst(8) = LAB_temp(i + 1).inst(3) and 
+				LAB_temp(i).inst(7) = LAB_temp(i + 1).inst(2))) and 	--RAW hazard
+				
+				LAB_temp(i + 1).valid = '1'	and 							--verify that i + 1 is valid, otherwise we don't care
+				LAB_temp(i + 1).inst(15 downto 12) /= "1010" and 		--if it's a BNEZ, we don't care about RAW/WAW
+				LAB_temp(i + 1).inst(15 downto 12) /= "1011" and 		--if it's a BNE, we don't care about RAW/WAW
+				LAB_temp(i + 1).inst(15 downto 12) /= "1100" then		--if it's a JMP, we don't care about RAW/WAW				
 			
 				for j in (i + 2) to (LAB_MAX - 1) loop
 					if LAB_temp(i + 1).inst(11 downto 8) /= LAB_temp(j).inst(11 downto 8) and
@@ -433,7 +403,7 @@ begin
 			end if;
 			
 			--next, if an instruction needs to be committed, do that. this frees up a LAB spot.
-			if tag_to_commit_reg < 5 then
+			if tag_to_commit_reg < 5 AND tag_to_commit_reg >= 0 then
 				LAB2 	<= commit_IW(LAB, tag_to_commit_reg);
 				MOAB 	<= commit_addr(MOAB, tag_to_commit_reg);
 				--TODO: why do I not also shift LAB2 and MOAB?
@@ -451,22 +421,32 @@ begin
 					
 						--check if MOAB has corresponding memory address
 						if check_MOAB_for_tag(MOAB, LAB(0).tag) = '1' then
-							--dispatch memory address
-							MOAB 	<= dispatch_MOAB0(MOAB, LAB(0).tag);
+							--dispatch memory address and shift 
+							--MOAB 	<= dispatch_MOAB0(MOAB, LAB(0).tag);
+							MEM_reg <= MOAB(0).data;
+							MOAB(0).valid 	<= '0';
 							MOAB 	<= shift_MOAB(MOAB);
 							
 							--place the soon-to-be-dispatched instruction in LAB2
 							LAB2 	<= queue_LAB2(LAB2, LAB(0).inst, LAB(0).tag);
 							
 							--now dispatch
-							LAB 	<= dispatch_LAB0(LAB);
+							--LAB 	<= dispatch_LAB0(LAB);
+							report "Dispatching instruction, memory related instruction.";
+							IW_reg <= LAB(0).inst;
+							LAB(0).valid <= '0';
+							
 							LAB 	<= shift_LAB(LAB);
 						else
 							report "Memory address not yet buffered";
 						end if;
 					else --its any other instruction, just dispatch anyway
 						LAB2 	<= queue_LAB2(LAB2, LAB(0).inst, LAB(0).tag);
-						LAB 	<= dispatch_LAB0(LAB);
+						--dispatch first instruction
+						--LAB 	<= dispatch_LAB0(LAB);
+						report "Dispatching instruction, non-memory related instruction.";
+						IW_reg <= LAB(0).inst;
+						LAB(0).valid <= '0';
 						LAB 	<= shift_LAB(LAB);
 					end if;
 				else
@@ -474,15 +454,18 @@ begin
 				end if;
 			else
 					--TODO do we need to output something if the pipeline is stalled?
+					LAB 	<= shift_LAB(LAB);
 			end if; --stall_pipeline
 		
 			--now, try to find available spot in LAB
-			last_LAB_spot <= find_LAB_spot(LAB);
+			--last_LAB_spot <= find_LAB_spot(LAB);
 			
 			--now try to buffer next instruction from PM
 			if( last_LAB_spot < 5 ) then 
 				--there is a spot in the LAB for it, go load IW into LAB
-				LAB 		<= load_IW(LAB, last_LAB_spot, PM_data_reg);
+				--LAB 		<= load_IW(LAB, last_LAB_spot, PM_data_reg);
+				LAB(last_LAB_spot).inst 	<= PM_data_in;
+				LAB(last_LAB_spot).valid <= '1';
 				
 				--increment PC to get next IW
 				PC_reg 	<= std_logic_vector(unsigned(PC_reg) + 1);
@@ -500,16 +483,25 @@ begin
 			end if; --find_LAB_spot
 			
 			--now try to reorganize now that the LAB has been dispatched and/or filled
-			LAB <= data_haz_check(LAB, LAB2);
+			--TODO: test this function later
+			--LAB <= data_haz_check(LAB, LAB2);
 			
 		end if; --reset_n
 	end process;
+	
+	process (LAB, stall_pipeline)
+	begin
+		if stall_pipeline = '0' then
+			last_LAB_spot <= find_LAB_spot(LAB);
+		end if;
+	end process;
+	
 		--latch inputs
 		tag_to_commit_reg <= tag_to_commit;
 		PM_data_reg	<= PM_data_in;
 		ID_tag_reg <= ID_tag;
 		EX_tag_reg <= EX_tag;
-		
+
 		--latch outputs
 		PC 	<= PC_reg;
 		IW 	<= IW_reg;
