@@ -58,13 +58,13 @@ architecture arch of LAB is
 	signal ID_tag_reg, EX_tag_reg : std_logic_vector(4 downto 0);
 	
 	--Program counter (PC) register
-	signal PC_reg		: std_logic_vector(10 downto 0);
+	signal PC_reg, PC_reg_prev		: std_logic_vector(10 downto 0);
 	
 	--signal to denote that LAB is full and we need to stall PM input clock
 	signal LAB_full	: std_logic := '0';
 
 	--signal to denote that the next IW is actually a memory or auxiliary value, and should go to MOAB
-	signal next_IW_to_MOAB : std_logic := '0';
+	signal next_IW_to_MOAB, current_IW_to_MOAB : std_logic := '0';
 	
 	--signal for last open LAB spot found
 	signal last_LAB_spot 		: integer := 0;
@@ -101,6 +101,24 @@ architecture arch of LAB is
 		return LAB_temp;
 	end function;
 	
+		--function which initializes MOAB tags									
+	function init_MOAB (	MOAB_in	: in 	MOAB_actual ) 
+		return MOAB_actual is
+								
+		variable i 			: integer 		:= 0;	
+		variable MOAB_temp : MOAB_actual 	:= MOAB_in;
+		
+	begin
+		
+		for i in 0 to 4 loop
+			MOAB_temp(i).data		:= "0000000000000000";
+			MOAB_temp(i).tag 		:= i;
+			MOAB_temp(i).valid	:= '0';
+		end loop; --for i
+		
+		return MOAB_temp;
+	end function;
+	
 	--function to determine if there are any open LAB spots	
 	--if an open spot exists, take it:	(return [spot to take])
 	--if not, return a stall 			:	(return 5 since there is no fifth spot in LAB)
@@ -116,10 +134,16 @@ architecture arch of LAB is
 				return i; 
 			elsif LAB_in(i).valid = '1' and LAB_in(i + 1).valid = '0' and stall_pipeline = '0' then
 				return i;
-			elsif LAB_in(i).valid = '1' and LAB_in(i + 1).valid = '1' and i = LAB_MAX - 2 then	
-				return 5;
+			elsif LAB_in(i).valid = '1' and LAB_in(i + 1).valid = '0' and stall_pipeline = '1' then
+				--during a stall condition, provide the next LAB spot during a stall condition
+				return i + 1;
 			end if;
 		end loop; --for i
+		
+		--this function is needed to ensure LAB can continue to saturate LAB after a stall condition clears
+		if LAB_in(LAB_MAX - 1).valid = '1' and stall_pipeline = '0' then
+			return LAB_MAX - 1;
+		end if;
 		
 		return 5; --come here if there are no spots available
 	end function;
@@ -177,52 +201,26 @@ architecture arch of LAB is
 		return MOAB_temp;
 	end function; --commit_addr
 	
-	--function to dispatch next instruction from LAB
+	--function to shift entire LAB down after an instruction dispatch
+	--assumes that zeroth instruction has indeed been dispatched
+	--NOT TO BE USED IF ZEROTH INSTRUCTION HAS NOT BEEN DISPATCHED
 	function shift_LAB(	 	LAB_in	: in 	LAB_actual  	) 
 		return LAB_actual is
 								
 		variable LAB_temp : LAB_actual 	:= LAB_in;
 		variable i, j, k	: integer 		:= 0;
 	begin
-		for i in 0 to 3 loop
-			if (LAB_temp(i).valid = '0') then
-				for j in (i + 1) to 4 loop
-					if (LAB_temp(j).valid = '1') then
-						LAB_temp(i).inst 		:= LAB_temp(j).inst;
-						--SWAP TAGS
-						k							:= LAB_temp(i).tag;
-						LAB_temp(i).tag 		:= LAB_temp(j).tag;
-						LAB_temp(j).tag		:= k;
-						--END SWAP TAGS
-						LAB_temp(i).valid 	:= '1';
-						LAB_temp(j).valid 	:= '0'; --invalidate so next loop can use it
-						exit; --exit if next instruction
-					end if;
-				end loop; --for j
-			end if;
-		end loop; --for i
-
-		return LAB_temp;
-	end function;
-	
-	--function to buffer in next IW to MOAB for jumps, etc.
-	function write_to_MOAB(	 	MOAB_in			: in MOAB_actual;
-										last_LAB_spot	: in integer;
-										IW					: in std_logic_vector(15 downto 0)	) 
-		return MOAB_actual is
-								
-		variable MOAB_temp 				: MOAB_actual 							:= MOAB_in;
+		--recycle the dispatched instruction's tag
+		j := LAB_temp(0).tag;
 		
-	begin
-		for i in 0 to 4 loop
-			if (MOAB_temp(i).valid = '0') then
-				MOAB_temp(i).data 	:= IW;
-				MOAB_temp(i).tag 		:= last_LAB_spot;
-				MOAB_temp(i).valid 	:= '1';
-			end if;
+		for i in 0 to LAB_MAX - 2 loop
+			LAB_temp(i)	:= LAB_temp(i + 1);
 		end loop; --for i
-
-		return MOAB_temp;
+		
+		--place previous tag back into LAB
+		LAB_temp(LAB_MAX - 1).tag := j;
+		
+		return LAB_temp;
 	end function;
 	
 	--function to check if LAB tag exists in MOAB
@@ -386,21 +384,41 @@ architecture arch of LAB is
 	end function;
 	
 begin
-
-	process(reset_n, sys_clock)
+	--added stall_pipeline to sensitivity list, may cause unintended consequences
+	process(reset_n, sys_clock, stall_pipeline)
+		variable i	: integer := 0;
 		begin
 		
 		if(reset_n = '0') then
 			LAB 			<= init_LAB(LAB);
+			MOAB 			<= init_MOAB(MOAB);
 			PC_reg 		<= "00000000000";
+			PC_reg_prev <= "11111111111";
 			
 		elsif rising_edge(sys_clock) then
 		
 			--first just check whether this is an auxiliary value (e.g., memory address)
 			if next_IW_to_MOAB = '1' then
-				MOAB <= write_to_MOAB(MOAB, last_LAB_spot, PM_data_reg);
+			
+				current_IW_to_MOAB <= '1';
+				
+				for i in 0 to LAB_MAX - 1 loop
+					--since there can only be LAB_MAX instructions in LAB, there can only be LAB_MAX spots in MOAB.
+					--just find a spot that's empty and give it the tag of the associated LAB instruction.
+					if MOAB(i).valid = '0' then
+						MOAB(i).data 	<= PM_data_in;
+						if stall_pipeline = '1' then
+							MOAB(i).tag <= LAB(last_LAB_spot - 1).tag;
+						else
+							MOAB(i).tag <= LAB(last_LAB_spot).tag;
+						end if;
+						MOAB(i).valid	<= '1';
+						exit; --don't need to fill up any more MOAB spots now
+					end if;
+				end loop;
+				
 				next_IW_to_MOAB <= '0';
-			end if;
+			end if; --next_IW_to_MOAB
 			
 			--next, if an instruction needs to be committed, do that. this frees up a LAB spot.
 			if tag_to_commit_reg < 5 AND tag_to_commit_reg >= 0 then
@@ -409,7 +427,7 @@ begin
 				--TODO: why do I not also shift LAB2 and MOAB?
 			end if; --tag_to_commit_reg
 			
-			--next, if pipeline isn't stalled, just get dispatch zeroth instruction
+			--next, if pipeline isn't stalled, just dispatch zeroth instruction
 			if stall_pipeline = '0' then 
 			
 				--dispatch first (zeroth) instruction in LAB, if it exists
@@ -437,6 +455,8 @@ begin
 							LAB(0).valid <= '0';
 							
 							LAB 	<= shift_LAB(LAB);
+							
+							
 						else
 							report "Memory address not yet buffered";
 						end if;
@@ -446,36 +466,40 @@ begin
 						--LAB 	<= dispatch_LAB0(LAB);
 						report "Dispatching instruction, non-memory related instruction.";
 						IW_reg <= LAB(0).inst;
-						LAB(0).valid <= '0';
+						--LAB(0).valid <= '0';
 						LAB 	<= shift_LAB(LAB);
 					end if;
 				else
 					--TODO do we need to output something LAB(0) is invalid?
 				end if;
+				
+				if current_IW_to_MOAB = '1' then
+					LAB(last_LAB_spot).valid <= '0';
+				end if;
 			else
 					--TODO do we need to output something if the pipeline is stalled?
-					LAB 	<= shift_LAB(LAB);
+					--LAB 	<= shift_LAB(LAB);
 			end if; --stall_pipeline
-		
-			--now, try to find available spot in LAB
-			--last_LAB_spot <= find_LAB_spot(LAB);
+			
+			PC_reg_prev <= PC_reg;
 			
 			--now try to buffer next instruction from PM
-			if( last_LAB_spot < 5 ) then 
+			if( last_LAB_spot < LAB_MAX ) then 
 				--there is a spot in the LAB for it, go load IW into LAB
-				--LAB 		<= load_IW(LAB, last_LAB_spot, PM_data_reg);
-				LAB(last_LAB_spot).inst 	<= PM_data_in;
-				LAB(last_LAB_spot).valid <= '1';
 				
-				--increment PC to get next IW
-				PC_reg 	<= std_logic_vector(unsigned(PC_reg) + 1);
-				
-				--now check for whether or not there's another IW coming after this one that needs to go into MOAB
-				if (PM_data_reg = "1XXXXXXXXXXXXX1X") then --condition based on LD, ST, BNEZ, BNE, and JMP
-					next_IW_to_MOAB <= '1';
+				if current_IW_to_MOAB = '0' then
+					LAB(last_LAB_spot).inst 	<= PM_data_in;
+					LAB(last_LAB_spot).valid 	<= '1';
 				else
-					next_IW_to_MOAB <= '0';
-				end if; --PM_data_reg
+					current_IW_to_MOAB 			<= '0';
+				end if;
+				--increment PC to get next IW
+				PC_reg 		<= std_logic_vector(unsigned(PC_reg) + 1);
+
+				--now check for whether or not there's another IW coming after this one that needs to go into MOAB
+				if (next_IW_to_MOAB = '0' and PM_data_in(15) = '1' and PM_data_in(1) = '1') then --condition based on LD, ST, BNEZ, BNE, and JMP
+					next_IW_to_MOAB <= '1';
+				end if; --PM_data_in
 			else
 				--there is no spot in LAB, no need to modify PC_reg
 				LAB_full <= '1';
@@ -491,9 +515,9 @@ begin
 	
 	process (LAB, stall_pipeline)
 	begin
-		if stall_pipeline = '0' then
-			last_LAB_spot <= find_LAB_spot(LAB);
-		end if;
+
+		last_LAB_spot <= find_LAB_spot(LAB);
+
 	end process;
 	
 		--latch inputs

@@ -97,7 +97,6 @@ signal MEM				: std_logic_vector(15 downto 0);
       wait for TIME_DELTA;
       
       --AND R4, R5
-      stall_pipeline <= '0';
       PM_data_in <= "0100001000010110";
       wait for TIME_DELTA;
       
@@ -111,6 +110,17 @@ signal MEM				: std_logic_vector(15 downto 0);
       
       --0x0002 (memory address for LD)
       PM_data_in <= "0000000000000010";
+      wait for TIME_DELTA * 2;
+      
+      stall_pipeline <= '0';
+      wait for TIME_DELTA;
+      
+      --ADD R15, R12
+      PM_data_in <= "0000011110110000";
+      wait for TIME_DELTA;
+      
+      --ADD R1, R2
+      PM_data_in <= "0000000010001000";
       wait for TIME_DELTA;
       
     end process simulation;
