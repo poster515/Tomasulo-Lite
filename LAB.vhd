@@ -5,7 +5,8 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 ------------------------------------------------------------
 entity LAB is
-	generic ( LAB_MAX	: integer	:= 5 	);
+	generic ( 	LAB_MAX	: integer	:= 5;	
+					LAB2_MAX : integer 	:= 5 	);
 	port (
 
 		sys_clock, reset_n  	: in std_logic;
@@ -54,8 +55,6 @@ architecture arch of LAB is
 	signal MOAB			: MOAB_actual;
 	
 	--input buffer for PM (i.e., program instructions)
-	signal PM_data_reg	: std_logic_vector(15 downto 0);
-	signal ID_tag_reg, EX_tag_reg : std_logic_vector(4 downto 0);
 	
 	--Program counter (PC) register
 	signal PC_reg, PC_reg_prev		: std_logic_vector(10 downto 0);
@@ -64,7 +63,7 @@ architecture arch of LAB is
 	signal LAB_full	: std_logic := '0';
 
 	--signal to denote that the next IW is actually a memory or auxiliary value, and should go to MOAB
-	signal next_IW_to_MOAB, current_IW_to_MOAB : std_logic := '0';
+	signal next_IW_to_MOAB : std_logic := '0';
 	
 	--signal for last open LAB spot found
 	signal last_LAB_spot 		: integer := 0;
@@ -92,7 +91,7 @@ architecture arch of LAB is
 		
 	begin
 		
-		for i in 0 to 4 loop
+		for i in 0 to LAB_MAX - 1 loop
 			LAB_temp(i).inst		:= "0000000000000000";
 			LAB_temp(i).tag 		:= i;
 			LAB_temp(i).valid		:= '0';
@@ -110,7 +109,7 @@ architecture arch of LAB is
 		
 	begin
 		
-		for i in 0 to 4 loop
+		for i in 0 to LAB_MAX - 1 loop
 			MOAB_temp(i).data		:= "0000000000000000";
 			MOAB_temp(i).tag 		:= i;
 			MOAB_temp(i).valid	:= '0';
@@ -174,9 +173,11 @@ architecture arch of LAB is
 		variable LAB2_temp 	: LAB_actual 	:= LAB2_in;
 		
 	begin
-		for i in 0 to 4 loop
+		for i in 0 to LAB_MAX - 1 loop
 			if LAB2_temp(i).tag = tag_in then
+				report "Found tag in LAB2, tag = " & Integer'image(tag_in) & ". Loop index i = " & Integer'image(i) & ".";
 				LAB2_temp(i).valid := '0';
+				LAB2_temp(i).inst := "0000000000000000";
 			end if; --if tag_to_commit_reg
 		end loop; --for i
 
@@ -192,7 +193,7 @@ architecture arch of LAB is
 		variable MOAB_temp 	: MOAB_actual 	:= MOAB_in;
 		
 	begin
-		for i in 0 to 4 loop
+		for i in 0 to LAB_MAX - 1 loop
 			if MOAB_temp(i).tag = tag_in then
 				MOAB_temp(i).valid := '0';
 			end if; --if tag_to_commit_reg
@@ -228,12 +229,10 @@ architecture arch of LAB is
 												tag_in	: in integer		)
 		return std_logic is
 		
-		variable MOAB_temp	: MOAB_actual := MOAB_in;
-		variable tag_temp		: integer		:= tag_in;
 		variable i				: integer		:= 0;
 		begin
-			for i in 0 to 4 loop
-			if (MOAB_temp(i).tag = tag_temp and MOAB_temp(i).valid = '1') then
+			for i in 0 to LAB_MAX - 1 loop
+			if (MOAB_in(i).tag = tag_in and MOAB_in(i).valid = '1') then
 				return '1';
 			end if;
 		end loop; --for i
@@ -250,10 +249,10 @@ architecture arch of LAB is
 		variable i, j, k		: integer		:= 0;
 		
 		begin
-			for i in 0 to 3 loop
+			for i in 0 to LAB_MAX - 2 loop
 			if (MOAB_temp(i).valid = '0') then
-				for j in (i + 1) to 4 loop
-					if (MOAB_temp(j).valid = '1') then
+				for j in (i + 1) to LAB_MAX - 1 loop
+					--if (MOAB_temp(j).valid = '1') then
 						MOAB_temp(i).data 	:= MOAB_temp(j).data;
 						--SWAP TAGS
 						k							:= MOAB_temp(i).tag;
@@ -263,7 +262,7 @@ architecture arch of LAB is
 						MOAB_temp(i).valid 	:= '1';
 						MOAB_temp(j).valid 	:= '0'; --invalidate so next loop can use it
 						exit; --exit if next instruction
-					end if;
+					--end if; --not sure why I'd make this dependent on whether next entry was valid or not. 
 				end loop; --for j
 			end if;
 		end loop; --for i
@@ -273,19 +272,20 @@ architecture arch of LAB is
 	
 	--when we dispatch an instruction from the LAB, buffer that instruction into LAB2 to keep
 	--track of registers in pipeline
-	function queue_LAB2(	 	LAB2_in	: in LAB_actual;
+	function load_LAB2(	 	LAB2_in	: in LAB_actual;
 									inst_in	: in std_logic_vector(15 downto 0);
 									tag_in	: in integer									) 
 		return LAB_actual is
 								
-		variable LAB2_temp 	: LAB_actual 							:= LAB2_in;
+		variable LAB2_temp 	: LAB_actual 	:= LAB2_in;
 
 	begin
-		for i in 0 to 4 loop
+		for i in LAB_MAX - 1 downto 0 loop
 			if (LAB2_temp(i).valid = '0') then
 				LAB2_temp(i).inst 	:= inst_in;
 				LAB2_temp(i).tag 		:= tag_in;
 				LAB2_temp(i).valid 	:= '1';
+				exit;
 			end if;
 		end loop; --for i
 
@@ -293,18 +293,16 @@ architecture arch of LAB is
 	end function;
 	
 	--function to detect RAW, WAR, and WAW hazards
-	impure function data_haz_check(	LAB_in	: in LAB_actual;
-												LAB2_in	: in LAB_actual		)
+	impure function data_haz_check(	LAB_in	: in LAB_actual		)
 		return LAB_actual is
 		
 		variable LAB_temp				: LAB_actual  	:= LAB_in;
-		variable LAB2_temp			: LAB_actual  	:= LAB2_in;
 		variable i, j, k, tag_temp	: integer		:= 0;
 		variable LAB_entry_temp		: LAB_entry;
 		
 	begin
 		--TODO: how to check for branches and jumps?
-		if EX_tag_reg = LAB_temp(0).inst(11 downto 7) then
+		if EX_tag = LAB_temp(0).inst(11 downto 7) then
 
 			--SWAP LAB ENTRIES
 			LAB_entry_temp		:= LAB_temp(0);
@@ -313,7 +311,7 @@ architecture arch of LAB is
 				
 		end if;
 		
-		if ID_tag_reg = LAB_temp(0).inst(11 downto 7) then
+		if ID_tag = LAB_temp(0).inst(11 downto 7) then
 			--SWAP LAB ENTRIES
 			LAB_entry_temp	:= LAB_temp(0);
 			LAB_temp(0) 	:= LAB_temp(2);
@@ -321,7 +319,7 @@ architecture arch of LAB is
 				
 		end if;
 		
-		if ID_tag_reg = LAB_temp(1).inst(11 downto 7) then
+		if ID_tag = LAB_temp(1).inst(11 downto 7) then
 			--SWAP LAB ENTRIES
 			LAB_entry_temp	:= LAB_temp(1);
 			LAB_temp(1) 	:= LAB_temp(3);
@@ -391,6 +389,7 @@ begin
 		
 		if(reset_n = '0') then
 			LAB 			<= init_LAB(LAB);
+			LAB2			<= init_LAB(LAB2);
 			MOAB 			<= init_MOAB(MOAB);
 			PC_reg 		<= "00000000000";
 			PC_reg_prev <= "11111111111";
@@ -400,8 +399,6 @@ begin
 			--first just check whether this is an auxiliary value (e.g., memory address)
 			if next_IW_to_MOAB = '1' then
 			
-				current_IW_to_MOAB <= '1';
-				
 				for i in 0 to LAB_MAX - 1 loop
 					--since there can only be LAB_MAX instructions in LAB, there can only be LAB_MAX spots in MOAB.
 					--just find a spot that's empty and give it the tag of the associated LAB instruction.
@@ -418,13 +415,16 @@ begin
 				end loop;
 				
 				next_IW_to_MOAB <= '0';
+				--increment PC to get next IW
+				PC_reg 		<= std_logic_vector(unsigned(PC_reg) + 1);
 			end if; --next_IW_to_MOAB
 			
-			--next, if an instruction needs to be committed, do that. this frees up a LAB spot.
+			--next, if an instruction needs to be committed, do that. this frees up a LAB2 spot.
 			if tag_to_commit_reg < 5 AND tag_to_commit_reg >= 0 then
-				LAB2 	<= commit_IW(LAB, tag_to_commit_reg);
+				report "Committing value from LAB2, tag = " & Integer'image(tag_to_commit_reg);
+				LAB2 	<= commit_IW(LAB2, tag_to_commit_reg);
 				MOAB 	<= commit_addr(MOAB, tag_to_commit_reg);
-				--TODO: why do I not also shift LAB2 and MOAB?
+				--TODO: why doesn't this modification work in simulation? 
 			end if; --tag_to_commit_reg
 			
 			--next, if pipeline isn't stalled, just dispatch zeroth instruction
@@ -435,50 +435,41 @@ begin
 				
 					--if there is a memory address included, dispatch it too.
 					--the following condition is based on memory ops requiring an address:
-					if LAB(0).inst = "1XXXXXXXXXXXXX1X" then
+					if LAB(0).inst(15) = '1' and LAB(0).inst(1) = '1' then
 					
 						--check if MOAB has corresponding memory address
 						if check_MOAB_for_tag(MOAB, LAB(0).tag) = '1' then
 							--dispatch memory address and shift 
 							--MOAB 	<= dispatch_MOAB0(MOAB, LAB(0).tag);
-							MEM_reg <= MOAB(0).data;
+							MEM_reg <= MOAB(0).data;	
 							MOAB(0).valid 	<= '0';
+							--shift entire MOAB down now
 							MOAB 	<= shift_MOAB(MOAB);
 							
 							--place the soon-to-be-dispatched instruction in LAB2
-							LAB2 	<= queue_LAB2(LAB2, LAB(0).inst, LAB(0).tag);
+							LAB2 	<= load_LAB2(LAB2, LAB(0).inst, LAB(0).tag);
 							
 							--now dispatch
-							--LAB 	<= dispatch_LAB0(LAB);
 							report "Dispatching instruction, memory related instruction.";
 							IW_reg <= LAB(0).inst;
-							LAB(0).valid <= '0';
-							
 							LAB 	<= shift_LAB(LAB);
-							
-							
+
 						else
 							report "Memory address not yet buffered";
 						end if;
 					else --its any other instruction, just dispatch anyway
-						LAB2 	<= queue_LAB2(LAB2, LAB(0).inst, LAB(0).tag);
+						LAB2 	<= load_LAB2(LAB2, LAB(0).inst, LAB(0).tag);
+						
 						--dispatch first instruction
-						--LAB 	<= dispatch_LAB0(LAB);
 						report "Dispatching instruction, non-memory related instruction.";
 						IW_reg <= LAB(0).inst;
-						--LAB(0).valid <= '0';
 						LAB 	<= shift_LAB(LAB);
 					end if;
 				else
 					--TODO do we need to output something LAB(0) is invalid?
 				end if;
-				
-				if current_IW_to_MOAB = '1' then
-					LAB(last_LAB_spot).valid <= '0';
-				end if;
 			else
 					--TODO do we need to output something if the pipeline is stalled?
-					--LAB 	<= shift_LAB(LAB);
 			end if; --stall_pipeline
 			
 			PC_reg_prev <= PC_reg;
@@ -487,11 +478,11 @@ begin
 			if( last_LAB_spot < LAB_MAX ) then 
 				--there is a spot in the LAB for it, go load IW into LAB
 				
-				if current_IW_to_MOAB = '0' then
+				if next_IW_to_MOAB = '0' then
 					LAB(last_LAB_spot).inst 	<= PM_data_in;
 					LAB(last_LAB_spot).valid 	<= '1';
 				else
-					current_IW_to_MOAB 			<= '0';
+					
 				end if;
 				--increment PC to get next IW
 				PC_reg 		<= std_logic_vector(unsigned(PC_reg) + 1);
@@ -500,6 +491,7 @@ begin
 				if (next_IW_to_MOAB = '0' and PM_data_in(15) = '1' and PM_data_in(1) = '1') then --condition based on LD, ST, BNEZ, BNE, and JMP
 					next_IW_to_MOAB <= '1';
 				end if; --PM_data_in
+				LAB_full <= '0';
 			else
 				--there is no spot in LAB, no need to modify PC_reg
 				LAB_full <= '1';
@@ -508,7 +500,7 @@ begin
 			
 			--now try to reorganize now that the LAB has been dispatched and/or filled
 			--TODO: test this function later
-			--LAB <= data_haz_check(LAB, LAB2);
+			LAB <= data_haz_check(LAB, LAB2);
 			
 		end if; --reset_n
 	end process;
@@ -522,9 +514,6 @@ begin
 	
 		--latch inputs
 		tag_to_commit_reg <= tag_to_commit;
-		PM_data_reg	<= PM_data_in;
-		ID_tag_reg <= ID_tag;
-		EX_tag_reg <= EX_tag;
 
 		--latch outputs
 		PC 	<= PC_reg;

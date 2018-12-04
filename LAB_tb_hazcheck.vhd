@@ -97,7 +97,7 @@ signal MEM				: std_logic_vector(15 downto 0);
   
       --SUBI R3, #2
       stall_pipeline <= '1';
-      PM_data_in <= "0001000110001010";
+      PM_data_in <= "0001000100001010";
       wait for TIME_DELTA;
       
       --AND R4, R5
@@ -108,110 +108,112 @@ signal MEM				: std_logic_vector(15 downto 0);
       PM_data_in <= "0101001010010110";
       wait for TIME_DELTA;
       
-      --LD R8, #5
-      PM_data_in <= "1000010000010110";
-      wait for TIME_DELTA;
-      
-      --0x0002 (memory address for LD)
-      PM_data_in <= "0000000000000010";
-      wait for TIME_DELTA * 2;
-      
-      stall_pipeline <= '0';
-      wait for TIME_DELTA;
-      
-      --ADD R15, R12
-      PM_data_in <= "0000011110110000";
-      wait for TIME_DELTA;
-      
-      --ADD R1, R2
-      PM_data_in <= "0000000010001000";
-      wait for TIME_DELTA;
-      
-      --ADDI R2, #2
-      tag_to_commit <= 0;
-      PM_data_in <= "0000000100001010";
-      wait for TIME_DELTA;
-  
-      --SUBI R3, #2
-      tag_to_commit <= 5;
-      stall_pipeline <= '1';
-      PM_data_in <= "0001000110001010";
-      wait for TIME_DELTA;
-      
-      --AND R4, R5
-      PM_data_in <= "0100001000010110";
-      wait for TIME_DELTA;
-      
-      --ROTLC R6, #5
-      PM_data_in <= "0101001010010110";
-      wait for TIME_DELTA;
-      
-      --LD R8, #5
-      PM_data_in <= "1000010000010110";
-      wait for TIME_DELTA;
-      
-      --0x0002 (memory address for LD)
-      PM_data_in <= "0000000000000010";
-      wait for TIME_DELTA * 2;
-      
-      stall_pipeline <= '0';
-      wait for TIME_DELTA;
-      
-      --ADD R15, R12
-      PM_data_in <= "0000011110110000";
-      wait for TIME_DELTA;
-      
-      --ADD R1, R2
-      PM_data_in <= "0000000010001000";
-      wait for TIME_DELTA;
-
-      ------------------------------------------------------------------------------
-      --stall and saturate LAB, memory address for LD comes in during last LAB spot  
-      --ADD R1, R2
-      PM_data_in <= "0000000010001000";
-      wait for TIME_DELTA;
-      
-      --ADDI R2, #2
-      PM_data_in <= "0000000100001010";
-      wait for TIME_DELTA;
-  
-      --SUBI R3, #2
-      stall_pipeline <= '1';
-      PM_data_in <= "0001000110001010";
-      wait for TIME_DELTA;
-      
-      --AND R4, R5
-      PM_data_in <= "0100001000010110";
-      wait for TIME_DELTA;
-      
-      --LD R8, #5
-      PM_data_in <= "1000010000010110";
-      wait for TIME_DELTA;
-      
-      --0x0002 (memory address for LD)
-      PM_data_in <= "0000000000000010";
-      wait for TIME_DELTA * 2;
-      
-      stall_pipeline <= '0';
-      wait for TIME_DELTA;
-      
-      --ADD R15, R12
-      PM_data_in <= "0000011110110000";
-      wait for TIME_DELTA;
-      
-      --ADD R1, R2
-      PM_data_in <= "0000000010001000";
-      wait for TIME_DELTA;
-
-      --ROTLC R6, #5
-      PM_data_in <= "0101001010010110";
-      wait for TIME_DELTA;
-      
-      stall_pipeline <= '0';
+      ----LD R8, #5
+--      PM_data_in <= "1000010000010110";
+--      wait for TIME_DELTA;
+--      
+--      --0x0002 (memory address for LD)
+--      PM_data_in <= "0000000000000010";
+--      wait for TIME_DELTA * 2;
+--      
+--      stall_pipeline <= '0';
+--      wait for TIME_DELTA;
+--      
+--      --ADD R15, R12
+--      PM_data_in <= "0000011110110000";
+--      wait for TIME_DELTA;
+--      
+--      --ADD R1, R2
+--      PM_data_in <= "0000000010001000";
+--      wait for TIME_DELTA;
+--      
+--      --ADDI R2, #2
+--      tag_to_commit <= 0;
+--      PM_data_in <= "0000000100001010";
+--      wait for TIME_DELTA;
+--  
+--      --SUBI R3, #2
+--      tag_to_commit <= 5;
+--      stall_pipeline <= '1';
+--      PM_data_in <= "0001000110001010";
+--      wait for TIME_DELTA;
+--      
+--      --AND R4, R5
+--      PM_data_in <= "0100001000010110";
+--      wait for TIME_DELTA;
+--      
+--      --ROTLC R6, #5
+--      PM_data_in <= "0101001010010110";
+--      wait for TIME_DELTA;
+--      
+--      --LD R8, #5
+--      PM_data_in <= "1000010000010110";
+--      wait for TIME_DELTA;
+--      
+--      --0x0002 (memory address for LD)
+--      PM_data_in <= "0000000000000010";
+--      wait for TIME_DELTA * 2;
+--      
+--      stall_pipeline <= '0';
+--      wait for TIME_DELTA;
+--      
+--      --ADD R15, R12
+--      PM_data_in <= "0000011110110000";
+--      wait for TIME_DELTA;
+--      
+--      --ADD R1, R2
+--      PM_data_in <= "0000000010001000";
+--      wait for TIME_DELTA;
+--
+--      ------------------------------------------------------------------------------
+--      --stall and saturate LAB, memory address for LD comes in during last LAB spot  
+--      --ADD R1, R2
+--      PM_data_in <= "0000000010001000";
+--      wait for TIME_DELTA;
+--      
+--      --ADDI R2, #2
+--      PM_data_in <= "0000000100001010";
+--      wait for TIME_DELTA;
+--  
+--      --SUBI R3, #2
+--      stall_pipeline <= '1';
+--      PM_data_in <= "0001000110001010";
+--      wait for TIME_DELTA;
+--      
+--      --AND R4, R5
+--      PM_data_in <= "0100001000010110";
+--      wait for TIME_DELTA;
+--      
+--      --LD R8, #5
+--      PM_data_in <= "1000010000010110";
+--      wait for TIME_DELTA;
+--      
+--      --0x0002 (memory address for LD)
+--      PM_data_in <= "0000000000000010";
+--      wait for TIME_DELTA * 2;
+--      
+--      stall_pipeline <= '0';
+--      wait for TIME_DELTA;
+--      
+--      --ADD R15, R12
+--      PM_data_in <= "0000011110110000";
+--      wait for TIME_DELTA;
+--      
+--      --ADD R1, R2
+--      PM_data_in <= "0000000010001000";
+--      wait for TIME_DELTA;
+--
+--      --ROTLC R6, #5
+--      PM_data_in <= "0101001010010110";
+--      wait for TIME_DELTA;
+--      
+--      stall_pipeline <= '0';
       
     end process simulation;
 
 end architecture test;
+
+
 
 
 
