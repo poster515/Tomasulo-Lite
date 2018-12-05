@@ -77,37 +77,34 @@ signal MEM				: std_logic_vector(15 downto 0);
       --initialize all registers, and wait a few clock
       --reset_n <= '0';
 	    --sys_clock <= '0';
+	    PM_data_in <= "0000000010001000";
       wait for TIME_DELTA * 2;
       wait for TIME_DELTA / 2;
       
       reset_n <= '1';
       --stall and saturate LAB
       stall_pipeline <= '1';
-      wait for TIME_DELTA / 2; --half clock cycle allows input data to be stable from PM
+      wait for TIME_DELTA;
       
-      --ADD R1, R2
       PM_data_in <= "0000000010001000";
       wait for TIME_DELTA;
       
-      --ADD R1, R2
-      PM_data_in <= "0000000010001000";
-      wait for TIME_DELTA;
-      
-      --ADD R1, R2
-      PM_data_in <= "0000000010001000";
-      wait for TIME_DELTA;
-  
-      --SUBI R3, #2
       PM_data_in <= "0001000100001010";
       wait for TIME_DELTA;
       
-      --AND R4, R5
+      PM_data_in <= "0000000010001001";
+      wait for TIME_DELTA;
+  
+      PM_data_in <= "0001000110010010";
+      wait for TIME_DELTA;
+      
       PM_data_in <= "0100001000010110";
       wait for TIME_DELTA;
       
-      --ROTLC R6, #5
-      PM_data_in <= "0101001010010110";
+      stall_pipeline <= '0';
       wait for TIME_DELTA;
+      
+      PM_data_in <= "0101001010010110";
       
     end process simulation;
 

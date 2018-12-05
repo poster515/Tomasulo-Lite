@@ -73,6 +73,9 @@ architecture arch of LAB is
 	signal MEM_reg		: std_logic_vector(15 downto 0)	:= "0000000000000000";
 	signal IW_reg		: std_logic_vector(15 downto 0) 	:= "0000000000000000";
 	
+	--signal that load_hazcheck uses to determine if the LAB needs to be shifted due to an IW being dispatched
+	signal IW_dispatched : std_logic := '0';
+	
 --	component PM is
 --	port (
 --		address	: IN STD_LOGIC_VECTOR (10 DOWNTO 0);
@@ -293,15 +296,19 @@ architecture arch of LAB is
 	end function;
 	
 	--function to detect RAW, WAR, and WAW hazards
-	impure function data_haz_check(	LAB_in	: in LAB_actual	)
+	impure function load_hazcheck(	LAB_in			: in LAB_actual;
+												last_LAB_spot	: in integer;
+												IW_dispatched_reg	: in std_logic	)
 		return LAB_actual is
 		
-		variable LAB_temp				: LAB_actual  	:= LAB_in;
-		variable i, j, k, tag_temp	: integer		:= 0;
-		variable LAB_entry_temp		: LAB_entry;
-		variable RAW_WAW				: std_logic		:= '0';
+		variable LAB_temp										: LAB_actual  	:= LAB_in;
+		variable last_LAB_spot_reg							: integer		:= last_LAB_spot;
+		variable i, j, k, hazard_slot, tag_temp 		: integer		:= 0;
+		variable LAB_entry_temp								: LAB_entry;
+		variable RAW_WAW, hazard_resolved				: std_logic		:= '0';
 		
 	begin
+		report "Made it to data_haz_check function.";
 		--TODO: how to check for branches and jumps?
 --		if EX_tag = LAB_temp(0).inst(11 downto 7) then
 --
@@ -327,7 +334,36 @@ architecture arch of LAB is
 --			LAB_temp(3)		:= LAB_entry_temp;
 --				
 --		end if;
-
+	LAB_temp := LAB_in;
+	RAW_WAW := '0';
+	
+	--recycle current tag later
+	tag_temp := LAB_temp(0).tag;
+	
+	if stall_pipeline = '1' and reset_n = '1' and last_LAB_spot_reg < 5 then
+		--can only use tag of last_LAP_spot since we're not dispatching instruction
+		tag_temp	:= LAB_temp(last_LAB_spot_reg).tag;
+		LAB_temp(last_LAB_spot_reg).inst := PM_data_in;
+		LAB_temp(last_LAB_spot_reg).valid := '1';
+	else
+		
+		j := LAB_temp(0).tag;
+		
+		for i in 0 to LAB_MAX - 2 loop
+			LAB_temp(i)	:= LAB_temp(i + 1);
+		end loop; --for i
+		
+		--place previous tag back into LAB
+		LAB_temp(LAB_MAX - 1).tag := j;
+		
+		report "Shifted LAB down, tag_temp = " & integer'image(tag_temp);
+		
+		LAB_temp(last_LAB_spot_reg).inst 	:= PM_data_in;
+		LAB_temp(last_LAB_spot_reg).tag 		:= LAB_temp(0).tag;
+		LAB_temp(last_LAB_spot_reg).valid 	:= '1';
+	end if;
+	
+	if LAB_temp(0).valid = '1' then
 		for i in 1 to (LAB_MAX - 2) loop
 			if (LAB_temp(0).inst(11 downto 7) 	= LAB_temp(i).inst(11 downto 7) or	--WAW
 				LAB_temp(0).inst(11 downto 7) 	= LAB_temp(i).inst(6 downto 2)) and	--RAW
@@ -335,42 +371,102 @@ architecture arch of LAB is
 				LAB_temp(i).inst(15 downto 12) 	/= "1010" and 	--if it's a BNEZ, we don't care about RAW/WAW
 				LAB_temp(i).inst(15 downto 12) 	/= "1011" and 	--if it's a BNE, we don't care about RAW/WAW
 				LAB_temp(i).inst(15 downto 12) 	/= "1100" then	--if it's a JMP, we don't care about RAW/WAW				
-			
+				
+				--denote what slot the hazard is in, and choose the lowest slot available
+				if hazard_slot = 0 then
+					hazard_slot	:= i;
+				end if;
+				
+				--set the RAW_WAW bit high
 				RAW_WAW := '1';
 				
-			elsif RAW_WAW = '1' then 
-			
-				tag_temp := i;
+				report "Detected RAW or WAW hazard at slot " & Integer'image(hazard_slot);
 				
-				--FIRST: starting at first LAB spot, if ith inst source OR destination DO match ith inst destination, we don't care, exit.
+			elsif RAW_WAW = '1' and LAB_temp(i).valid = '1' then 
+			
+				--if we make it here, we know that the ith inst does not pose a data hazard with LAB(0)
+				hazard_resolved := '1';
+				
+				--FIRST: starting at 1, if jth inst source OR destination DO match ith inst destination, we don't care, exit.
 				--lower limit is 1 because we already know the instruction at i doesn't match 0th inst destination
 				for j in 1 to i - 1 loop
-					if LAB_temp(i).inst(11 downto 7) = LAB_temp(j).inst(11 downto 7) or 
-						LAB_temp(i).inst(11 downto 7) = LAB_temp(j).inst(6 downto 2) then
+					if (LAB_temp(i).inst(11 downto 7) = LAB_temp(j).inst(11 downto 7) or 
+						LAB_temp(i).inst(11 downto 7) = LAB_temp(j).inst(6 downto 2)) and 
+						LAB_temp(j).valid = '1' then
+						
+						hazard_resolved := '0';
 						exit;
-					else 
-						tag_temp := 1;
 					end if;
 				end loop;
 				
 				--SECOND: if we can swap ith inst with 1st slot, then do it
-				--place i at tag_temp and shift entire LAB up at this point
-				if tag_temp = 1 then
+				--place i at hazard_resolved and shift entire LAB up at this point
+				if hazard_resolved = '1' then
 				
-					LAB_entry_temp := LAB_temp(i);
+					report "Found acceptable replacement at LAB spot " & Integer'image(i);
+					LAB_entry_temp := LAB_temp(hazard_slot);
 					
-					for j in i downto 2 loop
-						LAB_temp(i) := LAB_temp(i - 1);
+					for j in 1 to i - 1 loop
+						if j >= hazard_slot then
+							LAB_temp(j) := LAB_temp(j + 1);
+						end if;
 					end loop;
 					
-					LAB_temp(1) := LAB_entry_temp;
+					LAB_temp(i) := LAB_entry_temp;
 					
 				end if;
 			else
-				--if WAW or RAW are detected or j is invalid, do nothing this iteration, go to j + 1		
+				--if WAW or RAW are detected or j is invalid, do nothing this iteration, go to j + 1	
+					report "Can't use feasible replacement.";
 			end if;
 		end loop; --i loop
 		
+		if LAB_temp(0).inst(11 downto 7) /= PM_data_in(11 downto 7) and
+			LAB_temp(0).inst(11 downto 7) /= PM_data_in(6 downto 2) and
+			hazard_resolved = '0' and RAW_WAW = '1' then
+			report "PM_data_in is suitable replacement, hazard_slot = " & integer'image(hazard_slot);
+			
+			--if we're here we have a data hazard and haven't found a suitable replacement, check PM_data_in
+			for j in 1 to LAB_MAX - 1 loop
+				if j <= last_LAB_spot_reg - 1 then
+					if (LAB_temp(j).inst(11 downto 7) = PM_data_in(11 downto 7) or 
+						LAB_temp(j).inst(11 downto 7) = PM_data_in(6 downto 2)) then
+						
+						hazard_resolved := '0';
+						exit;
+					else
+						hazard_resolved := '1';
+					end if;	--
+				end if; --last_LAB_spot_reg
+			end loop;
+			
+			if hazard_resolved = '0' then
+				--if hazard_resolved is still 0 at this point, we cannot solve the data hazard in this clock cycle. just buffer new instruction. 
+				LAB_temp(last_LAB_spot_reg).inst := PM_data_in;
+				LAB_temp(last_LAB_spot_reg).valid := '1';
+			else
+				--PM_data_in can help with data hazard
+				--insert PM_data_in at hazard slot
+				report "PM_data_in being buffered in at slot " & integer'image(hazard_slot);
+				
+				for j in LAB_MAX - 1 downto 1 loop
+					if j > hazard_slot and j <= last_LAB_spot_reg then
+						LAB_temp(j) := LAB_temp(j - 1);
+					end if;
+				end loop;
+				
+				LAB_temp(hazard_slot).inst 	:= PM_data_in;
+				LAB_temp(hazard_slot).tag		:= tag_temp;
+				LAB_temp(hazard_slot).valid 	:= '1';
+				
+			end if;
+		else
+			--if we're here, we either don't have a replacement at all for a data hazard or we're already found one, so just buffer PM_data_in. 
+			LAB_temp(last_LAB_spot_reg).tag := tag_temp;
+			LAB_temp(last_LAB_spot_reg).inst := PM_data_in;
+			LAB_temp(last_LAB_spot_reg).valid := '1';
+		end if;
+	end if; --LAB_temp(0).valid
 	return LAB_temp;
 	end function;
 	
@@ -389,6 +485,10 @@ begin
 			
 		elsif rising_edge(sys_clock) then
 		
+			--now try to reorganize now that the LAB has been dispatched and/or filled
+			--TODO: test this function 
+			--LAB <= data_haz_check(LAB);
+			
 			--first just check whether this is an auxiliary value (e.g., memory address)
 			if next_IW_to_MOAB = '1' then
 			
@@ -444,7 +544,8 @@ begin
 							--now dispatch
 							report "Dispatching instruction, memory related instruction.";
 							IW_reg <= LAB(0).inst;
-							LAB 	<= shift_LAB(LAB);
+							IW_dispatched <= '1';
+							--LAB 	<= shift_LAB(LAB);
 
 						else
 							report "Memory address not yet buffered";
@@ -455,10 +556,12 @@ begin
 						--dispatch first instruction
 						report "Dispatching instruction, non-memory related instruction.";
 						IW_reg <= LAB(0).inst;
-						LAB 	<= shift_LAB(LAB);
+						IW_dispatched <= '1';
+						--LAB 	<= shift_LAB(LAB);
 					end if;
 				else
 					--TODO do we need to output something LAB(0) is invalid?
+					IW_dispatched <= '0';
 				end if;
 			else
 					--TODO do we need to output something if the pipeline is stalled?
@@ -468,18 +571,17 @@ begin
 			
 			--now try to buffer next instruction from PM
 			if( last_LAB_spot < LAB_MAX ) then 
+			
 				--there is a spot in the LAB for it, go load IW into LAB
-				
 				if next_IW_to_MOAB = '0' then
-					LAB(last_LAB_spot).inst 	<= PM_data_in;
-					LAB(last_LAB_spot).valid 	<= '1';
-					
-					--now try to reorganize now that the LAB has been dispatched and/or filled
-					--TODO: test this function 
-					LAB <= data_haz_check(LAB);
+					--load_hazcheck will load newest IW and re-organize LAB based on data hazards
+					LAB <= load_hazcheck(LAB, last_LAB_spot, IW_dispatched);
+--					LAB(last_LAB_spot).inst 	<= PM_data_in;
+--					LAB(last_LAB_spot).valid 	<= '1';
 				else
 					
 				end if;
+				
 				--increment PC to get next IW
 				PC_reg 		<= std_logic_vector(unsigned(PC_reg) + 1);
 
@@ -495,6 +597,11 @@ begin
 				LAB_full <= '1';
 			
 			end if; --find_LAB_spot
+		elsif falling_edge(sys_clock) then
+--			--now try to reorganize now that the LAB has been dispatched and/or filled
+--			--TODO: test this function 
+--			LAB <= data_haz_check(LAB);
+			
 		end if; --reset_n
 	end process;
 	
