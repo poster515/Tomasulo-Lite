@@ -144,7 +144,7 @@ architecture arch of LAB is
 			return LAB_MAX - 1;
 		end if;
 		
-		return 5; --come here if there are no spots available
+		return LAB_MAX; --come here if there are no spots available
 	end function;
 	
 	--function to write new IW into LAB
@@ -293,88 +293,81 @@ architecture arch of LAB is
 	end function;
 	
 	--function to detect RAW, WAR, and WAW hazards
-	impure function data_haz_check(	LAB_in	: in LAB_actual		)
+	impure function data_haz_check(	LAB_in	: in LAB_actual	)
 		return LAB_actual is
 		
 		variable LAB_temp				: LAB_actual  	:= LAB_in;
 		variable i, j, k, tag_temp	: integer		:= 0;
 		variable LAB_entry_temp		: LAB_entry;
+		variable RAW_WAW				: std_logic		:= '0';
 		
 	begin
 		--TODO: how to check for branches and jumps?
-		if EX_tag = LAB_temp(0).inst(11 downto 7) then
+--		if EX_tag = LAB_temp(0).inst(11 downto 7) then
+--
+--			--SWAP LAB ENTRIES
+--			LAB_entry_temp		:= LAB_temp(0);
+--			LAB_temp(0) 		:= LAB_temp(2);
+--			LAB_temp(2)			:= LAB_entry_temp;
+--				
+--		end if;
+--		
+--		if ID_tag = LAB_temp(0).inst(11 downto 7) then
+--			--SWAP LAB ENTRIES
+--			LAB_entry_temp	:= LAB_temp(0);
+--			LAB_temp(0) 	:= LAB_temp(2);
+--			LAB_temp(2)		:= LAB_entry_temp;
+--				
+--		end if;
+--		
+--		if ID_tag = LAB_temp(1).inst(11 downto 7) then
+--			--SWAP LAB ENTRIES
+--			LAB_entry_temp	:= LAB_temp(1);
+--			LAB_temp(1) 	:= LAB_temp(3);
+--			LAB_temp(3)		:= LAB_entry_temp;
+--				
+--		end if;
 
-			--SWAP LAB ENTRIES
-			LAB_entry_temp		:= LAB_temp(0);
-			LAB_temp(0) 		:= LAB_temp(2);
-			LAB_temp(2)			:= LAB_entry_temp;
-				
-		end if;
-		
-		if ID_tag = LAB_temp(0).inst(11 downto 7) then
-			--SWAP LAB ENTRIES
-			LAB_entry_temp	:= LAB_temp(0);
-			LAB_temp(0) 	:= LAB_temp(2);
-			LAB_temp(2)		:= LAB_entry_temp;
-				
-		end if;
-		
-		if ID_tag = LAB_temp(1).inst(11 downto 7) then
-			--SWAP LAB ENTRIES
-			LAB_entry_temp	:= LAB_temp(1);
-			LAB_temp(1) 	:= LAB_temp(3);
-			LAB_temp(3)		:= LAB_entry_temp;
-				
-		end if;
-
-		for i in 0 to (LAB_MAX - 3) loop
-			if 	((LAB_temp(i).inst(11) = LAB_temp(i + 1).inst(11) and 
-				LAB_temp(i).inst(10) = LAB_temp(i + 1).inst(10) and
-				LAB_temp(i).inst(9) = LAB_temp(i + 1).inst(9) and
-				LAB_temp(i).inst(8) = LAB_temp(i + 1).inst(8) and
-				LAB_temp(i).inst(7) = LAB_temp(i + 1).inst(7)) or				--WAW hazard
-	
-				(LAB_temp(i).inst(11) = LAB_temp(i + 1).inst(6) and 
-				LAB_temp(i).inst(10) = LAB_temp(i + 1).inst(5) and 
-				LAB_temp(i).inst(9) = LAB_temp(i + 1).inst(4) and 
-				LAB_temp(i).inst(8) = LAB_temp(i + 1).inst(3) and 
-				LAB_temp(i).inst(7) = LAB_temp(i + 1).inst(2))) and 	--RAW hazard
-				
-				LAB_temp(i + 1).valid = '1'	and 							--verify that i + 1 is valid, otherwise we don't care
-				LAB_temp(i + 1).inst(15 downto 12) /= "1010" and 		--if it's a BNEZ, we don't care about RAW/WAW
-				LAB_temp(i + 1).inst(15 downto 12) /= "1011" and 		--if it's a BNE, we don't care about RAW/WAW
-				LAB_temp(i + 1).inst(15 downto 12) /= "1100" then		--if it's a JMP, we don't care about RAW/WAW				
+		for i in 1 to (LAB_MAX - 2) loop
+			if (LAB_temp(0).inst(11 downto 7) 	= LAB_temp(i).inst(11 downto 7) or	--WAW
+				LAB_temp(0).inst(11 downto 7) 	= LAB_temp(i).inst(6 downto 2)) and	--RAW
+				LAB_temp(i).valid = '1' 	and 						--verify that i + 1 is valid, otherwise we don't care
+				LAB_temp(i).inst(15 downto 12) 	/= "1010" and 	--if it's a BNEZ, we don't care about RAW/WAW
+				LAB_temp(i).inst(15 downto 12) 	/= "1011" and 	--if it's a BNE, we don't care about RAW/WAW
+				LAB_temp(i).inst(15 downto 12) 	/= "1100" then	--if it's a JMP, we don't care about RAW/WAW				
 			
-				for j in (i + 2) to (LAB_MAX - 1) loop
-					if LAB_temp(i + 1).inst(11 downto 8) /= LAB_temp(j).inst(11 downto 8) and
-						LAB_temp(i + 1).inst(11 downto 8) /= LAB_temp(j).inst(7 downto 4)  and
-						LAB_temp(j).valid = '1' 	and 													--verify that i + 1 is valid, otherwise we don't care
-						LAB_temp(j).inst(15 downto 12) /= "1010" and 								--if it's a BNEZ, we don't care about RAW/WAW
-						LAB_temp(j).inst(15 downto 12) /= "1011" and 								--if it's a BNE, we don't care about RAW/WAW
-						LAB_temp(j).inst(15 downto 12) /= "1100" then							--if it's a JMP, we don't care about RAW/WAW				
-						
-						--put j into i + 1 space, and move entire LAB down, first save i + 1
-						LAB_entry_temp		:= LAB_temp(i + 1);
-						LAB_temp(i + 1) 	:= LAB_temp(j);
-						
-						--shift entire LAB down by one
-						for k in 0 to (j - i - 3) loop
-							LAB_temp(j - k) := LAB_temp(j - 1 - k);
-						end loop; --end k loop
-						
-						LAB_temp(i + 2)	:= LAB_entry_temp;
-						--exit j for loop, now that suitable substitute has been found and we've re-arranged the LAB. 
+				RAW_WAW := '1';
+				
+			elsif RAW_WAW = '1' then 
+			
+				tag_temp := i;
+				
+				--FIRST: starting at first LAB spot, if ith inst source OR destination DO match ith inst destination, we don't care, exit.
+				--lower limit is 1 because we already know the instruction at i doesn't match 0th inst destination
+				for j in 1 to i - 1 loop
+					if LAB_temp(i).inst(11 downto 7) = LAB_temp(j).inst(11 downto 7) or 
+						LAB_temp(i).inst(11 downto 7) = LAB_temp(j).inst(6 downto 2) then
 						exit;
-						
-					elsif LAB_temp(j).inst(15 downto 12) /= "1010" or 								
-							LAB_temp(j).inst(15 downto 12) /= "1011" or 								
-							LAB_temp(j).inst(15 downto 12) /= "1100" then				
-						exit; --if the found instruction not posing a RAW/WAW hazard is a branch/jump, exit j loop. 	 
-						
-					else
-						--if WAW or RAW are detected or j is invalid, do nothing this iteration, go to j + 1		
+					else 
+						tag_temp := 1;
 					end if;
-				end loop; --j loop
+				end loop;
+				
+				--SECOND: if we can swap ith inst with 1st slot, then do it
+				--place i at tag_temp and shift entire LAB up at this point
+				if tag_temp = 1 then
+				
+					LAB_entry_temp := LAB_temp(i);
+					
+					for j in i downto 2 loop
+						LAB_temp(i) := LAB_temp(i - 1);
+					end loop;
+					
+					LAB_temp(1) := LAB_entry_temp;
+					
+				end if;
+			else
+				--if WAW or RAW are detected or j is invalid, do nothing this iteration, go to j + 1		
 			end if;
 		end loop; --i loop
 		
@@ -440,7 +433,6 @@ begin
 						--check if MOAB has corresponding memory address
 						if check_MOAB_for_tag(MOAB, LAB(0).tag) = '1' then
 							--dispatch memory address and shift 
-							--MOAB 	<= dispatch_MOAB0(MOAB, LAB(0).tag);
 							MEM_reg <= MOAB(0).data;	
 							MOAB(0).valid 	<= '0';
 							--shift entire MOAB down now
@@ -481,6 +473,10 @@ begin
 				if next_IW_to_MOAB = '0' then
 					LAB(last_LAB_spot).inst 	<= PM_data_in;
 					LAB(last_LAB_spot).valid 	<= '1';
+					
+					--now try to reorganize now that the LAB has been dispatched and/or filled
+					--TODO: test this function 
+					LAB <= data_haz_check(LAB);
 				else
 					
 				end if;
@@ -491,17 +487,14 @@ begin
 				if (next_IW_to_MOAB = '0' and PM_data_in(15) = '1' and PM_data_in(1) = '1') then --condition based on LD, ST, BNEZ, BNE, and JMP
 					next_IW_to_MOAB <= '1';
 				end if; --PM_data_in
+				
+				--since we're here, reset the LAB_full signal
 				LAB_full <= '0';
 			else
 				--there is no spot in LAB, no need to modify PC_reg
 				LAB_full <= '1';
 			
 			end if; --find_LAB_spot
-			
-			--now try to reorganize now that the LAB has been dispatched and/or filled
-			--TODO: test this function later
-			LAB <= data_haz_check(LAB, LAB2);
-			
 		end if; --reset_n
 	end process;
 	
