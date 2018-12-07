@@ -105,6 +105,18 @@ signal MEM				: std_logic_vector(15 downto 0);
       wait for TIME_DELTA;
       
       PM_data_in <= "0101001010010110";
+      wait for TIME_DELTA;
+  
+      PM_data_in <= "0001000110010010";
+      wait for TIME_DELTA;
+      
+      PM_data_in <= "0100001000010110";
+      wait for TIME_DELTA / 2;
+
+      stall_pipeline <= '1';
+      wait for TIME_DELTA * 3;
+      
+      stall_pipeline <= '0';
       
     end process simulation;
 
