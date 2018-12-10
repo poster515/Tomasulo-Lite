@@ -9,7 +9,7 @@ entity ALU is
 	 carry_in			: in std_logic; --carry in bit from the Control Unit Status Register
 	 data_in_1 			: in std_logic_vector(15 downto 0); --data from RF data out 1
 	 data_in_2 			: in std_logic_vector(15 downto 0); --data from RF data out 2
-	 value_immediate			: in std_logic_vector(4 downto 0);
+	 value_immediate			: in std_logic_vector(15 downto 0);
 	 
 	 --Control signals
 	 reset_n					: in std_logic; --all registers reset to 0 when this goes low
@@ -225,7 +225,7 @@ begin
 	port map (
 			data			=> rotate_c_in, -- carry included at MSB
 			direction	=> ALU_inst_sel(0), --'0' = left, '1' = right
-			distance		=> value_immediate,
+			distance		=> value_immediate(4 downto 0),
 			result		=> rotate_c_result
 		);
 	
@@ -256,7 +256,7 @@ begin
 		if (ALU_inst_sel(1) = '0') then
 			ALU_data_in_2 <= data_in_2;
 		else
-			ALU_data_in_2 <= "00000000000" & value_immediate;
+			ALU_data_in_2 <= value_immediate;
 		end if;
 	end process;
 	

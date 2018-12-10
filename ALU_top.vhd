@@ -20,17 +20,15 @@ entity ALU_top is
 		ALU_op					: in std_logic_vector(3 downto 0); --dictates ALU operation (i.e., OpCode)
 		ALU_inst_sel			: in std_logic_vector(1 downto 0); --dictates what sub-function to execute (last two bits of OpCode)
 		ALU_d2_mux_sel			: in std_logic_vector(1 downto 0); --used to control which data to send to ALU input 2
-		ALU_out_reg_wr_en 	: in std_logic; --used to enable latching data into ALU output register
-		ALU_OReg_mux_sel		: in std_logic; --used to select which input to latch into ALU output register
 												 --0=ALU result 1=data forwarded from ALU_data_in_1
 		B_bus_out1_en, C_bus_out1_en		: in std_logic; --enables RF_out_1 on B and C bus
 		B_bus_out2_en, C_bus_out2_en		: in std_logic; --enables RF_out_2 on B and C bus													 
 												 
 		--Outputs
 		ALU_SR 						: out std_logic_vector(3 downto 0); --provides | Zero (Z) | Overflow (V) | Negative (N) | Carry (C) |
-		A_bus, B_bus, C_bus		: inout std_logic_vector(15 downto 0)
+		B_bus, C_bus		: inout std_logic_vector(15 downto 0)
    );
-end ALU_top;
+end ALU_top; 
 
 	--Instruction Set Architecture--
 	
@@ -61,7 +59,7 @@ architecture behavioral of ALU_top is
 			carry_in				: in std_logic; --carry in bit from the Control Unit Status Register
 			data_in_1 			: in std_logic_vector(15 downto 0); --data from RF data out 1
 			data_in_2 			: in std_logic_vector(15 downto 0); --data from RF data out 2
-			value_immediate	: in std_logic_vector(4 downto 0);
+			value_immediate	: in std_logic_vector(15 downto 0);
 
 			--Control signals
 			reset_n				: in std_logic; --all registers reset to 0 when this goes low 
@@ -95,7 +93,7 @@ architecture behavioral of ALU_top is
 		in_0   	: in  std_logic_vector(15 downto 0);
 		in_1   	: in  std_logic_vector(15 downto 0);
 		--
-		data_out  : out std_logic_vector(15 downto 0)
+		sig_out  : out std_logic_vector(15 downto 0)
 		);
 	end component mux_2;
 	
@@ -103,7 +101,7 @@ architecture behavioral of ALU_top is
 	signal ALU_out_1, ALU_out_2			 	: std_logic_vector(15 downto 0); --output signals from the ALU
 	signal ALU_data_in_1, ALU_data_in_2		: std_logic_vector(15 downto 0); --signal between data_in_2_mux and data_in_2 input of ALU
 	signal ALU_status, ALU_TSR					: std_logic_vector(3 downto 0);	--ALU temporary status register
-	
+	signal ALU_in1_mux_sel						: std_logic;
 begin
 	
 	ALU_inst	: ALU
@@ -142,13 +140,15 @@ begin
 	--mux that takes RF data and memory address directly from LD/ST IWs 
 	ALU_data_1_mux	: mux_2
 	port map (
-		sel 		=> (ALU_op(3) and not(ALU_op(2)) and not(ALU_op(1)) and not(ALU_inst_sel(0))),
+		sel 		=> ALU_in1_mux_sel,
 		--
 		in_0   	=> RF_data_in_1, 	--input from RF
 		in_1   	=> MEM_address,	--memory address from second IW to calculate effective memory address
 		--
-		data_out  => ALU_data_in_1
+		sig_out  => ALU_data_in_1
 	);
+	
+	ALU_in1_mux_sel <= ALU_op(3) and not(ALU_op(2)) and not(ALU_op(1)) and not(ALU_inst_sel(0));
 	ALU_SR <= ALU_TSR;
 	-- Latching Logic Assignments
 	process(reset_n, clk, B_bus_out1_en, C_bus_out1_en, B_bus_out2_en, C_bus_out2_en)
