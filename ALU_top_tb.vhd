@@ -106,6 +106,7 @@ signal B_bus, C_bus                   : std_logic_vector(15 downto 0) := "ZZZZZZ
       wait for TIME_DELTA;
       
       -- Add Immediate
+      ALU_d2_mux_sel <= "01";
       value_immediate <= "0000000000000010";
       ALU_op    <= "0000";
       ALU_inst_sel  <= "10"; --
@@ -117,6 +118,7 @@ signal B_bus, C_bus                   : std_logic_vector(15 downto 0) := "ZZZZZZ
       wait for TIME_DELTA;
       
       -- Subtract
+      ALU_d2_mux_sel <= "11";
       ALU_op    <= "0001";
       ALU_inst_sel  <= "00";
       RF_data_in_1  <= "0000000000000001";
