@@ -1,5 +1,7 @@
 -- Written by Joe Post
 
+--Credit for a majority of this source goes to Peter Samarin: https://github.com/oetr/FPGA-I2C-Slave/blob/master/I2C_slave.vhd
+
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -15,7 +17,7 @@ entity I2C_block is
 		read_begin				: in 	  	std_logic;
 		slave_address			: in 		std_logic_vector(6 downto 0);
 		data_to_slave   		: in    	std_logic_vector(7 downto 0); --
-		read_error       		: out  	std_logic; --set high if we can't read from slave after ack, after slave_read_retry_max retries
+		read_error       		: out  	std_logic := '0'; --set high if we can't read from slave after ack, after slave_read_retry_max retries
 		data_from_slave 		: out   	std_logic_vector(7 downto 0);
 		slave_ack_success		: out 	std_logic_vector(1 downto 0)	:= "01" --00 = no ack success, 10 = successful ack, 01/10 = no result yet
 	);
@@ -74,13 +76,6 @@ architecture arch of I2C_block is
 
 begin
 
-  -- debounce SCL and SDA
---  SCL_debounce : entity work.debouncer
---    port map (
---      sys_clock        	=> sys_clock,
---      data_clock  		=> scl_reg,
---      debounced_clock 	=> scl_debounced);
-
   SDA_debounce : entity work.debouncer
     port map (
       sys_clock  			=> sys_clock,
@@ -95,13 +90,7 @@ begin
 			addr_reg <= slave_address;
 		end if;
 		
-      -- save SCL in registers that are used for debouncing
---      scl_reg <= scl;
       sda_reg <= sda;
-
-      -- Delay debounced SCL and SDA by 1 clock cycle
---      scl_prev_reg   <= scl_debounced;
-      --sda_prev_reg   <= sda_debounced;
 
     end if; --rising_edge(clk)
   end process;
@@ -253,22 +242,11 @@ begin
 								sda_o_reg <= 'Z';
 								if(data_valid = '1') then --if the slave didn't transmit valid data, ask for it again
 									state_reg <= idle;
-								else
-									if (slave_read_retry = slave_read_retry_max) then
-										read_error <= '1';
-										state_reg <= idle;
-									else 
-										slave_read_retry <= slave_read_retry + 1;
-										bits_processed_reg <= 0; --reset number of bits processed
-										data_valid <= '1';			--reset data_valid, assuming all data is valid until demonstrated otherwise
-										state_reg <= idle;
-									end if;
 								end if;
 							end if;
 						end if;
 						
 					when read_slave => 
-						--state_reg <= idle;
 						
 						addr_sent <= '0'; --clear condition that address was sent because we're now reading the data
 						
@@ -312,18 +290,26 @@ begin
 							else
 								sda_o_reg <= '0';	--ACK the slave, want data sent again
 							end if;
-							
-							--sda_o_reg <= '1' when (data_valid = '1') else '0';
-							
+
 							data_from_slave <= data_from_slave_reg; --output data to top level block
 							
 						elsif (scl_status = "10") then
 							if data_valid = '1' then
 								state_reg <= send_stop;
+								
 							else
-								bits_processed_reg <= 0;
-								data_valid <= '1';
-								state_reg <= read_slave;
+								if (slave_read_retry = slave_read_retry_max - 1) then
+									read_error <= '1';
+									sda_o_reg <= 'Z';
+									state_reg <= idle;
+									
+								else 
+									slave_read_retry <= slave_read_retry + 1;
+									bits_processed_reg <= 0; --reset number of bits processed
+									data_valid <= '1';			--reset data_valid, assuming all data is valid until demonstrated otherwise
+									state_reg <= read_slave;
+									
+								end if;
 							end if;
 						end if;
 						
@@ -339,34 +325,32 @@ begin
   
   process (clk_reg)
   begin
-  if(start_stop = '1') then
-  
-		if scl_o_reg = 'Z' then
-			scl_o_reg <= '0';
-		end if;
-		
-		--report "Entered clk_reg process";
-		
-		if clk_reg = clk_div / 2 and scl_o_reg = '0' then --halfway thru low signal
-			--temp_reg <= "01";
-			scl_status <= "01";
-		elsif clk_reg = 0 and scl_o_reg = '0' then -- detects rising edge of scl
-			scl_o_reg <= not(scl_o_reg); --should I use not(scl_debounced) instead?
-			--temp_reg <= "10";
-			scl_status <= "10";
-		elsif clk_reg = 0 then --reached end of counter, time to invert scl signal
-			scl_o_reg <= not(scl_o_reg); --
---						temp_reg <= "00";
-			scl_status <= "11";
+	  if(start_stop = '1') then
+	  
+			if scl_o_reg = 'Z' then
+				scl_o_reg <= '0';
+			end if;
+
+			if clk_reg = clk_div / 2 and scl_o_reg = '0' then --halfway thru low signal
+				scl_status <= "01";
+				
+			elsif clk_reg = 0 and scl_o_reg = '0' then -- detects rising edge of scl
+				scl_o_reg <= not(scl_o_reg); --should I use not(scl_debounced) instead?
+				scl_status <= "10";
+				
+			elsif clk_reg = 0 then --reached end of counter, time to invert scl signal
+				scl_o_reg <= not(scl_o_reg); --
+				scl_status <= "11";
+				
+			else
+				scl_status <= "00";
+				
+			end if; --clk_reg
 		else
-			--temp_reg <= "00";
+			scl_o_reg <= 'Z'; --not using scl, leave at high impedance
 			scl_status <= "00";
-		end if; --clk_reg
-	else
-		scl_o_reg <= 'Z'; --not using scl, leave at high impedance
-		scl_status <= "00";
-	end if; --start_stop
-end process;
+		end if; --start_stop
+	end process;
 
   ----------------------------------------------------------
   -- I2C interface
