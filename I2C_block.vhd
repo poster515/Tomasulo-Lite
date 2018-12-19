@@ -9,17 +9,20 @@ use ieee.numeric_std.all;
 entity I2C_block is
 	generic ( clk_div : integer :=  12); --this will be clock divider factor i.e., [sys_clock / clk_div]
 	port (
+		--
 		scl, sda         		: inout 	std_logic; --these signals get debounced just in case
 		sys_clock, reset_n  	: in    	std_logic;
-		-- User interface
---		slave_reg_en			: in 		std_logic; --0 = just write/read data to slave, 1 = expect register internal register also
+		
+		-- Control and Data Inputs
 		write_begin				: in 	  	std_logic;
 		read_begin				: in 	  	std_logic;
 		slave_address			: in 		std_logic_vector(6 downto 0);
 		data_to_slave   		: in    	std_logic_vector(7 downto 0); --
-		read_error       		: out  	std_logic := '0'; --set high if we can't read from slave after ack, after slave_read_retry_max retries
+		
+		-- Outputs
+		read_error       		: out  	std_logic; --set high if we can't read from slave after ack, after slave_read_retry_max retries
 		data_from_slave 		: out   	std_logic_vector(7 downto 0);
-		slave_ack_success		: out 	std_logic_vector(1 downto 0)	:= "01" --00 = no ack success, 10 = successful ack, 01/10 = no result yet
+		r_wr_complete			: out		std_logic	--to denote that a read or write is complete
 	);
 end entity I2C_block;
 
@@ -48,8 +51,6 @@ architecture arch of I2C_block is
 	signal data_reg       			: std_logic_vector(7 downto 0) := (others => '0'); --register for data to slave 
 	signal data_from_slave_reg  	: std_logic_vector(7 downto 0) := (others => '0'); --
 
---	signal scl_prev_reg : std_logic := '1';
-	
 	--registers to store next register value
 	signal scl_o_reg    	: std_logic		:= 'Z';
 	signal sda_o_reg  	: std_logic		:= 'Z';
@@ -77,28 +78,26 @@ architecture arch of I2C_block is
 begin
 
   SDA_debounce : entity work.debouncer
-    port map (
-      sys_clock  			=> sys_clock,
-      data_clock  		=> sda_reg,
-      debounced_clock 	=> sda_debounced);
+	 port map (
+		sys_clock  			=> sys_clock,
+		data_clock  		=> sda_reg,
+		debounced_clock 	=> sda_debounced);
 		
   process(sys_clock)
   begin
-    if rising_edge(sys_clock) then
+	 if rising_edge(sys_clock) then
 		if write_begin = '1' or read_begin = '1' then
 			data_reg <= data_to_slave;
 			addr_reg <= slave_address;
 		end if;
 		
-      sda_reg <= sda;
+		sda_reg <= sda;
 
-    end if; --rising_edge(clk)
+	 end if; --rising_edge(clk)
   end process;
   
-  -------------PROTOTYPE--------------------
-  
 	--process(reset_n, sys_clock, sda, scl)
-	process(reset_n, sys_clock)
+	main_process: process(reset_n, sys_clock)
 		begin
 			if (reset_n = '0') then
 				state_reg <= idle; --place back into idle state
@@ -107,7 +106,8 @@ begin
 				case state_reg is
 				
 					when idle =>
-						
+						r_wr_complete <= '0';
+						read_error <= '0';
 						start_stop <= '0';
 						--scl_stopped = '1';
 						if write_begin = '1' then
@@ -175,7 +175,6 @@ begin
 						if(scl_status = "10") then --find rising edge of SCL
 							if sda_debounced = '0' then
 								
-								slave_ack_success <= "11";
 								bits_processed_reg <= 0;
 								
 								if addr_sent = '1' then
@@ -190,7 +189,6 @@ begin
 									state_reg <= send_stop;
 								end if; --addr_sent
 							else
-								slave_ack_success <= "01";
 								state_reg <= idle;  		--slave did not ack address, slave_ack_success will report failure
 							end if; --sda_o_reg
 						end if; --scl_start
@@ -223,10 +221,10 @@ begin
 								clk_reg <= clk_reg - 1;
 							end if;
 
-							if(scl_status = "01") then --find halfway of low cycle
+							if scl_status = "01" then --find halfway of low cycle
 								sda_o_reg <= '0'; --pull low to prepare for next rising edge of scl
 								
-							elsif(scl_status = "10") then --rising edge
+							elsif scl_status = "10" then --rising edge
 								start_stop <= '0'; --stop scl clock
 								clk_reg <= clk_div / 2; --scl_o_reg <= 'Z'
 
@@ -238,10 +236,11 @@ begin
 								clk_reg <= clk_reg - 1;
 							end if;
 							
-							if(clk_reg = 0) then
+							if clk_reg = 0 then
 								sda_o_reg <= 'Z';
-								if(data_valid = '1') then --if the slave didn't transmit valid data, ask for it again
+								if data_valid = '1' then --if the slave didn't transmit valid data, ask for it again
 									state_reg <= idle;
+									r_wr_complete <= '1';
 								end if;
 							end if;
 						end if;
@@ -256,7 +255,7 @@ begin
 							clk_reg <= clk_reg - 1;
 						end if;
 
-						if(scl_status = "10") then --rising edge of scl
+						if scl_status = "10" then --rising edge of scl
 							if (bits_processed_reg < 8) then
 								--check validity of sda value
 								if (sda /= '0' and sda /= '1') then
@@ -289,11 +288,12 @@ begin
 								sda_o_reg <= '1';	--NACK the slave
 							else
 								sda_o_reg <= '0';	--ACK the slave, want data sent again
+								--TODO: shouldn't the state_reg change to read_slave here?
 							end if;
 
 							data_from_slave <= data_from_slave_reg; --output data to top level block
 							
-						elsif (scl_status = "10") then
+						elsif (scl_status = "10") then --rising edge of scl
 							if data_valid = '1' then
 								state_reg <= send_stop;
 								
@@ -323,7 +323,7 @@ begin
 			end if; --reset_n, rising_edge(clk)
   end process;
   
-  process (clk_reg)
+  scl_control: process (clk_reg)
   begin
 	  if(start_stop = '1') then
 	  
