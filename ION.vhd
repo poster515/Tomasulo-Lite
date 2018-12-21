@@ -1,6 +1,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+use work.arrays.ALL;
  
 entity ION is
   port (
@@ -56,6 +57,19 @@ signal read_error, r_wr_comp				: std_logic;
 signal read_begin, write_begin			: std_logic;
 signal slave_ack_success					: std_logic_vector(1 downto 0);
 signal I2C_out_buffer, I2C_in_buffer	: std_logic_vector(15 downto 0);
+signal inst_buffer							: 
+
+type I2C_op	is (idle, begin_write, begin_read, finish_op, unknown);
+signal I2C_op_state	: I2C_op := idle;
+
+	--procedure to write to A and B bus, solely based on instructions in instruction buffer
+	procedure load_LAB2(	 	data	: in std_logic_vector(15 downto 0);	
+									
+									A_bus	: out std_logic_vector(15 downto 0);
+									B_bus	: out std_logic_vector(15 downto 0) 	) 
+	begin
+		
+	end procedure;
 
 begin
 		
@@ -124,15 +138,41 @@ begin
 
 		elsif clk'event and clk = '1' then
 		
-			--check for read/write operations
-			if I2C_wr_en = '1' then
-				
-				--check status of current operation
-				if r_wr_comp = '1' then
+			case I2C_op_state is
+			
+				when idle => 
 					write_begin <= '0';
 					I2C_op_run <= '0';
+					I2C_in_buffer <= "00000000" & data_from_slave;
+					I2C_op_run <= '0';
 					
-				else --then we haven't completed write
+					if I2C_wr_en = '1' then
+						I2C_op_state <= begin_write;
+						
+					elsif I2C_r_en = '1' then
+						I2C_op_state <= begin_read;
+
+					else
+						I2C_op_state <= idle;
+						
+					end if;
+					
+					
+				when begin_read =>
+					--1) read slave address
+					slave_address <= slave_addr;
+
+					--2) initiate write
+					read_begin <= '1';
+					
+					--3) send status to CU
+					I2C_op_run <= '1';
+					
+					--4) wait for operation to complete
+					I2C_op_state <= wait_op;
+					
+				when begin_write => 
+				
 					--1) read slave address
 					slave_address <= slave_addr;
 
@@ -150,33 +190,33 @@ begin
 					
 					--4) send status to CU
 					I2C_op_run <= '1';
-				end if;
+					
+					--5) wait for operation to complete
+					I2C_op_state <= wait_op;
+					
+				when wait_op =>
+					if r_wr_comp = '1' then
+					
+						if I2C_r_en = '1' then
+							--report results
+							I2C_in_buffer <= "00000000" & data_from_slave;
+						end if;
+						
+						--restore system
+						read_begin <= '0';
+						write_begin <= '0';
+						I2C_op_run <= '0';
+						
+						--go back to idle
+						I2C_op_state <= idle;
+						
+					else
+						I2C_op_state <= wait_op;
 				
-			elsif I2C_r_en = '1' then
-			--TODO: make this a state-driven process to make it flow better, and to write out to A_bus
-				--use function to exclusively write to output busses???
-				
-				--check status of current operation
-				if r_wr_comp = '1' then
-					read_begin <= '0';
-					I2C_op_run <= '0';
-					I2C_in_buffer <= "00000000" & data_from_slave;
-					I2C_op_run <= '0';
+				when unknown =>
+					report "Ended up in impossible state.";
+					I2C_op_state <= idle;
 					
-					
-					
-				else --then we haven't completed write
-					--1) read slave address
-					slave_address <= slave_addr;
-
-					--2) initiate write
-					read_begin <= '1';
-					
-					--3) send status to CU
-					I2C_op_run <= '1';
-				end if;
-				
-			end if; -- I2C_r_en/I2C_wr_en
 		end if; -- reset_n
 	end process; --I2C
 	
