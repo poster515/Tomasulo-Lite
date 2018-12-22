@@ -63,7 +63,7 @@ type I2C_op	is (idle, begin_write, begin_read, finish_op, unknown);
 signal I2C_op_state	: I2C_op := idle;
 
 	--procedure to write to A and B bus, solely based on instructions in instruction buffer
-	procedure load_LAB2(	 	data	: in std_logic_vector(15 downto 0);	
+	procedure write_data(	data	: in std_logic_vector(15 downto 0);	
 									
 									A_bus	: out std_logic_vector(15 downto 0);
 									B_bus	: out std_logic_vector(15 downto 0) 	) 
@@ -88,6 +88,35 @@ begin
 		r_wr_complete		=> r_wr_comp
 	);
 	
+	process(reset_n, clk, 
+	begin
+		if reset_n = '0' then
+		
+		elsif clk'event and clk = '1' then
+		
+			--prioritize GPIO reads first onto A/B bus, then I2C reads
+			if A_bus_in_sel = '1' and GPIO_r_en = '1' then
+				--TODO: should I directly pass through data from GPIOs instead of buffering first?
+				A_bus <= input_buffer;
+				
+			elsif B_bus_in_sel = '1' and GPIO_r_en = '1' then
+				--TODO: should I directly pass through data from GPIOs instead of buffering first?
+				B_bus <= input_buffer;
+				
+			elsif I2C_r_en = '1' and A_bus_out_sel = '1' then
+				A_bus <= I2C_in_buffer;
+				
+			elsif I2C_r_en = '1' and B_bus_out_sel = '1' then
+				B_bus <= I2C_in_buffer;
+			
+			else
+				A_bus <= "ZZZZZZZZZZZZZZZZ";
+				B_bus <= "ZZZZZZZZZZZZZZZZ";
+			
+			end if; --A_bus_in_sel
+		end if; --reset_n
+	end process;
+	
 	--buffer inputs and outputs of high level chip
 	process(reset_n, clk)
 	begin
@@ -95,13 +124,14 @@ begin
 			input_buffer 	<= "0000000000000000";
 			
 		elsif clk'event and clk = '1' then
+			--constantly buffer inputs and buffer outputs every clock cycle
 			digital_out <= output_buffer;
-			input_buffer <= digital_in; -- read inputs every clock cycle
+			input_buffer <= digital_in; 
 			
 		end if; --reset_n
 	end process;
 	
-	--write results to A and B bus as applicable
+	--read data in from A and B bus as applicable
 	process(reset_n, clk, GPIO_wr_en, A_bus_out_sel, B_bus_out_sel, A_bus_in_sel, B_bus_in_sel)
 	begin
 		if reset_n = '0' then
@@ -113,15 +143,9 @@ begin
 			elsif (B_bus_out_sel = '1' and GPIO_wr_en = '1') then
 				output_buffer <= B_bus;
 				
-			elsif (A_bus_in_sel = '1') then
-				A_bus <= input_buffer;
-				
-			elsif (B_bus_in_sel = '1') then
-				B_bus <= input_buffer;
-			
 			else
-				A_bus <= "ZZZZZZZZZZZZZZZZ";
-				B_bus <= "ZZZZZZZZZZZZZZZZ";
+				output_buffer <= output_buffer;
+				
 			end if; --bus select
 		end if; -- clock
 	end process;
