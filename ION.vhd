@@ -46,30 +46,29 @@ architecture behavioral of ION is
 	);
 	end component I2C_block;
 
---buffers for GPIOs
-signal input_buffer, output_buffer		: std_logic_vector(15 downto 0);
+	--buffers for GPIOs
+	signal input_buffer, output_buffer		: std_logic_vector(15 downto 0);
 
---I2C block-specific signals
-signal scl_reg, sda_reg						: std_logic;
-signal data_to_slave, data_from_slave	: std_logic_vector(7 downto 0); 
-signal slave_address 						: std_logic_vector(6 downto 0);
-signal read_error, r_wr_comp				: std_logic;
-signal read_begin, write_begin			: std_logic;
-signal slave_ack_success					: std_logic_vector(1 downto 0);
-signal I2C_out_buffer, I2C_in_buffer	: std_logic_vector(15 downto 0);
-signal inst_buffer							: 
+	--I2C block-specific signals
+	signal scl_reg, sda_reg						: std_logic;
+	signal data_to_slave, data_from_slave	: std_logic_vector(7 downto 0); 
+	signal slave_address 						: std_logic_vector(6 downto 0);
+	signal r_wr_comp								: std_logic;
+	signal read_begin, write_begin			: std_logic;
+	signal slave_ack_success					: std_logic_vector(1 downto 0);
+	signal I2C_out_buffer, I2C_in_buffer	: std_logic_vector(15 downto 0);
 
-type I2C_op	is (idle, begin_write, begin_read, finish_op, unknown);
-signal I2C_op_state	: I2C_op := idle;
+	type I2C_op	is (idle, begin_write, begin_read, wait_op, unknown);
+	signal I2C_op_state	: I2C_op := idle;
 
-	--procedure to write to A and B bus, solely based on instructions in instruction buffer
-	procedure write_data(	data	: in std_logic_vector(15 downto 0);	
-									
-									A_bus	: out std_logic_vector(15 downto 0);
-									B_bus	: out std_logic_vector(15 downto 0) 	) 
-	begin
-		
-	end procedure;
+--	--procedure to write to A and B bus, solely based on instructions in instruction buffer
+--	procedure write_data(	data	: in std_logic_vector(15 downto 0);	
+--									
+--									A_bus	: out std_logic_vector(15 downto 0);
+--									B_bus	: out std_logic_vector(15 downto 0) 	) 
+--	begin
+--		
+--	end procedure;
 
 begin
 		
@@ -83,23 +82,23 @@ begin
 		read_begin			=> read_begin,
 		slave_address		=> slave_address(6 downto 0),	--if read/write_begin = '1', also send this address to choose the slave
 		data_to_slave   	=> data_to_slave(7 downto 0), --if read/write_begin = '1', also send this data to the slave, as applicable
-		read_error       	=> read_error,
+		read_error       	=> I2C_error,
 		data_from_slave	=> data_from_slave(7 downto 0),
 		r_wr_complete		=> r_wr_comp
 	);
 	
-	process(reset_n, clk, 
+	process(reset_n, clk, A_bus_out_sel, B_bus_out_sel, GPIO_r_en, GPIO_wr_en, I2C_r_en, I2C_wr_en)
 	begin
 		if reset_n = '0' then
 		
 		elsif clk'event and clk = '1' then
 		
 			--prioritize GPIO reads first onto A/B bus, then I2C reads
-			if A_bus_in_sel = '1' and GPIO_r_en = '1' then
+			if A_bus_out_sel = '1' and GPIO_r_en = '1' then
 				--TODO: should I directly pass through data from GPIOs instead of buffering first?
 				A_bus <= input_buffer;
 				
-			elsif B_bus_in_sel = '1' and GPIO_r_en = '1' then
+			elsif B_bus_out_sel = '1' and GPIO_r_en = '1' then
 				--TODO: should I directly pass through data from GPIOs instead of buffering first?
 				B_bus <= input_buffer;
 				
@@ -236,11 +235,14 @@ begin
 						
 					else
 						I2C_op_state <= wait_op;
+						
+					end if;
 				
 				when unknown =>
 					report "Ended up in impossible state.";
 					I2C_op_state <= idle;
 					
+			end case;
 		end if; -- reset_n
 	end process; --I2C
 	
