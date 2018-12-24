@@ -12,10 +12,10 @@ entity ION is
 	 
 	--Control signals
 	reset_n								: in std_logic; --all registers reset to 0 when this goes low
-	GPIO_r_en, GPIO_wr_en 			: in std_logic; --enables read/write for GPIO 
-	I2C_r_en, I2C_wr_en				: in std_logic; --used to initiate reads and writes of the I2C block only
-	A_bus_out_sel, B_bus_out_sel	: in std_logic; --enables A or B bus onto output_buffer
-	A_bus_in_sel, B_bus_in_sel		: in std_logic; --enables input_buffer on A or B bus
+	GPIO_r_en, GPIO_wr_en 			: in std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
+	I2C_r_en, I2C_wr_en				: in std_logic; --initiates reads/writes for I2C (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
+	A_bus_out_sel, B_bus_out_sel	: in std_logic; --enables A or B bus onto output_buffer (ONLY SET HIGH WHEN RESULTS ARE READY)
+	A_bus_in_sel, B_bus_in_sel		: in std_logic; --enables input_buffer from A or B bus
 	 
    --Outputs
    digital_out			: out std_logic_vector(15 downto 0); --
@@ -53,7 +53,7 @@ architecture behavioral of ION is
 	signal scl_reg, sda_reg						: std_logic;
 	signal data_to_slave, data_from_slave	: std_logic_vector(7 downto 0); 
 	signal slave_address 						: std_logic_vector(6 downto 0);
-	signal r_wr_comp								: std_logic;
+	signal r_wr_comp, I2C_op_complete		: std_logic;
 	signal read_begin, write_begin			: std_logic;
 	signal slave_ack_success					: std_logic_vector(1 downto 0);
 	signal I2C_out_buffer, I2C_in_buffer	: std_logic_vector(15 downto 0);
@@ -84,7 +84,7 @@ begin
 		data_to_slave   	=> data_to_slave(7 downto 0), --if read/write_begin = '1', also send this data to the slave, as applicable
 		read_error       	=> I2C_error,
 		data_from_slave	=> data_from_slave(7 downto 0),
-		r_wr_complete		=> r_wr_comp
+		r_wr_complete		=> r_wr_comp --only high for a single clock cycle
 	);
 	
 	process(reset_n, clk, A_bus_out_sel, B_bus_out_sel, GPIO_r_en, GPIO_wr_en, I2C_r_en, I2C_wr_en)
@@ -103,10 +103,24 @@ begin
 				B_bus <= input_buffer;
 				
 			elsif I2C_r_en = '1' and A_bus_out_sel = '1' then
-				A_bus <= I2C_in_buffer;
+				--if we're done this clock cycle, just pull data from I2C slave directly
+				if r_wr_comp = '1' then
+					A_bus <= "00000000" & data_from_slave;
+				--otherwise, if we know the result was buffered previously, just grab it
+				elsif I2C_op_complete = '1' then
+					A_bus <= I2C_in_buffer;
+					
+				end if; --r_wr_comp
 				
 			elsif I2C_r_en = '1' and B_bus_out_sel = '1' then
-				B_bus <= I2C_in_buffer;
+				--if we're done this clock cycle, just pull data from I2C slave directly
+				if r_wr_comp = '1' then
+					B_bus <= "00000000" & data_from_slave;
+				--otherwise, if we know the result was buffered previously, just grab it
+				elsif I2C_op_complete = '1' then
+					B_bus <= I2C_in_buffer;
+					
+				end if; --r_wr_comp
 			
 			else
 				A_bus <= "ZZZZZZZZZZZZZZZZ";
@@ -134,12 +148,13 @@ begin
 	process(reset_n, clk, GPIO_wr_en, A_bus_out_sel, B_bus_out_sel, A_bus_in_sel, B_bus_in_sel)
 	begin
 		if reset_n = '0' then
-
+			output_buffer  <= "0000000000000000";
+			
 		elsif clk'event and clk = '1' then
-			if (A_bus_out_sel = '1' and GPIO_wr_en = '1') then
+			if (A_bus_in_sel = '1' and GPIO_wr_en = '1') then
 				output_buffer <= A_bus;
 			
-			elsif (B_bus_out_sel = '1' and GPIO_wr_en = '1') then
+			elsif (B_bus_in_sel = '1' and GPIO_wr_en = '1') then
 				output_buffer <= B_bus;
 				
 			else
@@ -160,14 +175,16 @@ begin
 			I2C_out_buffer <= (others => '0');
 
 		elsif clk'event and clk = '1' then
-		
+			
+			--this register is for top level (i.e., ION) awareness
+			I2C_op_complete <= r_wr_comp;
+			
 			case I2C_op_state is
 			
 				when idle => 
 					write_begin <= '0';
 					I2C_op_run <= '0';
 					I2C_in_buffer <= "00000000" & data_from_slave;
-					I2C_op_run <= '0';
 					
 					if I2C_wr_en = '1' then
 						I2C_op_state <= begin_write;
