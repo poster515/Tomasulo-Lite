@@ -125,17 +125,22 @@ signal I2C_error, I2C_op_run			 :	std_logic;	--in case we can't write to slave a
       --Write to I2C 
       slave_addr <= "1010101";
       A_bus <= "0000000011110000";
+      A_bus_in_sel <= '1';
       I2C_wr_en   <= '1';
       wait for TIME_DELTA;
+      
+      A_bus_in_sel <= '0';
+      A_bus <= "ZZZZZZZZZZZZZZZZ";
+      --60 ns
       
       --ACK slave address
       wait for (2135 ns - (TIME_DELTA * 3));
       I2C_sda <= '0';
-      wait for (TIME_DELTA * 12); --2255 ns
+      wait for (TIME_DELTA * 30); --2405 ns
       I2C_sda <= 'Z'; 
       
       --ACK receipt of data from master
-      wait for 2220 ns; --4475 ns - 2255 ns = 2220 ns
+      wait for 2070 ns; --4475 ns - 2405 ns = 2070 ns
       I2C_sda <= '0';
       wait for (TIME_DELTA * 12); --4595 ns 
       I2C_sda <= 'Z';

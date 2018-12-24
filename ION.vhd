@@ -74,14 +74,14 @@ begin
 		
 	I2C_master : I2C_block
 	port map(
-		scl 					=> scl_reg, --this is a top level pin that will physically be on the chip
-		sda 					=> sda_reg, --this is a top level pin that will physically be on the chip
+		scl 					=> I2C_scl, --this is a top level pin that will physically be on the chip
+		sda 					=> I2C_sda, --this is a top level pin that will physically be on the chip
 		sys_clock 			=> clk, 
 		reset_n 				=> reset_n, --places I2C block in idle state
 		write_begin			=> write_begin,
 		read_begin			=> read_begin,
 		slave_address		=> slave_address(6 downto 0),	--if read/write_begin = '1', also send this address to choose the slave
-		data_to_slave   	=> data_to_slave(7 downto 0), --if read/write_begin = '1', also send this data to the slave, as applicable
+		data_to_slave   	=> I2C_out_buffer(7 downto 0), --if read/write_begin = '1', also send this data to the slave, as applicable
 		read_error       	=> I2C_error,
 		data_from_slave	=> data_from_slave(7 downto 0),
 		r_wr_complete		=> r_wr_comp --only high for a single clock cycle
@@ -131,14 +131,13 @@ begin
 	end process;
 	
 	--buffer inputs and outputs of high level chip
-	process(reset_n, clk)
+	process(reset_n, digital_in)
 	begin
 		if reset_n = '0' then
 			input_buffer 	<= "0000000000000000";
 			
-		elsif clk'event and clk = '1' then
-			--constantly buffer inputs and buffer outputs every clock cycle
-			digital_out <= output_buffer;
+		else
+			--constantly buffer inputs every clock cycle
 			input_buffer <= digital_in; 
 			
 		end if; --reset_n
@@ -164,6 +163,8 @@ begin
 		end if; -- clock
 	end process;
 	
+	digital_out <= output_buffer;
+	
 	--write data to I2C module
 	process (reset_n, clk, I2C_wr_en, I2C_r_en, A_bus_in_sel, B_bus_in_sel)
 	begin
@@ -172,7 +173,7 @@ begin
 		
 			write_begin <= '0';
 			read_begin 	<= '0';
-			I2C_out_buffer <= (others => '0');
+			--I2C_out_buffer <= (others => '0');
 
 		elsif clk'event and clk = '1' then
 			
@@ -188,6 +189,15 @@ begin
 					
 					if I2C_wr_en = '1' then
 						I2C_op_state <= begin_write;
+						
+						-- read data from either A or B bus, as applicable
+						if A_bus_in_sel = '1' then
+							I2C_out_buffer <= A_bus;
+						
+						elsif B_bus_in_sel = '1' then
+							I2C_out_buffer <= B_bus;
+							
+						end if;
 						
 					elsif I2C_r_en = '1' then
 						I2C_op_state <= begin_read;
@@ -216,22 +226,13 @@ begin
 					--1) read slave address
 					slave_address <= slave_addr;
 
-					--2) read data from either A or B bus, as applicable
-					if A_bus_in_sel = '1' then
-						I2C_out_buffer <= A_bus;
-					
-					elsif B_bus_in_sel = '1' then
-						I2C_out_buffer <= B_bus;
-						
-					end if;
-					
-					--3) initiate write
+					--2) initiate write
 					write_begin <= '1';
 					
-					--4) send status to CU
+					--3) send status to CU
 					I2C_op_run <= '1';
 					
-					--5) wait for operation to complete
+					--4) wait for operation to complete
 					I2C_op_state <= wait_op;
 					
 				when wait_op =>
@@ -266,7 +267,7 @@ begin
 	--latch output buffer into I2C block
 	data_to_slave <= I2C_out_buffer(7 downto 0);
 	
-	I2C_sda <= sda_reg;
-	I2C_scl <= scl_reg;
+--	I2C_sda <= sda_reg;
+--	I2C_scl <= scl_reg;
 	
 end behavioral;
