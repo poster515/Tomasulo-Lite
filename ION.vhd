@@ -55,6 +55,7 @@ architecture behavioral of ION is
 	signal slave_address 						: std_logic_vector(6 downto 0);
 	signal r_wr_comp, I2C_op_complete		: std_logic;
 	signal read_begin, write_begin			: std_logic;
+	signal I2C_error_reg							: std_logic := '0';
 	signal slave_ack_success					: std_logic_vector(1 downto 0);
 	signal I2C_out_buffer, I2C_in_buffer	: std_logic_vector(15 downto 0);
 
@@ -82,7 +83,7 @@ begin
 		read_begin			=> read_begin,
 		slave_address		=> slave_address(6 downto 0),	--if read/write_begin = '1', also send this address to choose the slave
 		data_to_slave   	=> I2C_out_buffer(7 downto 0), --if read/write_begin = '1', also send this data to the slave, as applicable
-		read_error       	=> I2C_error,
+		read_error       	=> I2C_error_reg,
 		data_from_slave	=> data_from_slave(7 downto 0),
 		r_wr_complete		=> r_wr_comp --only high for a single clock cycle
 	);
@@ -179,6 +180,7 @@ begin
 			
 			--this register is for top level (i.e., ION) awareness
 			I2C_op_complete <= r_wr_comp;
+			I2C_error <= I2C_error_reg;
 			
 			case I2C_op_state is
 			
@@ -250,7 +252,14 @@ begin
 						
 						--go back to idle
 						I2C_op_state <= idle;
-						
+--						
+--					elsif I2C_error_reg = '1' then
+--						--restore system
+--						read_begin <= '0';
+--						I2C_op_run <= '0';
+--						
+--						--go back to idle
+--						I2C_op_state <= idle;
 					else
 						I2C_op_state <= wait_op;
 						

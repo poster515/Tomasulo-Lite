@@ -7,7 +7,7 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 ------------------------------------------------------------
 entity I2C_block is
-	generic ( clk_div : integer :=  12); --this will be clock divider factor i.e., [sys_clock / clk_div]
+	generic ( clk_div : integer :=  50); --this will be clock divider factor i.e., [sys_clock / clk_div]
 	port (
 		--
 		scl, sda         		: inout 	std_logic; --these signals get debounced just in case
@@ -31,7 +31,7 @@ architecture arch of I2C_block is
 	-- this assumes that system's clock is much faster than SCL
 	constant DEBOUNCING_WAIT_CYCLES : integer   := 4;
 
-	type state_t is (idle, write_slave, write_slave_addr, slave_ack, read_slave, send_stop, ack_slave, start_scl, unknown);
+	type state_t is (idle, write_slave, write_slave_addr, slave_ack, read_slave, send_stop, ack_slave, start_scl, nop, unknown);
 						 
 	-- I2C state management
 	signal state_reg          	: state_t              	:= idle;
@@ -101,6 +101,7 @@ begin
 		begin
 			if (reset_n = '0') then
 				state_reg <= idle; --place back into idle state
+				data_from_slave <= "00000000";
 				
 			elsif rising_edge(sys_clock) then
 				case state_reg is
@@ -238,10 +239,13 @@ begin
 							
 							if clk_reg = 0 then
 								sda_o_reg <= 'Z';
-								if data_valid = '1' then --if the slave didn't transmit valid data, ask for it again
-									state_reg <= idle;
+								--if data_valid = '1' then 
+									state_reg <= nop;
 									r_wr_complete <= '1';
-								end if;
+								--else
+									--state_reg <= nop;
+									--r_wr_complete <= '1';
+								--end if;
 							end if;
 						end if;
 						
@@ -258,11 +262,11 @@ begin
 						if scl_status = "10" then --rising edge of scl
 							if (bits_processed_reg < 8) then
 								--check validity of sda value
-								if (sda /= '0' and sda /= '1') then
+								if (sda_debounced /= '0' and sda_debounced /= '1') then
 									data_valid <= '0';
 								end if;
 								--report "Writing bit " & Integer'Image(7 - bits_processed_reg) & ", which has a value of: " & Std_logic'Image(sda);
-								data_from_slave_reg(7 - bits_processed_reg) <= sda;
+								data_from_slave_reg(7 - bits_processed_reg) <= sda_debounced;
 								bits_processed_reg <= bits_processed_reg + 1;
 							else 
 								state_reg <= ack_slave; --go nack slave data
@@ -271,6 +275,7 @@ begin
 							sda_o_reg <= 'Z'; 
 						end if; --scl_start
 						
+						--TODO: not sure this if statement is needed, since it is covered above.  
 						if (bits_processed_reg = 8) then
 							state_reg <= ack_slave; --go nack slave data
 						end if;
@@ -286,22 +291,24 @@ begin
 						if(scl_status = "01") then --halfway of low phase
 							if data_valid = '1' then
 								sda_o_reg <= '1';	--NACK the slave
+								--report "Data is valid, NACKing slave.";
 							else
 								sda_o_reg <= '0';	--ACK the slave, want data sent again
-								--TODO: shouldn't the state_reg change to read_slave here?
+								--report "Data is invalid, ACKing slave.";
 							end if;
 
-							data_from_slave <= data_from_slave_reg; --output data to top level block
+							--data_from_slave <= data_from_slave_reg; --output data to top level block
 							
 						elsif (scl_status = "10") then --rising edge of scl
+							data_from_slave <= data_from_slave_reg; --output data to top level block
 							if data_valid = '1' then
 								state_reg <= send_stop;
 								
 							else
 								if (slave_read_retry = slave_read_retry_max - 1) then
 									read_error <= '1';
-									sda_o_reg <= 'Z';
-									state_reg <= idle;
+									--sda_o_reg <= 'Z';
+									state_reg <= send_stop;
 									
 								else 
 									slave_read_retry <= slave_read_retry + 1;
@@ -312,6 +319,11 @@ begin
 								end if;
 							end if;
 						end if;
+						
+					when nop =>
+						state_reg <= idle;
+						r_wr_complete <= '0';
+						start_stop <= '0';
 						
 					when others =>
 						assert false
