@@ -11,13 +11,14 @@ entity WB is
    port ( 
 		--Input data and clock
 		reset_n, sys_clock	: in std_logic;	
-		IW							: in std_logic_vector(15 downto 0);
-		stall_in					: in std_logic;		--set high when an upstream CU block needs this 
+		IW_in						: in std_logic_vector(15 downto 0);
+		LAB_stall_in			: in std_logic;		--set high when an upstream CU block needs this 
 		
 		--Control
-		
+		--WB stage will direct MEM and/or ION traffic back into RF, need to create appropriate control signals
 		
 		--Outputs
+		IW_out			: out std_logic_vector(15 downto 0);
 		stall_out		: out std_logic;
 		immediate_val	: out	std_logic_vector(15 downto 0)--represents various immediate values from various OpCodes
 	);
@@ -33,11 +34,13 @@ begin
 			
 		elsif rising_edge(sys_clock) then
 		
-			if stall_in = '0' then
+			if LAB_stall_in = '0' then
+			
+				IW_out <= IW_in;	--forward IW back to LAB
 
-			elsif stall_in = '1' then
+			elsif LAB_stall_in = '1' then
 
-			end if; --stall_in
+			end if; --LAB_stall_in
 
 		end if; --reset_n
 	end process;
