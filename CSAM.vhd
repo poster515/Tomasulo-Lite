@@ -13,14 +13,12 @@ entity CSAM is
 		reset_n, sys_clock	: in std_logic;	
 		
 		--Control Inputs
-		RF_B_bus_out1_en, RF_C_bus_out1_en	: out std_logic; --enables RF_out_1 on B and C bus
-		RF_B_bus_out2_en, RF_C_bus_out2_en	: out std_logic; --enables RF_out_1 on B and C bus
-		
-		ALU_B_bus_out1_en, ALU_C_bus_out1_en	: out std_logic; --enables ALU_out_1 on B and C bus
-		ALU_B_bus_out2_en, ALU_C_bus_out2_en	: out std_logic; --enables ALU_out_1 on B and C bus
-		
-		ION_A_bus_out_sel, ION_B_bus_out_sel	: in std_logic --enables A or B bus onto output_buffer (ONLY SET HIGH WHEN RESULTS ARE READY)
+		RF_out1_en, RF_out2_en		: in std_logic; --enables RF_out_X on B and C bus
+		ALU_out1_en, ALU_out2_en	: in std_logic; --enables ALU_out_X on B and C bus
+		ION_A_bus_out_sel, ION_B_bus_out_sel	: in std_logic --enables ION output to A or B bus (ONLY SET HIGH WHEN RESULTS ARE READY)
 
+		--TODO: also need to coordinate various input_sel lines, since this CSAM is arbitrating output enables
+		
 		--Control Outputs
 		
 	);

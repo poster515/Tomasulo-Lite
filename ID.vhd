@@ -21,9 +21,7 @@ entity ID is
 		wr_en 			: out std_logic; 							--enables write for a selected register
 		RF_out_1_mux	: out std_logic_vector(4 downto 0);	--controls first output mux
 		RF_out_2_mux	: out std_logic_vector(4 downto 0);	--controls second output mux
-		--TODO: consolidate these into RF_out_1_en and RF_out_2_en for CSAM
-		B_bus_out1_en, C_bus_out1_en		: out std_logic; --enables RF_out_1 on B and C bus
-		B_bus_out2_en, C_bus_out2_en		: out std_logic; --enables RF_out_2 on B and C bus
+		RF_out1_en, RF_out2_en		: out std_logic; --enables RF_out_X on B and C bus
 		
 		--Outputs
 		IW_out			: out std_logic_vector(15 downto 0); --goes to EX control unit
@@ -55,8 +53,39 @@ begin
 				RF_out_1_mux_reg <= IW_in(11 downto 7);	--assert reg1 address if there's no stall
 				RF_out_2_mux_reg <= IW_in(6 downto 2);		--assert reg2 address if there's no stall
 				
-				--TODO: how to establish bus output enables?
-				B_bus_out1_en <= '1'; 
+				--for all other jumps (1001...1X), loads (1000...01), don't need any RF output
+				if (IW_in(15 downto 12) = "1001" and IW_in(1 downto 0) = "1X") or 
+						(IW_in(15 downto 12) = "1000" and IW_in(1 downto 0) = "01") then 
+					RF_out1_en <= '0'; 
+					RF_out2_en <= '0';
+				
+				--for JMP (1001...0X), BNEZ (1010...00), shifts (0110, 0111), rotates (0101), loads (1000...00), stores (1000...11) only need 1 RF output
+				elsif (IW_in(15 downto 12) = "1001" and IW_in(1 downto 0) = "0X") or
+						(IW_in(15 downto 12) = "1010" and IW_in(1 downto 0) = "00") or
+						(IW_in(15 downto 12) = "1000" and (IW_in(1 downto 0) = "00" or IW_in(1 downto 0) = "11")) or
+						IW_in(15 downto 12) = "0101" or IW_in(15 downto 12) = "0110" or 
+						IW_in(15 downto 12) = "0111" then
+					RF_out1_en <= '1'; 
+					RF_out2_en <= '0';
+					
+				--for all other instructions, need both RF outputs
+				else
+					RF_out1_en <= '1'; 
+					RF_out2_en <= '1';
+					
+				end if;
+				
+				--calculate immediate value, based on IW(15 downto 12), only for LD/ST (1000), JMP (1001)
+				--not sure need to use inst_sel since calculating this immediate value doesn't impact anything else
+				--LD/ST
+				if IW_in(15 downto 12) = "1000" then
+					immediate_val_reg <= "00000000000" & IW_in(6 downto 2);
+					
+				--JMP
+				elsif IW_in(15 downto 12) = "1001" then
+					immediate_val_reg <= "000000" & IW_in(11 downto 2);
+					
+				end if; --IW_in
 				
 				IW_out <= IW_in;	--forward IW to EX stage
 				
@@ -64,18 +93,10 @@ begin
 				RF_out_1_mux_reg <= RF_out_1_mux_reg;	--if we get a stall signal, latch current value
 				RF_out_2_mux_reg <= RF_out_2_mux_reg;	--
 				
+				RF_out1_en <= '0'; 
+				RF_out2_en <= '0'; 
+				
 			end if; --stall_in
-		
-			--calculate immediate value, based on IW(15 downto 12), only for LD, ST, JMP
-			--LD/ST
-			if IW_in(15 downto 12) = "100X" and IW_in(1 downto 0) = "1X" then
-				immediate_val_reg <= "00000000000" & IW_in(6 downto 2);
-				
-			--JMP
-			elsif IW_in(15 downto 12) = "1100" and IW_in(1 downto 0) = "1X" then
-				immediate_val_reg <= "000000" & IW_in(11 downto 2);
-				
-			end if; --IW_in
 		end if; --reset_n
 	end process;
 	

@@ -368,9 +368,8 @@ architecture arch of LAB is
 			if (LAB_temp(0).inst(11 downto 7) 	= LAB_temp(i).inst(11 downto 7) or	--WAW
 				LAB_temp(0).inst(11 downto 7) 	= LAB_temp(i).inst(6 downto 2)) and	--RAW
 				LAB_temp(i).valid = '1' 	and 						--verify that i + 1 is valid, otherwise we don't care
-				LAB_temp(i).inst(15 downto 12) 	/= "1010" and 	--if it's a BNEZ, we don't care about RAW/WAW
-				LAB_temp(i).inst(15 downto 12) 	/= "1011" and 	--if it's a BNE, we don't care about RAW/WAW
-				LAB_temp(i).inst(15 downto 12) 	/= "1100" then	--if it's a JMP, we don't care about RAW/WAW				
+				LAB_temp(i).inst(15 downto 12) 	/= "1010" and 	--if it's a BNE(Z), we don't care about RAW/WAW
+				LAB_temp(i).inst(15 downto 12) 	/= "1001" then	--if it's a JMP, we don't care about RAW/WAW				
 				
 				--denote what slot the hazard is in, and choose the lowest slot available
 				if hazard_slot = 0 then
@@ -586,7 +585,8 @@ begin
 				PC_reg 		<= std_logic_vector(unsigned(PC_reg) + 1);
 
 				--now check for whether or not there's another IW coming after this one that needs to go into MOAB
-				if (next_IW_to_MOAB = '0' and PM_data_in(15) = '1' and PM_data_in(1) = '1') then --condition based on LD, ST, BNEZ, BNE, and JMP
+				--condition based on LD, ST, BNEZ, BNE, and JMP
+				if (next_IW_to_MOAB = '0' and PM_data_in(15 downto 14) = "10" and (PM_data_in(1) nand PM_data_in(0)) = '1') then 
 					next_IW_to_MOAB <= '1';
 				end if; --PM_data_in
 				

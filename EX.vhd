@@ -17,9 +17,7 @@ entity EX is
 		MEM_stall_in			: in std_logic;
 		
 		--Control
-		--TODO: Consolidate these into ALU_out1_en and ALU_out2_en for CSAM
-		B_bus_out1_en, C_bus_out1_en	: out std_logic; --enables ALU_out_1 on B and C bus
-		B_bus_out2_en, C_bus_out2_en	: out std_logic; --enables ALU_out_2 on B and C bus
+		ALU_out1_en, ALU_out2_en	: out std_logic; --enables ALU_out_X on B or C bus
 		
 		--Outputs
 		ALU_op			: out std_logic_vector(3 downto 0);
@@ -58,6 +56,27 @@ begin
 				
 				ALU_op_reg 			<= IW_in(15 downto 12);
 				ALU_inst_sel_reg 	<= IW_in(1 downto 0);
+				
+				--TODO: determine which instructions require how many ALU outputs. most of them should only require one. 
+				--for jumps (1001), loads (1000...01), don't need any ALU output
+				if IW_in(15 downto 12) = "1001"  or (IW_in(15 downto 12) = "1000" and IW_in(1 downto 0) = "01") then 
+					ALU_out1_en <= '0'; 
+					ALU_out2_en <= '0';
+				
+				--for BNEZ (1010...00), shifts (0110, 0111), rotates (0101), loads (1000...00), stores (1000...11) only need 1 RF output
+				elsif (IW_in(15 downto 12) = "1010" and IW_in(1 downto 0) = "00") or
+						(IW_in(15 downto 12) = "1000" and (IW_in(1 downto 0) = "00" or IW_in(1 downto 0) = "11")) or
+						IW_in(15 downto 12) = "0101" or IW_in(15 downto 12) = "0110" or 
+						IW_in(15 downto 12) = "0111" then
+					ALU_out1_en <= '1'; 
+					ALU_out2_en <= '0';
+					
+				--for all other instructions, need both RF outputs
+				else
+					ALU_out1_en <= '1'; 
+					ALU_out2_en <= '1';
+					
+				end if;
 				
 				IW_out <= IW_in;	--forward IW to MEM stage
 
