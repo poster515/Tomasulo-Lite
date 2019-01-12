@@ -1,7 +1,7 @@
 --Written by: Joe Post
 
 --This file receives an IW from the IF stage and decodes it and retrieves the operands from the RF
---This file will not contain the RF however. That is located in the highest level Control Unit block.
+--This file will not contain the RF however. 
 
 
 library IEEE;
@@ -53,16 +53,18 @@ begin
 				RF_out_1_mux_reg <= IW_in(11 downto 7);	--assert reg1 address if there's no stall
 				RF_out_2_mux_reg <= IW_in(6 downto 2);		--assert reg2 address if there's no stall
 				
-				--for all other jumps (1001...1X), loads (1000...01), don't need any RF output
-				if (IW_in(15 downto 12) = "1001" and IW_in(1 downto 0) = "1X") or 
-						(IW_in(15 downto 12) = "1000" and IW_in(1 downto 0) = "01") then 
+				--for all jumps (1001), loads (1000...01), and GPIO/I2C reads (1011..X0) don't need any RF output
+				if IW_in(15 downto 12) = "1001" or 
+					(IW_in(15 downto 12) = "1000" and IW_in(1 downto 0) = "01") or
+					(IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "X0") then 
+					
 					RF_out1_en <= '0'; 
 					RF_out2_en <= '0';
 				
-				--for JMP (1001...0X), BNEZ (1010...00), shifts (0110, 0111), rotates (0101), loads (1000...00), stores (1000...11) only need 1 RF output
-				elsif (IW_in(15 downto 12) = "1001" and IW_in(1 downto 0) = "0X") or
-						(IW_in(15 downto 12) = "1010" and IW_in(1 downto 0) = "00") or
+				--for BNEZ (1010...00), shifts (0110, 0111), rotates (0101), loads (1000...00), stores (1000...11), GPIO/I2C writes (1011..X1) only need 1 RF output
+				elsif (IW_in(15 downto 12) = "1010" and IW_in(1 downto 0) = "00") or
 						(IW_in(15 downto 12) = "1000" and (IW_in(1 downto 0) = "00" or IW_in(1 downto 0) = "11")) or
+						(IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "X1") or
 						IW_in(15 downto 12) = "0101" or IW_in(15 downto 12) = "0110" or 
 						IW_in(15 downto 12) = "0111" then
 					RF_out1_en <= '1'; 
