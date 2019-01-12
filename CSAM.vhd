@@ -70,6 +70,10 @@ entity CSAM is
 end CSAM;
 
 architecture behavioral of CSAM is
+
+	type bus_state is (idle, used, unknown);	
+	
+	signal A_bus_state, B_bus_state, C_bus_state : bus_state := idle;
 	
 begin
 
