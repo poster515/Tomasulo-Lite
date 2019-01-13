@@ -28,8 +28,7 @@ entity WB is
 					
 		--Outputs
 		stall_out		: out std_logic;
-		immediate_val	: out	std_logic_vector(15 downto 0);	--represents various immediate values from various OpCodes
-		
+
 		--Inouts
 		A_bus, B_bus, C_bus	: inout std_logic_vector(15 downto 0) --A/C bus because we need access to memory stage outputs, B/C bus because RF has access to them
 	);
@@ -48,13 +47,14 @@ architecture behavioral of WB is
 	--type declaration for actual ROB, which has 10 entries
 	type ROB is array(ROB_DEPTH - 1 downto 0) of ROB_entry;
 	
+	signal stall		: std_logic; --overall stall signal;
 	signal result		: std_logic_vector(15 downto 0); --buffers result from A or C bus
 	signal ROB_actual	: ROB := (
 											others => ( 
 												inst => (others => '0'), 
 												complete => '0', 
 												valid => '0', 
-												result = > (others => '0')
+												result => (others => '0')
 											)
 										);
 	
@@ -62,23 +62,22 @@ architecture behavioral of WB is
 	
 	function bufferPM_IW( 
 		ROB_in 		: in ROB; 
-		PM_data_in 	: in std_logic_vector(15 downto 0)))
+		PM_data_in 	: in std_logic_vector(15 downto 0))
    
 	return ROB is
 	
-	variable ROB_temp	: ROB;
+	variable ROB_temp	: ROB := ROB_in;
 	variable i			: integer range 0 to ROB_DEPTH - 1;
 	
 	begin
-		ROB_temp <= ROB_in;
 		
 		for i in 0 to ROB_DEPTH - 1 loop
 			
-			if ROB_temp(i).valid = '0';
+			if ROB_temp(i).valid = '0' then
 			
 				--found an invalid instruction, buffer new instruction at this spot
-				ROB_temp(i).valid <= '1';
-				ROB_temp(i).inst <= PM_data_in;
+				ROB_temp(i).valid := '1';
+				ROB_temp(i).inst := PM_data_in;
 				exit;
 			end if;
 		end loop;
@@ -91,19 +90,18 @@ architecture behavioral of WB is
 		IW_in			: in std_logic_vector(15 downto 0);
 		result		: in std_logic_vector(15 downto 0))
    
-	return std_logic is
+	return ROB is
 	
-	variable ROB_temp	: ROB;
+	variable ROB_temp	: ROB := ROB_in;
 	variable i			: integer range 0 to ROB_DEPTH - 1;
 	 
 	begin
-		ROB_temp <= ROB_in;
 	
 		for i in 0 to ROB_DEPTH - 1 loop
-			if ROB_temp(i).inst = IW_in and ROB_temp(i).valid = '1';
+			if ROB_temp(i).inst = IW_in and ROB_temp(i).valid = '1' then
 				-- if the incoming instruction matches one in the ROB, update result
-				ROB_temp(i).result <= result;
-				ROB_temp(i).complete <= '1';
+				ROB_temp(i).result := result;
+				ROB_temp(i).complete := '1';
 				exit; --no need to continue in the loop
 			end if;  --ROB_temp(i).inst = IW_in
 		end loop;
@@ -111,30 +109,79 @@ architecture behavioral of WB is
 		return ROB_temp;
 	end;
 	
+	function reorder( 
+		ROB_in 		: in ROB	)
+   
+	return ROB is
+	
+	variable ROB_temp	: ROB := ROB_in;
+	variable i			: integer range 0 to ROB_DEPTH - 1;
+	 
+	begin
+	
+		for i in 0 to ROB_DEPTH - 2 loop
+			ROB_temp(i) := ROB_temp(i + 1);
+		end loop;
+		
+		ROB_temp(ROB_DEPTH - 1) := ( (others => '0'), '0', '0', (others => '0'));
+		
+		return ROB_temp;
+	end;
+	
 begin
-	process(reset_n, sys_clock)
+	A_bus <= "ZZZZZZZZZZZZZZZZ";
+	stall <= LAB_stall_in;
+
+	process(reset_n, sys_clock, stall)
 	begin
 		if reset_n = '0' then
+			stall_out <= '0';
 			
 		elsif rising_edge(sys_clock) then
 		
 			--select A or C bus when appropriate, should be independent of stall signal
-			result <= 	A_bus when A_bus_in_sel = '1' else
-							C_bus when C_bus_in_sel = '1' else
-							result;
+--			result <= 	A_bus when A_bus_in_sel = '1' else
+--							C_bus when C_bus_in_sel = '1' else
+--							result;
 			
-			if LAB_stall_in = '0' then
+			if stall = '0' then
+			
+				stall_out <= '0';
 			
 				--buffer instruction issued from PM
-				ROB <= bufferPM_IW(ROB, PM_data_in);
+				ROB_actual <= bufferPM_IW(ROB_actual, PM_data_in);
 				
-				--not sure if tags are needed. just look for matching instruction, update 'result', and commit if it's in order.
-				--update tag for instruction sent to ID stage
-				--ROB <= update_tag(ROB, ID_IW, tag);
-				ROB <= update_result(ROB, IW_in, result);
+				if A_bus_in_sel = '1' then
+				
+					--look for matching instruction, update 'result', and commit if it's in order.
+					ROB_actual <= update_result(ROB_actual, IW_in, A_bus);
+					
+				elsif C_bus_in_sel = '1' then
+				
+					--look for matching instruction, update 'result', and commit if it's in order.
+					ROB_actual <= update_result(ROB_actual, IW_in, C_bus);
+					
+				else
+				
+					--shouldn't ever get hear
+					report "No valid data to buffer.";
+					
+				end if; --A_bus_in_sel
 
 				-- if zeroth entry is valid, commit to RF
-				if (ROB(0).complete = '1') then
+				if (ROB_actual(0).complete = '1') then
+				
+					if B_bus_out_en = '1' then
+						B_bus <= ROB_actual(0).result;
+						
+					elsif C_bus_out_en = '1' then
+						C_bus <= ROB_actual(0).result;
+						
+					else
+						B_bus <= "ZZZZZZZZZZZZZZZZ";
+						C_bus <= "ZZZZZZZZZZZZZZZZ";
+						
+					end if; --B_bus_out_en
 				
 					--for all jumps (1001), BNE(Z) (1010...X0), all stores (1000...1X), and GPIO/I2C writes (1011..X1) don't need any RF output written back
 					if 	(IW_in(15 downto 12) = "1001") or
@@ -164,12 +211,13 @@ begin
 					end if;
 					
 					--now shift down all instructions in ROB
-					ROB <= reorder(ROB);
+					ROB_actual <= reorder(ROB_actual);
 					
 				end if; -- ROB_zero_complete
 				
-			elsif LAB_stall_in = '1' then
+			elsif stall = '1' then
 				
+				stall_out <= '1';
 --				RF_in_demux <= RF_in_demux;
 --				RF_in_en 	 <= RF_in_en;
 
