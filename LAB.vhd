@@ -21,7 +21,7 @@ entity LAB is
 		PM_data_in		: in 	std_logic_vector(15 downto 0);
 		PC					: out std_logic_vector(10 downto 0);
 		IW					: out std_logic_vector(15 downto 0);
-		MEM				: out std_logic_vector(15 downto 0)
+		MEM				: out std_logic_vector(15 downto 0)	--MEM is the IW representing the next IW as part of LD, ST, JMP, BNE(Z) operations
 	);
 end entity LAB;
 

@@ -7,14 +7,14 @@ entity ALU is
     --Input data and clock
 	 clk 					: in std_logic;	
 	 carry_in			: in std_logic; --carry in bit from the Control Unit Status Register
-	 data_in_1 			: in std_logic_vector(15 downto 0); --data from RF data out 1
-	 data_in_2 			: in std_logic_vector(15 downto 0); --data from RF data out 2
-	 value_immediate			: in std_logic_vector(15 downto 0);
+	 data_in_1 			: in std_logic_vector(15 downto 0); --
+	 data_in_2 			: in std_logic_vector(15 downto 0); --
+	 value_immediate	: in std_logic_vector(15 downto 0);
 	 
 	 --Control signals
-	 reset_n					: in std_logic; --all registers reset to 0 when this goes low
-	 ALU_op					: in std_logic_vector(3 downto 0); --dictates ALU operation (i.e., OpCode)
-	 ALU_inst_sel			: in std_logic_vector(1 downto 0); --dictates what sub-function to execute
+	 reset_n				: in std_logic; --all registers reset to 0 when this goes low
+	 ALU_op				: in std_logic_vector(3 downto 0); --dictates ALU operation (i.e., OpCode)
+	 ALU_inst_sel		: in std_logic_vector(1 downto 0); --dictates what sub-function to execute
 	 
     --Outputs
     ALU_out_1   	: out std_logic_vector(15 downto 0); --output for almost all logic functions
@@ -253,7 +253,7 @@ begin
 	--this process will assign the immediate value as the input to ALU input 2.
 	process(ALU_inst_sel, data_in_2, value_immediate)
 	begin
-		if (ALU_inst_sel(1) = '0') then
+		if (ALU_inst_sel(0) = '0') then
 			ALU_data_in_2 <= data_in_2;
 		else
 			ALU_data_in_2 <= value_immediate;
@@ -314,6 +314,11 @@ begin
 			ALU_out_1	<= shift_arith_result;
 			ALU_status	<= zero_check(shift_arith_result) & shift_arith_overflow & shift_arith_result(15) & '0';			
 			
+		--LOADS/STORES MEMORY ADDRESS CALCULATION
+		elsif ALU_op = "1000" then
+			ALU_out_1 	<= add_sub_result; --this will be the effective memory address for LD/ST operations
+			ALU_out_2 	<= data_in_2;
+		
 		--LD, ST, BNEZ, BNE, JMP --just forward input data
 		else
 			ALU_out_1 	<= data_in_1;

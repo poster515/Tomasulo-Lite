@@ -44,11 +44,13 @@ architecture behavioral of WB is
 		  result		: std_logic_vector(15 downto 0); --buffers result. 
 		end record;
 	
-	--type declaration for actual ROB, which has 10 entries
 	type ROB is array(ROB_DEPTH - 1 downto 0) of ROB_entry;
 	
-	signal stall		: std_logic; --overall stall signal;
-	signal result		: std_logic_vector(15 downto 0); --buffers result from A or C bus
+	signal stall, zero_inst_match			: std_logic; --overall stall signal;
+	signal A_bus_result, C_bus_result	: std_logic_vector(15 downto 0); --buffers result from A or C bus
+	signal i	: integer range 0 to ROB_DEPTH - 1;
+	
+	--type declaration for actual ROB, which has 10 entries
 	signal ROB_actual	: ROB := (
 											others => ( 
 												inst => (others => '0'), 
@@ -84,33 +86,44 @@ architecture behavioral of WB is
   
 		return ROB_temp;
    end;
- 
-	function update_result( 
-		ROB_in 		: in ROB; 
-		IW_in			: in std_logic_vector(15 downto 0);
-		result		: in std_logic_vector(15 downto 0))
+	
+	--function to buffer result into ROB if zeroth instruction doesn't match IW_in
+	function buffer_result( 
+		ROB_in 	: in ROB; 
+		result 	: in std_logic_vector(15 downto 0);
+		IW_in		: in std_logic_vector(15 downto 0);
+		PM_data_in	: in std_logic_vector(15 downto 0))
    
 	return ROB is
 	
 	variable ROB_temp	: ROB := ROB_in;
 	variable i			: integer range 0 to ROB_DEPTH - 1;
-	 
-	begin
 	
+	begin
+		
 		for i in 0 to ROB_DEPTH - 1 loop
-			if ROB_temp(i).inst = IW_in and ROB_temp(i).valid = '1' then
-				-- if the incoming instruction matches one in the ROB, update result
+			
+			if ROB_temp(i).valid = '1' and ROB_temp(i).inst = IW_in then
+			
 				ROB_temp(i).result := result;
 				ROB_temp(i).complete := '1';
-				exit; --no need to continue in the loop
-			end if;  --ROB_temp(i).inst = IW_in
+				
+			elsif ROB_temp(i).valid = '0' then
+			
+				ROB_temp(i).inst := PM_data_in;
+				ROB_temp(i).valid := '1';
+				exit;
+			end if;
 		end loop;
-		
+  
 		return ROB_temp;
-	end;
+   end;
 	
-	function reorder( 
-		ROB_in 		: in ROB	)
+	
+	--this function reorders the buffer to eliminate stale/committed instructions and results
+	function update_ROB( 
+		ROB_in 		: in ROB;
+			PM_data_in	: in std_logic_vector(15 downto 0))
    
 	return ROB is
 	
@@ -120,84 +133,112 @@ architecture behavioral of WB is
 	begin
 	
 		for i in 0 to ROB_DEPTH - 2 loop
-			ROB_temp(i) := ROB_temp(i + 1);
+			if ROB_temp(i).valid = '0' then
+				ROB_temp(i).inst := PM_data_in;
+				ROB_temp(i).valid := '1';
+				exit;
+				
+			elsif ROB_temp(i).valid = '1' and ROB_temp(i + 1).valid = '0' then
+				ROB_temp(i).inst := PM_data_in;
+				ROB_temp(i).valid := '1';
+				exit;
+				
+			else
+				ROB_temp(i) := ROB_temp(i + 1);
+			end if;
 		end loop;
 		
-		ROB_temp(ROB_DEPTH - 1) := ( (others => '0'), '0', '0', (others => '0'));
-		
+		--ROB_temp(ROB_DEPTH - 1) := ( (others => '0'), '0', '0', (others => '0'));
+
 		return ROB_temp;
 	end;
 	
+---------------------------------------------------------------	
 begin
 	A_bus <= "ZZZZZZZZZZZZZZZZ";
 	stall <= LAB_stall_in;
+	
+	--buffer A and C bus every time they change
+	process(A_bus, C_bus)
+	begin
+	
+		A_bus_result <= A_bus;
+		C_bus_result <= C_bus;
+		
+	end process;
+	
+	--update whether ROB zeroth instruction matches the new IW_in, does not depend on ROB(0).inst itself since it won't change
+	process(ROB_actual, IW_in)
+	begin
+		if ROB_actual(0).inst = IW_in and ROB_actual(0).valid = '1' then
+			zero_inst_match <= '1';
+		else
+			zero_inst_match <= '0';
+		end if;
+	end process;
 
 	process(reset_n, sys_clock, stall)
 	begin
 		if reset_n = '0' then
 			stall_out <= '0';
+			A_bus <= "ZZZZZZZZZZZZZZZZ";
+			B_bus <= "ZZZZZZZZZZZZZZZZ";
+			C_bus <= "ZZZZZZZZZZZZZZZZ";
+			RF_in_demux <= "00000";
+			RF_in_en <= '0';
+			wr_en <= '0';
 			
 		elsif rising_edge(sys_clock) then
-		
-			--select A or C bus when appropriate, should be independent of stall signal
---			result <= 	A_bus when A_bus_in_sel = '1' else
---							C_bus when C_bus_in_sel = '1' else
---							result;
 			
 			if stall = '0' then
 			
+				
 				stall_out <= '0';
-			
-				--buffer instruction issued from PM
-				ROB_actual <= bufferPM_IW(ROB_actual, PM_data_in);
-				
-				if A_bus_in_sel = '1' then
-				
-					--look for matching instruction, update 'result', and commit if it's in order.
-					ROB_actual <= update_result(ROB_actual, IW_in, A_bus);
-					
-				elsif C_bus_in_sel = '1' then
-				
-					--look for matching instruction, update 'result', and commit if it's in order.
-					ROB_actual <= update_result(ROB_actual, IW_in, C_bus);
-					
-				else
-				
-					--shouldn't ever get hear
-					report "No valid data to buffer.";
-					
-				end if; --A_bus_in_sel
 
-				-- if zeroth entry is valid, commit to RF
-				if (ROB_actual(0).complete = '1') then
-				
-					if B_bus_out_en = '1' then
-						B_bus <= ROB_actual(0).result;
+				if zero_inst_match = '1' then --have a match to zeroth ROB inst and therefore re-issue result
+					
+					--report "Made it to ROB reorder code.";
+					ROB_actual <= update_ROB(ROB_actual, PM_data_in);
+					
+					--report "Zeroth instruction matches IW_in.";
+					if A_bus_in_sel = '1' and B_bus_out_en = '1' then
+					
+						B_bus <= A_bus_result;
 						
-					elsif C_bus_out_en = '1' then
-						C_bus <= ROB_actual(0).result;
+					elsif A_bus_in_sel = '1' and C_bus_out_en = '1' then
+							
+						C_bus <= C_bus_result;
 						
-					else
-						B_bus <= "ZZZZZZZZZZZZZZZZ";
-						C_bus <= "ZZZZZZZZZZZZZZZZ";
+					elsif C_bus_in_sel = '1' and B_bus_out_en = '1' then	
+					
+						B_bus <= C_bus_result;
 						
-					end if; --B_bus_out_en
-				
+					elsif C_bus_in_sel = '1' and C_bus_out_en = '1' then	
+					
+						C_bus <= C_bus_result;
+						
+					else		
+						B_bus <= "ZZZZZZZZZZZZZZZZ";	
+						C_bus <= "ZZZZZZZZZZZZZZZZ";	
+							
+					end if; -- A_bus_in_sel
+					
 					--for all jumps (1001), BNE(Z) (1010...X0), all stores (1000...1X), and GPIO/I2C writes (1011..X1) don't need any RF output written back
-					if 	(IW_in(15 downto 12) = "1001") or
-							(IW_in(15 downto 12) = "1010" and IW_in(1 downto 0) = "X0") or
-							(IW_in(15 downto 12) = "1000" and IW_in(1 downto 0) = "1X") or
-							(IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "X1") then 
+					if 	IW_in(15 downto 12) = "1001" or
+							(IW_in(15 downto 12) = "1010" and IW_in(0) = '0') or
+							(IW_in(15 downto 12) = "1000" and IW_in(1) = '1') or
+							(IW_in(15 downto 12) = "1011" and IW_in(0) = '1') then 
 						
 						RF_in_demux <= "00000";
 						RF_in_en <= '0';
 						wr_en <= '0';
 					
 					--for all "0XXX" instructions, all loads (1000...0X), and GPIO/I2C (1011..X0) reads, need an RF write back
-					elsif IW_in(15 downto 12) = "0XXX" or 
-							(IW_in(15 downto 12) = "1000" and IW_in(1 downto 0) = "0X") or  
-							(IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "X0") then
+					elsif IW_in(15) = '0' or 
+							(IW_in(15 downto 12) = "1000" and IW_in(1) = '0') or  
+							(IW_in(15 downto 12) = "1011" and IW_in(0) = '0') then
 							
+						--report "Updating RF output control signals.";
 						RF_in_demux <= IW_in(11 downto 7);	--use IW to find destination register for the aforementioned instructions
 						RF_in_en <= '1';
 						wr_en <= '1';
@@ -209,17 +250,26 @@ begin
 						wr_en <= '0';
 						
 					end if;
+
+				elsif A_bus_in_sel = '1' then --don't have a match to zeroth instruction
 					
-					--now shift down all instructions in ROB
-					ROB_actual <= reorder(ROB_actual);
+					--buffer A_bus_result in ROB_actual
+					ROB_actual <= buffer_result(ROB_actual, A_bus_result, IW_in, PM_data_in);
 					
-				end if; -- ROB_zero_complete
+				elsif C_bus_in_sel = '1' then --don't have a match to zeroth instruction
+					
+					--buffer C_bus_result in ROB_actual
+					ROB_actual <= buffer_result(ROB_actual, C_bus_result, IW_in, PM_data_in);
+					
+				else
+				
+					ROB_actual <= bufferPM_IW(ROB_actual, PM_data_in);
+
+				end if; --zero_inst_match
 				
 			elsif stall = '1' then
 				
 				stall_out <= '1';
---				RF_in_demux <= RF_in_demux;
---				RF_in_en 	 <= RF_in_en;
 
 			end if; --LAB_stall_in
 

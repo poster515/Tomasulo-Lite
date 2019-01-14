@@ -10,12 +10,13 @@ entity MEM_top is
    port ( 
 		--Input data and clock
 		reset_n, sys_clock	: in std_logic;	
-		mem_addr_in				: in std_logic_vector(10 downto 0);	--data memory address directly from MEM control unit
+		mem_addr_in				: in std_logic_vector(10 downto 0);	--data memory address directly from ALU
 		
 		--Control 
 		A_bus_out_en, C_bus_out_en		: in std_logic; --enables data memory output on A and C bus
 		A_bus_in_sel, C_bus_in_sel		: in std_logic; --enables A or C bus to data_in
 		wr_en									: in std_logic; --write enable for data memory
+		MEM_op								: in std_logic; --'1' = DM operation, '0' = forward data, not a memory operation 
 		
 		--Outputs
 		
@@ -84,10 +85,12 @@ begin
 	
 	--latch outputs
 	
-	A_bus <= data_out when A_out_en_reg = '1' and reset_n = '1' else
+	A_bus <= data_out when A_out_en_reg = '1' and reset_n = '1' and MEM_op = '1' else
+				data_in  when A_out_en_reg = '1' and reset_n = '1' and MEM_op = '0' else
 				"ZZZZZZZZZZZZZZZZ";
 				
-	C_bus <= data_out when C_out_en_reg = '1' and reset_n = '1' else
+	C_bus <= data_out when C_out_en_reg = '1' and reset_n = '1' and MEM_op = '1' else
+				data_in  when A_out_en_reg = '1' and reset_n = '1' and MEM_op = '0' else
 				"ZZZZZZZZZZZZZZZZ";
 
 end behavioral;
