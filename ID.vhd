@@ -80,12 +80,18 @@ begin
 				--calculate immediate value, based on IW(15 downto 12), only for LD/ST (1000), JMP (1001)
 				--not sure need to use inst_sel since calculating this immediate value doesn't impact anything else
 				--LD/ST
-				if IW_in(15 downto 12) = "1000" then
+				if IW_in(15 downto 12) = "1000" and IW_in(0) = '1' then
 					immediate_val_reg <= "00000000000" & IW_in(6 downto 2);
 					
 				--JMP
 				elsif IW_in(15 downto 12) = "1001" then
 					immediate_val_reg <= "000000" & IW_in(11 downto 2);
+					
+				--SFTA (0111), SFTL (0110), ROT (0101), ADDI (0000..10), SUBI (0001..10), MULTI (0010..10), DIVI (0011..10),
+				elsif (IW_in(15 downto 14) = "00" and IW_in(1 downto 0) = "10") or
+						(IW_in(15 downto 14) = "01" and (IW_in(13) = '1' or IW_in(12) = '1')) then
+						
+					immediate_val_reg <= "00000000000" & IW_in(6 downto 2);
 					
 				end if; --IW_in
 				

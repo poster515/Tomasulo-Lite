@@ -15,6 +15,7 @@ entity EX is
 		LAB_stall_in			: in std_logic;
 		WB_stall_in				: in std_logic;		--set high when an upstream CU block needs this 
 		MEM_stall_in			: in std_logic;
+		immediate_val_in		: in std_logic_vector(15 downto 0); --immediate value from ID stage
 		
 		--Control
 		ALU_out1_en, ALU_out2_en	: out std_logic; --enables ALU_out_X on B or C bus
@@ -41,6 +42,7 @@ architecture behavioral of EX is
 	signal stall_in			: std_logic := '0'; --'1' if either stall is '1', '0' if both stalls are '0'	
 	signal ALU_op_reg			: std_logic_vector(3 downto 0);
 	signal ALU_inst_sel_reg	: std_logic_vector(1 downto 0);
+	signal immediate_val_reg:std_logic_vector(15 downto 0);
 	
 begin
 
@@ -49,15 +51,20 @@ begin
 	process(reset_n, sys_clock)
 	begin
 		if reset_n = '0' then
+		
+			ALU_op_reg			<= "0000";
+			ALU_inst_sel_reg	<= "00";
+			immediate_val_reg <= "0000000000000000";
 			
 		elsif rising_edge(sys_clock) then
 		
 			if stall_in = '0' then
+			
+				immediate_val_reg 	<= immediate_val_in;
 				
 				ALU_op_reg 			<= IW_in(15 downto 12);
 				ALU_inst_sel_reg 	<= IW_in(1 downto 0);
 				
-				--TODO: determine which instructions require how many ALU outputs. most of them should only require one. 
 				--for jumps (1001), loads (1000...01), don't need any ALU output
 				if IW_in(15 downto 12) = "1001"  or (IW_in(15 downto 12) = "1000" and IW_in(1 downto 0) = "01") then 
 					ALU_out1_en <= '0'; 
@@ -81,9 +88,10 @@ begin
 				IW_out <= IW_in;	--forward IW to MEM stage
 
 			elsif stall_in = '1' then
-				--propagate stall signal
+				--propagate stall signal and keep immediate value
 				EX_stall_out <= '1';
-
+				immediate_val_reg <= immediate_val_reg;
+				
 			end if; --stall_in
 
 		end if; --reset_n
@@ -95,5 +103,6 @@ begin
 	--latch outputs
 	ALU_op 			<= ALU_op_reg;
 	ALU_inst_sel 	<=	ALU_inst_sel_reg;
+	immediate_val	<= immediate_val_reg;
 	
 end behavioral;

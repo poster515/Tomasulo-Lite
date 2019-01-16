@@ -149,7 +149,7 @@ begin
 			
 			if LD_ST_op = '1' then --LD/ST operation
 			
-				mem_addr_eff <= ALU_out_1; --forward calculated effective memory address directly to MEM
+				mem_addr_eff <= ALU_out_1(10 downto 0); --forward calculated effective memory address directly to MEM
 
 				if ALU_inst_sel(1) = '1' then --ST operation specifically
 					if (B_bus_out2_en = '1') then
