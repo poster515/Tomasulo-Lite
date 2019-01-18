@@ -229,12 +229,20 @@ architecture behavioral of ALU is
 
 	
 begin
+	immediate_value_sel 	: mux_2_new
+	port map (
+		data0x	=> data_in_1,
+		data1x	=> value_immediate,
+		sel		=> ALU_inst_sel(1),
+		result	=> ALU_data_in_2
+	);
+
 	-- Adder/Subtracter
 	add_sub_inst	: add_sub
 	port map (
 		add_sub		=>	add_sub_sel, -- "0000"=A "0001"=S, 1=A, 0=S
 		dataa			=> data_in_1,
-		datab			=> ALU_data_in_2, --DEBUG DEBUG DEBUG SHOULD BE ALU_DATA_IN_2
+		datab			=> ALU_data_in_2, --
 		cout			=> add_sub_c,
 		overflow		=> add_sub_v,
 		result		=> add_sub_result
