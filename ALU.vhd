@@ -4,15 +4,13 @@ use ieee.numeric_std.all;
  
 entity ALU is
   port (
-    --Input data and clock
-	 clk 					: in std_logic;	
+    --Input data 	
 	 carry_in			: in std_logic; --carry in bit from the Control Unit Status Register
 	 data_in_1 			: in std_logic_vector(15 downto 0); --
 	 data_in_2 			: in std_logic_vector(15 downto 0); --
 	 value_immediate	: in std_logic_vector(15 downto 0);
 	 
 	 --Control signals
-	 reset_n				: in std_logic; --all registers reset to 0 when this goes low
 	 ALU_op				: in std_logic_vector(3 downto 0); --dictates ALU operation (i.e., OpCode)
 	 ALU_inst_sel		: in std_logic_vector(1 downto 0); --dictates what sub-function to execute
 	 
@@ -132,6 +130,58 @@ architecture behavioral of ALU is
 		);
 	end component shift_arith;
 	
+	component mux_8_new is
+		PORT
+		(
+			data0x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+			data1x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+			data2x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+			data3x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+			data4x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+			data5x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+			data6x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+			data7x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+			sel			: IN STD_LOGIC_VECTOR (2 DOWNTO 0);
+			result		: OUT STD_LOGIC_VECTOR (15 DOWNTO 0)
+		);
+	end component;
+	
+	component mux_8_width_4 is
+		PORT
+		(
+			data0x		: IN STD_LOGIC_VECTOR (3 DOWNTO 0);
+			data1x		: IN STD_LOGIC_VECTOR (3 DOWNTO 0);
+			data2x		: IN STD_LOGIC_VECTOR (3 DOWNTO 0);
+			data3x		: IN STD_LOGIC_VECTOR (3 DOWNTO 0);
+			data4x		: IN STD_LOGIC_VECTOR (3 DOWNTO 0);
+			data5x		: IN STD_LOGIC_VECTOR (3 DOWNTO 0);
+			data6x		: IN STD_LOGIC_VECTOR (3 DOWNTO 0);
+			data7x		: IN STD_LOGIC_VECTOR (3 DOWNTO 0);
+			sel			: IN STD_LOGIC_VECTOR (2 DOWNTO 0);
+			result		: OUT STD_LOGIC_VECTOR (3 DOWNTO 0)
+		);
+	end component;
+	
+	component mux_2_new IS
+		PORT
+		(
+			data0x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+			data1x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+			sel			: IN STD_LOGIC ;
+			result		: OUT STD_LOGIC_VECTOR (15 DOWNTO 0)
+		);
+	END component;
+	
+	component mux_2_width_17 IS
+		PORT
+		(
+			data0x		: IN STD_LOGIC_VECTOR (16 DOWNTO 0);
+			data1x		: IN STD_LOGIC_VECTOR (16 DOWNTO 0);
+			sel			: IN STD_LOGIC ;
+			result		: OUT STD_LOGIC_VECTOR (16 DOWNTO 0)
+		);
+	END component;
+	
 	signal ALU_data_in_2	: std_logic_vector(15 downto 0);	-- selected from either data_in_2 or immediate value
 																			--used for ADDI, SUBI, MULTI, DIVI
 	--Add/Sub signal section
@@ -153,8 +203,10 @@ architecture behavioral of ALU is
 	
 	--Rotate unit signals
 	signal rotate_result				: std_logic_vector(15 downto 0);
+	signal rotate_result_final		: std_logic_vector(15 downto 0); --signal fed from both normal and carry results
 	signal rotate_c_result			: std_logic_vector(16 downto 0);
 	signal rotate_c_in				: std_logic_vector(16 downto 0);
+	signal rotate_final_sel			: std_logic; --selects final rotate result for ALU_out_1
 	
 	--Shift logical unit signals
 	signal shift_logic_overflow	: std_logic;
@@ -223,9 +275,9 @@ begin
 		
 	rotate_c_inst	: rotate_c
 	port map (
-			data			=> rotate_c_in, -- carry included at MSB
+			data			=> rotate_c_in,
 			direction	=> ALU_inst_sel(0), --'0' = left, '1' = right
-			distance		=> value_immediate(4 downto 0),
+			distance		=> '0' & value_immediate(3 downto 0),
 			result		=> rotate_c_result
 		);
 	
@@ -246,87 +298,75 @@ begin
 			overflow		=> shift_arith_overflow,
 			result		=> shift_arith_result
 		);
+		
+	ALU_out_1_mux : mux_8_new
+		PORT MAP
+		(
+			data0x		=> add_sub_result,
+			data1x		=> add_sub_result,
+			data2x		=> mult_LSB,
+			data3x		=> divide_result,
+			data4x		=> logic_result,
+			data5x		=> rotate_result_final,
+			data6x		=> shift_logic_result,
+			data7x		=> shift_arith_result,
+			sel			=> ALU_op(2 downto 0),
+			result		=> ALU_out_1
+		);
+		
+	ALU_out_2_mux : mux_8_new
+		PORT MAP
+		(
+			data0x		=> "0000000000000000",
+			data1x		=> "0000000000000000",
+			data2x		=> mult_MSB,
+			data3x		=> divide_remainder,
+			data4x		=> "0000000000000000",
+			data5x		=> "0000000000000000",
+			data6x		=> "0000000000000000",
+			data7x		=> "0000000000000000",
+			sel			=> ALU_op(2 downto 0),
+			result		=> ALU_out_2
+		);
+		
+		--STATUS REGISTER: | Zero (Z) | Overflow (V) | Negative (N) | Carry (C) |
+		status_out_2_mux : mux_8_width_4
+		PORT MAP
+		(
+			data0x		=> zero_check(add_sub_result) & add_sub_v & add_sub_result(15) & add_sub_c,
+			data1x		=> zero_check(add_sub_result) & add_sub_v & add_sub_result(15) & add_sub_c,
+			data2x		=> (zero_check(mult_LSB) and zero_check(mult_MSB)) & '0' & mult_result(31) & '0',
+			data3x		=> (zero_check(divide_result) and zero_check(divide_remainder)) & '0' & divide_result(15) & '0',
+			data4x		=> logic_zero & '0' & logic_neg & '0',
+			data5x		=> zero_check(rotate_result) & '0' & rotate_result(15) & '0',
+			data6x		=> zero_check(shift_logic_result) & shift_logic_overflow & shift_logic_result(15) & '0',
+			data7x		=> zero_check(shift_arith_result) & shift_arith_overflow & shift_arith_result(15) & '0',
+			sel			=> ALU_op(2 downto 0),
+			result		=> ALU_status
+		);
+		
+		rotate_final : mux_2_new 
+		PORT MAP
+		(
+			data0x		=> rotate_result,
+			data1x		=> rotate_c_result(15 downto 0),
+			sel			=> rotate_final_sel,
+			result		=> rotate_result_final
+		);
+		
+		rotate_c_in_mux : mux_2_width_17
+		PORT MAP
+		(
+			data0x		=> data_in_1 & carry_in,
+			data1x		=> carry_in & data_in_1,
+			sel			=> ALU_inst_sel(0),
+			result		=> rotate_c_in
+		);
 
 	--required signal for add/subtract unit, based on OpCode alone
 	add_sub_sel <= not(ALU_op(3)) and not(ALU_op(2)) and not(ALU_op(1)) and not(ALU_op(0));
-	
-	--this process will assign the immediate value as the input to ALU input 2.
-	process(ALU_inst_sel, data_in_2, value_immediate)
-	begin
-		if (ALU_inst_sel(0) = '0') then
-			ALU_data_in_2 <= data_in_2;
-		else
-			ALU_data_in_2 <= value_immediate;
-		end if;
-	end process;
-	
-	rotate_c_in <= carry_in & data_in_1;
-	
-	-- Latching Logic Assignments
-	process(reset_n, clk, ALU_op)
-	begin
-	if reset_n = '0' then
-		--maybe reset an ALU result register?
-		--RF <= (others => (others => '0'));
-	elsif clk'event and clk = '1' then
-	
-		--STATUS REGISTER: | Zero (Z) | Overflow (V) | Negative (N) | Carry (C) |
-		
-		--ADD, ADDI, SUB, SUBI
-		if ALU_op = "0000" or ALU_op = "0001" then 
-			ALU_out_1 	<= add_sub_result;
-			ALU_status	<= zero_check(add_sub_result) & add_sub_v & add_sub_result(15) & add_sub_c;
-			
-		--MUL
-		elsif ALU_op = "0010" then
-			ALU_out_1 	<= mult_LSB;
-			ALU_out_2	<= mult_MSB;
-			ALU_status	<= (zero_check(mult_LSB) and zero_check(mult_MSB))
-									& '0' & mult_result(31) & '0';	
-		--DIV
-		elsif ALU_op = "0011" then
-			ALU_out_1 	<= divide_result;
-			ALU_out_2	<= divide_remainder;
-			ALU_status	<= (zero_check(divide_result) and zero_check(divide_remainder)) & '0' & divide_result(15) & '0';
-			
-		--LOGIC
-		elsif ALU_op = "0100" then
-			ALU_out_1 	<= logic_result;
-			ALU_status	<= logic_zero & '0' & logic_neg & '0';
-			
-		--ROTATE
-		elsif ALU_op = "0101" and ALU_inst_sel(1) = '0' then --only non-carry rotate
-			ALU_out_1	<= rotate_result;
-			ALU_status	<= zero_check(rotate_result) & '0' & rotate_result(15) & '0';
-			
-		--ROTATE WITH CARRY
-		elsif ALU_op = "0101" and ALU_inst_sel(1) = '1' then --carry included in rotate
-			ALU_out_1	<= rotate_c_result(15 downto 0);
-			ALU_status	<= zero_check(rotate_c_result(15 downto 0)) & '0' & rotate_c_result(15) & '0';
-			
-		--SHIFT LOGICAL
-		elsif ALU_op = "0110" then
-			ALU_out_1	<= shift_logic_result;
-			ALU_status	<= zero_check(shift_logic_result) & shift_logic_overflow & shift_logic_result(15) & '0';
-			
-		--SHIFT ARITHMETIC
-		elsif ALU_op = "0111" then
-			ALU_out_1	<= shift_arith_result;
-			ALU_status	<= zero_check(shift_arith_result) & shift_arith_overflow & shift_arith_result(15) & '0';			
-			
-		--LOADS/STORES MEMORY ADDRESS CALCULATION
-		elsif ALU_op = "1000" then
-			ALU_out_1 	<= add_sub_result; --this will be the effective memory address for LD/ST operations
-			ALU_out_2 	<= data_in_2;
-		
-		--LD, ST, BNEZ, BNE, JMP --just forward input data
-		else
-			ALU_out_1 	<= data_in_1;
-			ALU_out_2 	<= data_in_2;
---			ALU_status 	<= "XXXX";
-			
-		end if; --ALU_op
-	end if; -- clock
-	end process;
+
+	--rotate_final select
+	rotate_final_sel <= not(ALU_op(3)) and ALU_op(2) and not(ALU_op(1)) and ALU_op(0) and not(ALU_inst_sel(1));
 		
 end behavioral;
