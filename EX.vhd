@@ -62,15 +62,17 @@ begin
 			
 				immediate_val_reg 	<= immediate_val_in;
 				
-				ALU_op_reg 			<= IW_in(15 downto 12); --NOT TRUE FOR LOADS/STORES, WHEN IT SHOULD BE AN ADDITION "0000"
+				ALU_op_reg(2 downto 0) 		<= IW_in(14 downto 12); 
+				ALU_op_reg(3)					<= (IW_in(14) or IW_in(13) or IW_in(12)) and IW_in(15);
+				
 				ALU_inst_sel_reg 	<= IW_in(1 downto 0);
 				
 				ALU_out1_en <= not(IW_in(15)) or (not(IW_in(13)) and not(IW_in(12)));
 				ALU_out2_en <= not(IW_in(15)) and not(IW_in(14)) and IW_in(13);
 				
-				ALU_d2_immed_op <= (not(IW_in(15)) and not(IW_in(14)) and ALU_inst_sel(1)) or
+				ALU_d2_immed_op <= (not(IW_in(15)) and not(IW_in(14)) and ALU_inst_sel_reg(1)) or
 											(IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12))) or
-												(IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and ALU_inst_sel(0));
+												(IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and ALU_inst_sel_reg(0));
 												
 				ALU_d1_DM_op <= IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)); --"1000"
 
