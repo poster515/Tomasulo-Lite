@@ -14,8 +14,12 @@ entity ALU_top is
 		reset_n				: in std_logic; --all registers reset to 0 when this goes low
 		ALU_op				: in std_logic_vector(3 downto 0); 	--dictates ALU operation (i.e., OpCode)
 		ALU_inst_sel		: in std_logic_vector(1 downto 0); 	--dictates what sub-function to execute (last two bits of OpCode)
-		ALU_d2_mux_sel		: in std_logic_vector(2 downto 0); 	--used to control which data to send to ALU input 2
-		ALU_d1_mux_sel		: in std_logic_vector(1 downto 0); 	--used to control which data to send to ALU input 1
+		
+		ALU_d2_bus_in_sel	: in std_logic_vector(2 downto 0); 	--used to control which bus to send to ALU input 2 (from CSAM)
+		ALU_d2_immed_op	: in std_logic; 	--1 = need to get value_immediate to ALU_in_2, 0 = just use A, B, or C bus data (using ALU_d2_bus_in_sel) (from EX)
+		ALU_d1_bus_in_sel : in std_logic_vector(2 downto 0); 	--used to control which bus to send to ALU input 1 (from CSAM)
+		ALU_d1_DM_op		: in std_logic;	--1 = need to get MEM_address to ALU_in_1, 0 = just use A, B, or C bus data (using ALU_d1_bus_in_sel) (from EX)
+		
 		ALU_out_1_mux 		: in std_logic_vector(1 downto 0); --used to output results on A, B, or C bus
 		ALU_out_2_mux		: in std_logic_vector(1 downto 0); --used to output results on A, B, or C bus
 							 
@@ -78,8 +82,7 @@ architecture behavioral of ALU_top is
 	signal ALU_data_in_1, ALU_data_in_2		: std_logic_vector(15 downto 0); --signal between data_in_2_mux and data_in_2 input of ALU
 	signal ALU_d1_in_reg, ALU_d2_in_reg		: std_logic_vector(15 downto 0); --registers latching ALU inputs
 	signal ALU_status								: std_logic_vector(3 downto 0);	--ALU temporary status register
-	signal ALU_o1_mux_reg, ALU_o2_mux_reg	: std_logic; --
-
+	signal ALU_d1_mux_sel, ALU_d2_mux_sel	: std_logic_vector(2 downto 0); --mux select lines for ALU_in_1 and ALU_in_2
 	
 begin
 	
@@ -108,7 +111,7 @@ begin
 		data1x  	=> B_bus,		--
 		data2x	=> C_bus,
 		data3x	=> value_immediate,
-		data4x	=> ALU_out_1,
+		data4x	=> "0000000000000000",
 		data5x	=> "0000000000000000",
 		data6x	=> "0000000000000000",
 		data7x	=> "0000000000000000",
@@ -116,16 +119,28 @@ begin
 		result  	=> ALU_data_in_2
 	);
 	
-	--mux that takes RF data and memory address directly from LD/ST IWs 
-	ALU_in_1_mux	: mux_4_new
+	--mux for ALU input 1 
+	ALU_in_1_mux	: mux_8_new
 	port map (
 		data0x  	=> A_bus, 		--input from A, B, or C bus
 		data1x  	=> B_bus,		--
 		data2x	=> C_bus,
-		data3x  	=> MEM_address,	--memory address directly from LAB to calculate effective memory address
+		data3x	=> MEM_address,
+		data4x	=> "0000000000000000",
+		data5x	=> "0000000000000000",
+		data6x	=> "0000000000000000",
+		data7x	=> "0000000000000000",
 		sel 		=> ALU_d1_mux_sel,
 		result  	=> ALU_data_in_1
 	);
+	
+	ALU_d2_mux_sel(0) <= not(ALU_d2_bus_in_sel(2)) and not(ALU_d2_bus_in_sel(2)) and (ALU_d2_bus_in_sel(1) or ALU_d2_immed_op);
+	ALU_d2_mux_sel(1) <= not(ALU_d2_bus_in_sel(1)) and not(ALU_d2_bus_in_sel(0)) and (ALU_d2_bus_in_sel(2) or ALU_d2_immed_op);
+	ALU_d2_mux_sel(2) <= not(ALU_d2_bus_in_sel(2)) and not(ALU_d2_bus_in_sel(1)) and not(ALU_d2_bus_in_sel(2)) and not(ALU_d2_immed_op);
+	
+	ALU_d1_mux_sel(0) <= not(ALU_d1_bus_in_sel(2)) and not(ALU_d1_bus_in_sel(2)) and (ALU_d1_bus_in_sel(1) or ALU_d1_DM_op);
+	ALU_d1_mux_sel(1) <= not(ALU_d1_bus_in_sel(1)) and not(ALU_d1_bus_in_sel(0)) and (ALU_d1_bus_in_sel(2) or ALU_d1_DM_op);
+	ALU_d1_mux_sel(2) <= not(ALU_d1_bus_in_sel(2)) and not(ALU_d1_bus_in_sel(1)) and not(ALU_d1_bus_in_sel(2)) and not(ALU_d1_DM_op);
 	
 	process(reset_n, clk, ALU_out_1_mux, ALU_out_2_mux)
 	begin

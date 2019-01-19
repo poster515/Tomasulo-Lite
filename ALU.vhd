@@ -182,6 +182,8 @@ architecture behavioral of ALU is
 		);
 	END component;
 	
+	--ALU_data_in_2 signals
+	signal data_2_in_mux_sel : std_logic;
 	signal ALU_data_in_2	: std_logic_vector(15 downto 0);	-- selected from either data_in_2 or immediate value
 																			--used for ADDI, SUBI, MULTI, DIVI
 	--Add/Sub signal section
@@ -231,9 +233,9 @@ architecture behavioral of ALU is
 begin
 	immediate_value_sel 	: mux_2_new
 	port map (
-		data0x	=> data_in_1,
+		data0x	=> data_in_2,
 		data1x	=> value_immediate,
-		sel		=> ALU_inst_sel(1),
+		sel		=> data_2_in_mux_sel, 
 		result	=> ALU_data_in_2
 	);
 
@@ -266,7 +268,7 @@ begin
 	logic_unit_inst	: ALU_logic
 	port map (
 		A_in 			=> data_in_1,
-		B_in 			=> data_in_2,
+		B_in 			=> ALU_data_in_2,
 		logic_func 	=> ALU_inst_sel,
 		result 		=> logic_result,
 		zero			=> logic_zero,
@@ -371,6 +373,10 @@ begin
 			result		=> rotate_c_in
 		);
 
+	--calculate data_2_in_mux based on ALU_op and ALU_inst_sel
+	data_2_in_mux_sel <= (not(ALU_op(3)) and not(ALU_op(2)) and ALU_inst_sel(1)) or
+								(ALU_op(3) and ALU_op(2) and not(ALU_op(1)) and not(ALU_op(0)));
+		
 	--required signal for add/subtract unit, based on OpCode alone
 	add_sub_sel <= not(ALU_op(3)) and not(ALU_op(2)) and not(ALU_op(1)) and not(ALU_op(0));
 

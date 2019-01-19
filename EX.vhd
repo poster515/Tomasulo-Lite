@@ -19,6 +19,8 @@ entity EX is
 		
 		--Control
 		ALU_out1_en, ALU_out2_en	: out std_logic; --enables ALU_out_X on B or C bus
+		ALU_d1_DM_op 					: out std_logic; --1 = MEM_address to ALU_in_1, 0 = just use A, B, or C bus data (using ALU_d1_bus_in_sel) 
+		ALU_d2_immed_op 				: out std_logic; --1 = val_immediate to ALU_in_2, 0 = just use A, B, or C bus data (using ALU_d2_bus_in_sel) 
 		
 		--Outputs
 		ALU_op			: out std_logic_vector(3 downto 0);
@@ -30,14 +32,6 @@ entity EX is
 end EX;
 
 architecture behavioral of EX is
---	--ALU Control signals
---	reset_n					: in std_logic; --all registers reset to 0 when this goes low
---	ALU_op					: in std_logic_vector(3 downto 0); 	--dictates ALU operation (i.e., OpCode)
---	ALU_inst_sel			: in std_logic_vector(1 downto 0); 	--dictates what sub-function to execute (last two bits of OpCode)
---	ALU_d2_mux_sel			: in std_logic_vector(1 downto 0); 	--used to control which data to send to ALU input 2
---																				--0=ALU result 1=data forwarded from ALU_data_in_1
---	B_bus_out1_en, C_bus_out1_en		: in std_logic; --enables ALU_out_1 on B and C bus
---	B_bus_out2_en, C_bus_out2_en		: in std_logic; --enables ALU_out_2 on B and C bus
 
 	signal stall_in			: std_logic := '0'; --'1' if either stall is '1', '0' if both stalls are '0'	
 	signal ALU_op_reg			: std_logic_vector(3 downto 0);
@@ -55,6 +49,12 @@ begin
 			ALU_op_reg			<= "0000";
 			ALU_inst_sel_reg	<= "00";
 			immediate_val_reg <= "0000000000000000";
+			ALU_out1_en 		<= '0';
+			ALU_out2_en 		<= '0';
+			EX_stall_out 		<= '0';
+			ALU_d1_DM_op 		<= '0';
+			ALU_d2_immed_op 	<= '0';
+			IW_out 				<= "0000000000000000";
 			
 		elsif rising_edge(sys_clock) then
 		
@@ -62,29 +62,19 @@ begin
 			
 				immediate_val_reg 	<= immediate_val_in;
 				
-				ALU_op_reg 			<= IW_in(15 downto 12);
+				ALU_op_reg 			<= IW_in(15 downto 12); --NOT TRUE FOR LOADS/STORES, WHEN IT SHOULD BE AN ADDITION "0000"
 				ALU_inst_sel_reg 	<= IW_in(1 downto 0);
 				
-				--for jumps (1001), loads (1000...01), don't need any ALU output
-				if IW_in(15 downto 12) = "1001"  or (IW_in(15 downto 12) = "1000" and IW_in(1 downto 0) = "01") then 
-					ALU_out1_en <= '0'; 
-					ALU_out2_en <= '0';
+				ALU_out1_en <= not(IW_in(15)) or (not(IW_in(13)) and not(IW_in(12)));
+				ALU_out2_en <= not(IW_in(15)) and not(IW_in(14)) and IW_in(13);
 				
-				--for BNEZ (1010...00), shifts (0110, 0111), rotates (0101), loads (1000...00), stores (1000...11) only need 1 RF output
-				elsif (IW_in(15 downto 12) = "1010" and IW_in(1 downto 0) = "00") or
-						(IW_in(15 downto 12) = "1000" and (IW_in(1 downto 0) = "00" or IW_in(1 downto 0) = "11")) or
-						IW_in(15 downto 12) = "0101" or IW_in(15 downto 12) = "0110" or 
-						IW_in(15 downto 12) = "0111" then
-					ALU_out1_en <= '1'; 
-					ALU_out2_en <= '0';
-					
-				--for all other instructions, need both RF outputs
-				else
-					ALU_out1_en <= '1'; 
-					ALU_out2_en <= '1';
-					
-				end if;
-				
+				ALU_d2_immed_op <= (not(IW_in(15)) and not(IW_in(14)) and ALU_inst_sel(1)) or
+											(IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12))) or
+												(IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and ALU_inst_sel(0));
+												
+				ALU_d1_DM_op <= IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)); --"1000"
+
+				EX_stall_out <= '0';
 				IW_out <= IW_in;	--forward IW to MEM stage
 
 			elsif stall_in = '1' then
