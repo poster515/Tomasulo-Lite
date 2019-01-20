@@ -21,6 +21,9 @@ entity EX is
 		ALU_out1_en, ALU_out2_en	: out std_logic; --enables ALU_out_X on B or C bus
 		ALU_d1_DM_op 					: out std_logic; --1 = MEM_address to ALU_in_1, 0 = just use A, B, or C bus data (using ALU_d1_bus_in_sel) 
 		ALU_d2_immed_op 				: out std_logic; --1 = val_immediate to ALU_in_2, 0 = just use A, B, or C bus data (using ALU_d2_bus_in_sel) 
+		ALU_in1_en, ALU_in2_en		: out std_logic; --to CSAM. 1 = select from a bus, 0 = don't.
+		ALU_fwd_data_in_en			: out std_logic; --enables latching data from A, B, C bus for forwarding
+		ALU_fwd_data_out_en			: out std_logic; --enables outputting data from ALU forwarding register
 		
 		--Outputs
 		ALU_op			: out std_logic_vector(3 downto 0);
@@ -33,10 +36,11 @@ end EX;
 
 architecture behavioral of EX is
 
-	signal stall_in			: std_logic := '0'; --'1' if either stall is '1', '0' if both stalls are '0'	
-	signal ALU_op_reg			: std_logic_vector(3 downto 0);
-	signal ALU_inst_sel_reg	: std_logic_vector(1 downto 0);
-	signal immediate_val_reg:std_logic_vector(15 downto 0);
+	signal stall_in				: std_logic := '0'; --'1' if either stall is '1', '0' if both stalls are '0'	
+	signal ALU_op_reg				: std_logic_vector(3 downto 0);
+	signal ALU_inst_sel_reg		: std_logic_vector(1 downto 0);
+	signal immediate_val_reg	:std_logic_vector(15 downto 0);
+	signal ALU_fwd_data_in_en_reg : std_logic; --
 	
 begin
 
@@ -51,9 +55,14 @@ begin
 			immediate_val_reg <= "0000000000000000";
 			ALU_out1_en 		<= '0';
 			ALU_out2_en 		<= '0';
+			ALU_in1_en 			<= '0';
+			ALU_in2_en 			<= '0';	
 			EX_stall_out 		<= '0';
 			ALU_d1_DM_op 		<= '0';
 			ALU_d2_immed_op 	<= '0';
+			ALU_fwd_data_in_en 	<= '0';
+			ALU_fwd_data_out_en 	<= '0';
+			ALU_fwd_data_in_en_reg <= '0';
 			IW_out 				<= "0000000000000000";
 			
 		elsif rising_edge(sys_clock) then
@@ -68,13 +77,31 @@ begin
 				ALU_inst_sel_reg 	<= IW_in(1 downto 0);
 				
 				ALU_out1_en <= not(IW_in(15)) or (not(IW_in(13)) and not(IW_in(12)));
-				ALU_out2_en <= not(IW_in(15)) and not(IW_in(14)) and IW_in(13);
+				
+				ALU_out2_en <= (not(IW_in(15)) and not(IW_in(14)) and IW_in(13)) or 
+										(IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and IW_in(1)) or
+										(IW_in(15) and not(IW_in(14)) and IW_in(13) and IW_in(12) and IW_in(0));
+				
+				ALU_in1_en <= not(IW_in(15)) or (IW_in(15) and not(IW_in(12)) and (IW_in(14) xor IW_in(13)));
+				
+				ALU_in2_en <= (not(IW_in(15)) and (not(IW_in(1)) or IW_in(14))) or 
+									(IW_in(15) and not(IW_in(14)) and IW_in(13) and not(IW_in(12)) and IW_in(0));
 				
 				ALU_d2_immed_op <= (not(IW_in(15)) and not(IW_in(14)) and ALU_inst_sel_reg(1)) or
 											(IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12))) or
 												(IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and ALU_inst_sel_reg(0));
 												
 				ALU_d1_DM_op <= IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)); --"1000"
+				
+				ALU_fwd_data_in_en <= IW_in(15) and not(IW_in(14)) and IW_in(1) and (IW_in(13) xnor IW_in(12));
+				ALU_fwd_data_in_en_reg <= IW_in(15) and not(IW_in(14)) and IW_in(1) and (IW_in(13) xnor IW_in(12));
+				
+				if ALU_fwd_data_in_en_reg = '1' then
+					ALU_fwd_data_out_en <= '1';
+					ALU_fwd_data_in_en_reg <= '0';
+				else
+					ALU_fwd_data_out_en <= '0';
+				end if;
 
 				EX_stall_out <= '0';
 				IW_out <= IW_in;	--forward IW to MEM stage

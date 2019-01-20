@@ -15,14 +15,15 @@ entity ALU_top is
 		ALU_op				: in std_logic_vector(3 downto 0); 	--dictates ALU operation (i.e., OpCode)
 		ALU_inst_sel		: in std_logic_vector(1 downto 0); 	--dictates what sub-function to execute (last two bits of OpCode)
 		
-		ALU_d2_bus_in_sel	: in std_logic_vector(2 downto 0); 	--used to control which bus to send to ALU input 2 (from CSAM)
+		ALU_d2_bus_in_sel	: in std_logic_vector(1 downto 0); 	--used to control which bus to send to ALU input 2 (from CSAM)
 		ALU_d2_immed_op	: in std_logic; 	--1 = need to get value_immediate to ALU_in_2, 0 = just use A, B, or C bus data (using ALU_d2_bus_in_sel) (from EX)
-		ALU_d1_bus_in_sel : in std_logic_vector(2 downto 0); 	--used to control which bus to send to ALU input 1 (from CSAM)
+		ALU_d1_bus_in_sel : in std_logic_vector(1 downto 0); 	--used to control which bus to send to ALU input 1 (from CSAM)
 		ALU_d1_DM_op		: in std_logic;	--1 = need to get MEM_address to ALU_in_1, 0 = just use A, B, or C bus data (using ALU_d1_bus_in_sel) (from EX)
-		
 		ALU_out_1_mux 		: in std_logic_vector(1 downto 0); --used to output results on A, B, or C bus
 		ALU_out_2_mux		: in std_logic_vector(1 downto 0); --used to output results on A, B, or C bus
-							 
+		ALU_fwd_data_in_mux_sel : in std_logic_vector(1 downto 0); --(CSAM)
+		ALU_fwd_data_out_en		: in std_logic; --selects fwd reg to output data onto A, B, or C bus (EX)
+		
 		--Outputs
 		ALU_SR 				: out std_logic_vector(3 downto 0); --provides | Zero (Z) | Overflow (V) | Negative (N) | Carry (C) |
 		A_bus, B_bus, C_bus		: inout std_logic_vector(15 downto 0)
@@ -83,7 +84,8 @@ architecture behavioral of ALU_top is
 	signal ALU_d1_in_reg, ALU_d2_in_reg		: std_logic_vector(15 downto 0); --registers latching ALU inputs
 	signal ALU_status								: std_logic_vector(3 downto 0);	--ALU temporary status register
 	signal ALU_d1_mux_sel, ALU_d2_mux_sel	: std_logic_vector(2 downto 0); --mux select lines for ALU_in_1 and ALU_in_2
-	
+	signal ALU_fwd_data_reg, ALU_fwd_data_in	: std_logic_vector(15 downto 0); --stores forwarding data (e.g., DM stores)
+
 begin
 	
 	ALU_inst	: ALU
@@ -134,13 +136,26 @@ begin
 		result  	=> ALU_data_in_1
 	);
 	
-	ALU_d2_mux_sel(0) <= not(ALU_d2_bus_in_sel(2)) and not(ALU_d2_bus_in_sel(2)) and (ALU_d2_bus_in_sel(1) or ALU_d2_immed_op);
-	ALU_d2_mux_sel(1) <= not(ALU_d2_bus_in_sel(1)) and not(ALU_d2_bus_in_sel(0)) and (ALU_d2_bus_in_sel(2) or ALU_d2_immed_op);
-	ALU_d2_mux_sel(2) <= not(ALU_d2_bus_in_sel(2)) and not(ALU_d2_bus_in_sel(1)) and not(ALU_d2_bus_in_sel(2)) and not(ALU_d2_immed_op);
+	--mux for ALU fwd data register
+	ALU_fwd_data_mux	: mux_4_new
+	port map (
+		data0x  	=> A_bus, 		--input from A, B, or C bus
+		data1x  	=> B_bus,		--
+		data2x	=> C_bus,
+		data3x	=> "0000000000000000",
+		sel 		=> ALU_fwd_data_in_mux_sel,
+		result  	=> ALU_fwd_data_in
+	);
 	
-	ALU_d1_mux_sel(0) <= not(ALU_d1_bus_in_sel(2)) and not(ALU_d1_bus_in_sel(2)) and (ALU_d1_bus_in_sel(1) or ALU_d1_DM_op);
-	ALU_d1_mux_sel(1) <= not(ALU_d1_bus_in_sel(1)) and not(ALU_d1_bus_in_sel(0)) and (ALU_d1_bus_in_sel(2) or ALU_d1_DM_op);
-	ALU_d1_mux_sel(2) <= not(ALU_d1_bus_in_sel(2)) and not(ALU_d1_bus_in_sel(1)) and not(ALU_d1_bus_in_sel(2)) and not(ALU_d1_DM_op);
+	ALU_d2_mux_sel(0) <= not(ALU_d2_bus_in_sel(0)) and (ALU_d2_bus_in_sel(1) or ALU_d2_immed_op);
+	ALU_d2_mux_sel(1) <= (ALU_d2_bus_in_sel(1) and ALU_d2_bus_in_sel(0)) or 
+								(not(ALU_d2_bus_in_sel(1)) and not(ALU_d2_bus_in_sel(0)) and ALU_d2_immed_op);
+	ALU_d2_mux_sel(2) <= not(ALU_d2_bus_in_sel(1)) and not(ALU_d2_bus_in_sel(0)) and not(ALU_d2_immed_op);
+	
+	ALU_d1_mux_sel(0) <= not(ALU_d1_bus_in_sel(0)) and (ALU_d1_bus_in_sel(1) or ALU_d1_DM_op);
+	ALU_d1_mux_sel(1) <= (ALU_d1_bus_in_sel(1) and ALU_d1_bus_in_sel(0)) or 
+								(not(ALU_d1_bus_in_sel(1)) and not(ALU_d1_bus_in_sel(0)) and ALU_d1_DM_op);
+	ALU_d1_mux_sel(2) <= not(ALU_d1_bus_in_sel(1)) and not(ALU_d1_bus_in_sel(0)) and not(ALU_d1_DM_op);
 	
 	process(reset_n, clk, ALU_out_1_mux, ALU_out_2_mux)
 	begin
@@ -157,6 +172,7 @@ begin
 			--latch ALU inputs
 			ALU_d1_in_reg <= ALU_data_in_1;
 			ALU_d2_in_reg <= ALU_data_in_2;
+			ALU_fwd_data_reg <= ALU_fwd_data_in;
 			
 			--output latches. by using the "00" for high impendance output we ensure that during resets
 			--the busses are being driven high.
@@ -176,13 +192,28 @@ begin
 			end if;
 			
 			if ALU_out_2_mux = "01" then
-				A_bus <= ALU_out_2;
+			
+				if ALU_fwd_data_out_en = '1' then
+					A_bus <= ALU_fwd_data_reg;
+				else
+					A_bus <= ALU_out_2;
+				end if;
 				
 			elsif ALU_out_2_mux = "10" then
-				B_bus <= ALU_out_2;
+			
+				if ALU_fwd_data_out_en = '1' then
+					B_bus <= ALU_fwd_data_reg;
+				else
+					B_bus <= ALU_out_2;
+				end if;
 				
 			elsif ALU_out_2_mux = "11" then
-				C_bus <= ALU_out_2;
+			
+				if ALU_fwd_data_out_en = '1' then
+					C_bus <= ALU_fwd_data_reg;
+				else
+					C_bus <= ALU_out_2;
+				end if;
 				
 			else 
 				A_bus <= "ZZZZZZZZZZZZZZZZ";
