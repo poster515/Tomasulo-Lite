@@ -15,22 +15,22 @@ entity EX is
 		LAB_stall_in			: in std_logic;
 		WB_stall_in				: in std_logic;		--set high when an upstream CU block needs this 
 		MEM_stall_in			: in std_logic;
+		mem_addr_in				: in std_logic_vector(15 downto 0); --memory address from ID stage
 		immediate_val_in		: in std_logic_vector(15 downto 0); --immediate value from ID stage
 		
 		--Control
-		ALU_out1_en, ALU_out2_en	: out std_logic; --enables ALU_out_X on B or C bus
-		ALU_d1_DM_op 					: out std_logic; --1 = MEM_address to ALU_in_1, 0 = just use A, B, or C bus data (using ALU_d1_bus_in_sel) 
-		ALU_d2_immed_op 				: out std_logic; --1 = val_immediate to ALU_in_2, 0 = just use A, B, or C bus data (using ALU_d2_bus_in_sel) 
-		ALU_in1_en, ALU_in2_en		: out std_logic; --to CSAM. 1 = select from a bus, 0 = don't.
-		ALU_fwd_data_in_en			: out std_logic; --enables latching data from A, B, C bus for forwarding
-		ALU_fwd_data_out_en			: out std_logic; --enables outputting data from ALU forwarding register
+		ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
+		ALU_d1_in_sel, ALU_d2_in_sel	: out std_logic_vector(1 downto 0); --(ALU_top) 1 = select from a bus, 0 = don't.
+		ALU_fwd_data_in_en				: out std_logic; --(ALU_top) latches data from RF_out1/2 for forwarding
+		ALU_fwd_data_out_en				: out std_logic; -- (ALU_top) ALU forwarding register out enable
 		
 		--Outputs
 		ALU_op			: out std_logic_vector(3 downto 0);
 		ALU_inst_sel	: out std_logic_vector(1 downto 0);
 		EX_stall_out	: out std_logic;
-		IW_out			: out std_logic_vector(15 downto 0);	--forwarding to MEM control unit
-		immediate_val	: out	std_logic_vector(15 downto 0)--represents various immediate values from various OpCodes
+		IW_out			: out std_logic_vector(15 downto 0); -- forwarding to MEM control unit
+		mem_addr_out	: out std_logic_vector(15 downto 0); -- memory address directly to ALU
+		immediate_val	: out	std_logic_vector(15 downto 0)	 --represents various immediate values from various OpCodes
 	);
 end EX;
 
@@ -55,11 +55,7 @@ begin
 			immediate_val_reg <= "0000000000000000";
 			ALU_out1_en 		<= '0';
 			ALU_out2_en 		<= '0';
-			ALU_in1_en 			<= '0';
-			ALU_in2_en 			<= '0';	
 			EX_stall_out 		<= '0';
-			ALU_d1_DM_op 		<= '0';
-			ALU_d2_immed_op 	<= '0';
 			ALU_fwd_data_in_en 	<= '0';
 			ALU_fwd_data_out_en 	<= '0';
 			ALU_fwd_data_in_en_reg <= '0';
@@ -71,10 +67,21 @@ begin
 			
 				immediate_val_reg 	<= immediate_val_in;
 				
+				--TODO: translate OpCodes
 				ALU_op_reg(2 downto 0) 		<= IW_in(14 downto 12); 
 				ALU_op_reg(3)					<= (IW_in(14) or IW_in(13) or IW_in(12)) and IW_in(15);
 				
 				ALU_inst_sel_reg 	<= IW_in(1 downto 0);
+				
+				ALU_d1_in_sel(0) <= not(IW_in(15)) or (IW_in(15) and not(IW_in(12)) and (IW_in(14) xor IW_in(13)));
+				ALU_d1_in_sel(1) <= IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12));
+				
+				ALU_d2_in_sel(0) <= (not(IW_in(15)) and ((IW_in(14) and (not(IW_in(13)) or not(IW_in(1)))) or (not(IW_in(1)) and not(IW_in(0))))) or
+											(not(IW_in(15)) and IW_in(14) and not(IW_in(13)) and not(IW_in(12)) and not(IW_in(1)) and IW_in(0));
+											
+				ALU_d2_in_sel(1) <= (IW_in(15) and not(IW_in(13)) and not(IW_in(12))) or 
+											(not(IW_in(15)) and not(IW_in(14)) and not(IW_in(1)) and not(IW_in(0)));
+				
 				
 				ALU_out1_en <= not(IW_in(15)) or (not(IW_in(13)) and not(IW_in(12)));
 				
@@ -82,18 +89,9 @@ begin
 										(IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and IW_in(1)) or
 										(IW_in(15) and not(IW_in(14)) and IW_in(13) and IW_in(12) and IW_in(0));
 				
-				ALU_in1_en <= not(IW_in(15)) or (IW_in(15) and not(IW_in(12)) and (IW_in(14) xor IW_in(13)));
 				
-				ALU_in2_en <= (not(IW_in(15)) and (not(IW_in(1)) or IW_in(14))) or 
-									(IW_in(15) and not(IW_in(14)) and IW_in(13) and not(IW_in(12)) and IW_in(0));
-				
-				ALU_d2_immed_op <= (not(IW_in(15)) and not(IW_in(14)) and ALU_inst_sel_reg(1)) or
-											(IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12))) or
-												(IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and ALU_inst_sel_reg(0));
-												
-				ALU_d1_DM_op <= IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)); --"1000"
-				
-				ALU_fwd_data_in_en <= IW_in(15) and not(IW_in(14)) and IW_in(1) and (IW_in(13) xnor IW_in(12));
+				ALU_fwd_data_in_en <= IW_in(15) and not(IW_in(14)) and 
+											((IW_in(1) and not(IW_in(13)) and not(IW_in(12))) or (IW_in(0) and IW_in(13) and IW_in(12)));
 				ALU_fwd_data_in_en_reg <= IW_in(15) and not(IW_in(14)) and IW_in(1) and (IW_in(13) xnor IW_in(12));
 				
 				if ALU_fwd_data_in_en_reg = '1' then
