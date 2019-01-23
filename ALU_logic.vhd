@@ -19,12 +19,15 @@ architecture behav of ALU_logic is
 	
 	--function prototype
 	function zero_check (temp_result : in std_logic_vector(15 downto 0))
-		return std_logic is variable temp_zero : std_logic := '0';
-			begin
-				for i in 0 to temp_result'length-1 loop
-				temp_zero := temp_zero or temp_result(i);
-				end loop;
-				return not(temp_zero);
+		return std_logic is 
+	
+		variable temp_zero : std_logic := '0';		
+	begin
+		for i in 0 to temp_result'length-1 loop
+			temp_zero := temp_zero or temp_result(i);
+		end loop;
+		
+		return not(temp_zero);
 			  
 	end function zero_check;
 
@@ -65,6 +68,8 @@ architecture behav of ALU_logic is
 					
 				else
 					result <= "UUUUUUUUUUUUUUUU";
+					negative <= 'U';
+					zero	<= 'U';
 				end if; --logic_func
 				
 		end process;

@@ -8,7 +8,6 @@ entity ALU is
 	 carry_in			: in std_logic; --carry in bit from the Control Unit Status Register
 	 data_in_1 			: in std_logic_vector(15 downto 0); --
 	 data_in_2 			: in std_logic_vector(15 downto 0); --
-	 value_immediate	: in std_logic_vector(15 downto 0);
 	 
 	 --Control signals
 	 ALU_op				: in std_logic_vector(3 downto 0); --dictates ALU operation (i.e., OpCode)
@@ -29,14 +28,14 @@ end ALU;
 --DIV(I)		Divide (immediate)	0011	
 --LOG			Logical ops				0100	
 --ROT(C)		Rotate (with carry)	0101	
---SFTL		Shift logical			0110	--shift value is from immediate value
---SFTA		Shift arithmetic		0111	--shift value is from immediate value
---LD			Load from DM			1000  --compute address if needed
---ST			Store to DM				1001  --compute address if needed
---BNEZ		Branch if not zero	1010
---BNE			Branch if not equal	1011
---JMP			Jump						1100
---IO			R/W input/outputs		1101  
+--SFTL		Shift logical			0110	--shift value is from another register
+--SFTA		Shift arithmetic		0111	--shift value is from another register
+--LD/ST		Load/Store from DM	1000  --compute address 
+--JMP			Jump						1001
+--BNE(Z)		Branch if not zero	1010
+--IO			R/W input/outputs		1011
+--LOGI		Logic w immediate		1100
+--(unused)	N/A						1101
 --(unused)	N/A						1110
 --(unused)	N/A						1111
 
@@ -182,69 +181,68 @@ architecture behavioral of ALU is
 		);
 	END component;
 	
-	--ALU_data_in_2 signals
-	signal data_2_in_mux_sel : std_logic;
-	signal ALU_data_in_2	: std_logic_vector(15 downto 0);	-- selected from either data_in_2 or immediate value
-																			--used for ADDI, SUBI, MULTI, DIVI
 	--Add/Sub signal section
 	signal add_sub_c, add_sub_v 	: std_logic;	
 	signal add_sub_result			: std_logic_vector(15 downto 0);
 	signal add_sub_sel				: std_logic; -- selects whether to perform addition or subtraction
+	signal add_SR, sub_SR			: std_logic_vector(3 downto 0);
 	
 	--Multiplier signal section
 	signal mult_result				: std_logic_vector(31 downto 0);
 	alias  mult_MSB is mult_result(31 downto 16);
 	alias  mult_LSB is mult_result(15 downto 0);
+	signal mult_SR						: std_logic_vector(3 downto 0);
 	
 	--Divider signal section
 	signal divide_result, divide_remainder	: std_logic_vector(15 downto 0);
+	signal div_SR									: std_logic_vector(3 downto 0);
 	
 	--Logic unit signals
 	signal logic_result				: std_logic_vector(15 downto 0);
 	signal logic_neg, logic_zero	: std_logic;
+	signal log_SR						: std_logic_vector(3 downto 0);
 	
 	--Rotate unit signals
 	signal rotate_result				: std_logic_vector(15 downto 0);
 	signal rotate_result_final		: std_logic_vector(15 downto 0); --signal fed from both normal and carry results
 	signal rotate_c_result			: std_logic_vector(16 downto 0);
 	signal rotate_c_in				: std_logic_vector(16 downto 0);
-	signal rotate_final_sel			: std_logic; --selects final rotate result for ALU_out_1
+	--signal rotate_final_sel			: std_logic; --selects final rotate result for ALU_out_1
+	signal rot_SR						: std_logic_vector(3 downto 0);
+	signal rotate_in_left, rotate_in_right : std_logic_vector(16 downto 0);
 	
 	--Shift logical unit signals
 	signal shift_logic_overflow	: std_logic;
 	signal shift_logic_result		: std_logic_vector(15 downto 0);
+	signal sftl_SR						: std_logic_vector(3 downto 0);
 	
 	--Shift arithmetic unit signals
 	signal shift_arith_overflow	: std_logic;
 	signal shift_arith_result		: std_logic_vector(15 downto 0);
+	signal sfta_SR						: std_logic_vector(3 downto 0);
 	
 	--function prototype
 	function zero_check (temp_result : in std_logic_vector(15 downto 0))
-		return std_logic is variable temp_zero : std_logic := '0';
-			begin
-				for i in 0 to temp_result'length-1 loop
-				temp_zero := temp_zero or temp_result(i);
-				end loop;
-				return not(temp_zero);
+		return std_logic is 
+		
+		variable temp_zero : std_logic := '0';
+	begin
+		for i in 0 to 15 loop
+			temp_zero := temp_zero or temp_result(i);
+		end loop;
+		
+		return not(temp_zero);
 			  
 	end function zero_check;
 
-	
 begin
-	immediate_value_sel 	: mux_2_new
-	port map (
-		data0x	=> data_in_2,
-		data1x	=> value_immediate,
-		sel		=> data_2_in_mux_sel, 
-		result	=> ALU_data_in_2
-	);
 
 	-- Adder/Subtracter
 	add_sub_inst	: add_sub
 	port map (
 		add_sub		=>	add_sub_sel, -- "0000"=A "0001"=S, 1=A, 0=S
 		dataa			=> data_in_1,
-		datab			=> ALU_data_in_2, --
+		datab			=> data_in_2, --
 		cout			=> add_sub_c,
 		overflow		=> add_sub_v,
 		result		=> add_sub_result
@@ -253,13 +251,13 @@ begin
 	mult_inst 	: multiplier
 	port map (
 		dataa		=> data_in_1,
-		datab		=> ALU_data_in_2,
+		datab		=> data_in_2,
 		result	=> mult_result
 	);
 	
 	divider_inst	: divider
 	port map (
-		denom		=> ALU_data_in_2,
+		denom		=> data_in_2,
 		numer		=> data_in_1,
 		quotient	=> divide_result,
 		remain	=> divide_remainder
@@ -268,7 +266,7 @@ begin
 	logic_unit_inst	: ALU_logic
 	port map (
 		A_in 			=> data_in_1,
-		B_in 			=> ALU_data_in_2,
+		B_in 			=> data_in_2,
 		logic_func 	=> ALU_inst_sel,
 		result 		=> logic_result,
 		zero			=> logic_zero,
@@ -279,7 +277,7 @@ begin
 	port map (
 			data			=> data_in_1,
 			direction	=> ALU_inst_sel(0), --'0' = left, '1' = right
-			distance		=> value_immediate(3 downto 0),
+			distance		=> data_in_2(3 downto 0),
 			result		=> rotate_result
 		);
 		
@@ -287,7 +285,7 @@ begin
 	port map (
 			data			=> rotate_c_in,
 			direction	=> ALU_inst_sel(0), --'0' = left, '1' = right
-			distance		=> '0' & value_immediate(3 downto 0),
+			distance		=> data_in_2(4 downto 0),
 			result		=> rotate_c_result
 		);
 	
@@ -295,7 +293,7 @@ begin
 		port map (
 			data			=> data_in_1,
 			direction	=> ALU_inst_sel(0), --'0' = left, '1' = right
-			distance		=> value_immediate(3 downto 0),
+			distance		=> data_in_2(3 downto 0),
 			overflow		=> shift_logic_overflow,
 			result		=> shift_logic_result
 		);
@@ -304,7 +302,7 @@ begin
 		port map (
 			data			=> data_in_1,
 			direction	=> ALU_inst_sel(0), --'0' = left, '1' = right
-			distance		=> value_immediate(3 downto 0),
+			distance		=> data_in_2(3 downto 0),
 			overflow		=> shift_arith_overflow,
 			result		=> shift_arith_result
 		);
@@ -343,14 +341,14 @@ begin
 		status_out_2_mux : mux_8_width_4
 		PORT MAP
 		(
-			data0x		=> zero_check(add_sub_result) & add_sub_v & add_sub_result(15) & add_sub_c,
-			data1x		=> zero_check(add_sub_result) & add_sub_v & add_sub_result(15) & add_sub_c,
-			data2x		=> (zero_check(mult_LSB) and zero_check(mult_MSB)) & '0' & mult_result(31) & '0',
-			data3x		=> (zero_check(divide_result) and zero_check(divide_remainder)) & '0' & divide_result(15) & '0',
-			data4x		=> logic_zero & '0' & logic_neg & '0',
-			data5x		=> zero_check(rotate_result) & '0' & rotate_result(15) & '0',
-			data6x		=> zero_check(shift_logic_result) & shift_logic_overflow & shift_logic_result(15) & '0',
-			data7x		=> zero_check(shift_arith_result) & shift_arith_overflow & shift_arith_result(15) & '0',
+			data0x		=> add_SR, 	--zero_check(add_sub_result) & add_sub_v & add_sub_result(15) & add_sub_c,
+			data1x		=> sub_SR, 	--zero_check(add_sub_result) & add_sub_v & add_sub_result(15) & add_sub_c,
+			data2x		=> mult_SR,	--(zero_check(mult_LSB) and zero_check(mult_MSB)) & '0' & mult_result(31) & '0',
+			data3x		=> div_SR,	--(zero_check(divide_result) and zero_check(divide_remainder)) & '0' & divide_result(15) & '0',
+			data4x		=> log_SR,	--logic_zero & '0' & logic_neg & '0',
+			data5x		=> rot_SR,	--zero_check(rotate_result) & '0' & rotate_result(15) & '0',
+			data6x		=> sftl_SR,	--zero_check(shift_logic_result) & shift_logic_overflow & shift_logic_result(15) & '0',
+			data7x		=> sfta_SR,	--zero_check(shift_arith_result) & shift_arith_overflow & shift_arith_result(15) & '0',
 			sel			=> ALU_op(2 downto 0),
 			result		=> ALU_status
 		);
@@ -360,27 +358,43 @@ begin
 		(
 			data0x		=> rotate_result,
 			data1x		=> rotate_c_result(15 downto 0),
-			sel			=> rotate_final_sel,
+			sel			=> ALU_inst_sel(1), --rotate_final_sel,
 			result		=> rotate_result_final
 		);
 		
 		rotate_c_in_mux : mux_2_width_17
 		PORT MAP
 		(
-			data0x		=> data_in_1 & carry_in,
-			data1x		=> carry_in & data_in_1,
+			data0x		=> rotate_in_right,
+			data1x		=> rotate_in_left,
 			sel			=> ALU_inst_sel(0),
 			result		=> rotate_c_in
 		);
-
-	--calculate data_2_in_mux based on ALU_op and ALU_inst_sel
-	data_2_in_mux_sel <= (not(ALU_op(3)) and not(ALU_op(2)) and ALU_inst_sel(1)) or
-								(ALU_op(3) and ALU_op(2) and not(ALU_op(1)) and not(ALU_op(0)));
 		
-	--required signal for add/subtract unit, based on OpCode alone
-	add_sub_sel <= not(ALU_op(3)) and not(ALU_op(2)) and not(ALU_op(1)) and not(ALU_op(0));
+	process(add_sub_v, add_sub_c, mult_result, shift_logic_overflow, shift_arith_overflow, add_sub_result, mult_LSB, mult_MSB, 
+				divide_result, divide_remainder, logic_zero, logic_neg, rotate_result, shift_logic_result, shift_arith_result, data_in_1, carry_in)
+	begin
+	
+		--Status register assignments
+		add_SR 	<= zero_check(add_sub_result) & add_sub_v & add_sub_result(15) & add_sub_c;
+		sub_SR 	<= zero_check(add_sub_result) & add_sub_v & add_sub_result(15) & add_sub_c;
+		mult_SR 	<= (zero_check(mult_LSB) and zero_check(mult_MSB)) & '0' & mult_result(31) & '0';
+		div_SR 	<= (zero_check(divide_result) and zero_check(divide_remainder)) & '0' & divide_result(15) & '0';
+		log_SR 	<= logic_zero & '0' & logic_neg & '0';
+		rot_SR 	<= zero_check(rotate_result) & '0' & rotate_result(15) & '0';
+		sftl_SR 	<= zero_check(shift_logic_result) & shift_logic_overflow & shift_logic_result(15) & '0';
+		sfta_SR 	<= zero_check(shift_arith_result) & shift_arith_overflow & shift_arith_result(15) & '0';
+		
+		--Rotate w carry input assignment
+		rotate_in_right 	<= data_in_1 & carry_in;
+		rotate_in_left 	<= carry_in & data_in_1;
+		
+	end process;
+
+	--1 = add (add, load, store), 0 = subtract
+	add_sub_sel <= not(ALU_op(2)) and not(ALU_op(1)) and not(ALU_op(0));
 
 	--rotate_final select
-	rotate_final_sel <= not(ALU_op(3)) and ALU_op(2) and not(ALU_op(1)) and ALU_op(0) and not(ALU_inst_sel(1));
+	--rotate_final_sel <= not(ALU_op(3)) and ALU_op(2) and not(ALU_op(1)) and ALU_op(0) and not(ALU_inst_sel(1));
 		
 end behavioral;
