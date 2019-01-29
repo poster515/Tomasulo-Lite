@@ -14,6 +14,7 @@ component ALU_top
     --Input data and clock
 		clk 					        : in std_logic;
 		RF_in_1, RF_in_2	 : in std_logic_vector(15 downto 0);
+		MEM_in, WB_in	    : in std_logic_vector(15 downto 0);
 		MEM_address			    : in std_logic_vector(15 downto 0); --memory address forwarded directly from LAB
 		value_immediate	  : in std_logic_vector(15 downto 0); --Reg2 data field from IW directly from EX
 																				--used to forward shift/rotate distance and immediate value for addi & subi
@@ -41,6 +42,7 @@ constant TIME_DELTA : time := 10 ns;
 
 -- test signals here, map identically to EUT
 signal RF_data_in_1, RF_data_in_2	        : std_logic_vector(15 downto 0) := "0000000000000000";
+signal MEM_in, WB_in	                     : std_logic_vector(15 downto 0) := "0000000000000000";
 signal MEM_address, value_immediate       : std_logic_vector(15 downto 0) := "0000000000000000";
 signal ALU_out_1_mux, ALU_out_2_mux       : std_logic_vector(1 downto 0) := "00";
 signal clk, reset_n, ALU_fwd_data_out_en  : std_logic := '0'; -- initialize to 0;
@@ -56,8 +58,10 @@ signal A_bus, B_bus, C_bus                : std_logic_vector(15 downto 0) := "ZZ
       port map(
         --Input data and clock
 		    clk 					       => clk,
-		    RF_in_1        => RF_data_in_1,
-		    RF_in_2        => RF_data_in_2,
+		    RF_in_1         => RF_data_in_1,
+		    RF_in_2         => RF_data_in_2,
+		    MEM_in          => MEM_in,
+		    WB_in           => WB_in,
       		MEM_address		   => MEM_address,
       		value_immediate	=> value_immediate,
  		    
@@ -99,7 +103,7 @@ signal A_bus, B_bus, C_bus                : std_logic_vector(15 downto 0) := "ZZ
       
       reset_n <= '1';
       
-      wait for TIME_DELTA;
+      wait for TIME_DELTA / 2;
       
       -- Add
       ALU_op        <= "0000";
@@ -110,6 +114,7 @@ signal A_bus, B_bus, C_bus                : std_logic_vector(15 downto 0) := "ZZ
       RF_data_in_2  <= "0000000000001111";
       ALU_fwd_data_in_en <= '0';
       wait for TIME_DELTA;
+      
       
       -- Add Immediate
       ALU_op        <= "0000";

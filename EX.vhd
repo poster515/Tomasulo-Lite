@@ -6,6 +6,8 @@
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
+use ieee.numeric_std.all;
+use work.arrays.ALL;
 
 entity EX is
    port ( 
@@ -39,9 +41,27 @@ architecture behavioral of EX is
 	signal stall_in				: std_logic := '0'; --'1' if either stall is '1', '0' if both stalls are '0'	
 	signal ALU_op_reg				: std_logic_vector(3 downto 0);
 	signal ALU_inst_sel_reg		: std_logic_vector(1 downto 0);
-	signal immediate_val_reg	:std_logic_vector(15 downto 0);
+	signal immediate_val_reg	: std_logic_vector(15 downto 0);
+	signal mem_addr_reg			: std_logic_vector(15 downto 0);
 	signal ALU_fwd_data_in_en_reg : std_logic; --
-	
+	constant opcode_translator : array_16_4 := ("0000", --add
+																 "0001", --sub
+																 "0010", --mult
+																 "0011", --div
+																 "0100", --logic
+																 "0101", --rot
+																 "0110", --shift_l
+																 "0111", --shift_a
+																 "0000", --load/store
+																 "1001", --jump
+																 "0001", --bne(z)
+																 "1011", --GPIO/I2C
+																 "1100", --logic_i
+																 "0000",
+																 "0000",
+																 "0000"
+																);
+
 begin
 
 	stall_in <= LAB_stall_in or WB_stall_in or MEM_stall_in;
@@ -52,6 +72,7 @@ begin
 		
 			ALU_op_reg			<= "0000";
 			ALU_inst_sel_reg	<= "00";
+			mem_addr_reg		<= "0000000000000000";
 			immediate_val_reg <= "0000000000000000";
 			ALU_out1_en 		<= '0';
 			ALU_out2_en 		<= '0';
@@ -66,13 +87,14 @@ begin
 			if stall_in = '0' then
 			
 				immediate_val_reg 	<= immediate_val_in;
+				mem_addr_reg 			<= mem_addr_in;
 				
-				--TODO: translate OpCodes
-				ALU_op_reg(2 downto 0) 		<= IW_in(14 downto 12); 
-				ALU_op_reg(3)					<= (IW_in(14) or IW_in(13) or IW_in(12)) and IW_in(15);
+				ALU_op_reg <= opcode_translator(to_integer(unsigned(IW_in(15 downto 12))));
+				
+				report "opcode_translator index is: " & integer'image(to_integer(unsigned(IW_in(15 downto 12)))) & " and translated opcode is: " & integer'image(to_integer(unsigned(opcode_translator(to_integer(unsigned(IW_in(15 downto 12)))))));
 				
 				ALU_inst_sel_reg 	<= IW_in(1 downto 0);
-				
+	
 				ALU_d1_in_sel(0) <= not(IW_in(15)) or (IW_in(15) and not(IW_in(12)) and (IW_in(14) xor IW_in(13)));
 				ALU_d1_in_sel(1) <= IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12));
 				
@@ -107,7 +129,6 @@ begin
 			elsif stall_in = '1' then
 				--propagate stall signal and keep immediate value
 				EX_stall_out <= '1';
-				immediate_val_reg <= immediate_val_reg;
 				
 			end if; --stall_in
 
@@ -121,5 +142,6 @@ begin
 	ALU_op 			<= ALU_op_reg;
 	ALU_inst_sel 	<=	ALU_inst_sel_reg;
 	immediate_val	<= immediate_val_reg;
+	mem_addr_out 	<= mem_addr_reg;
 	
 end behavioral;
