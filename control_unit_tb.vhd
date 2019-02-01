@@ -41,7 +41,7 @@ component control_unit
 		ID_RF_out1_en, ID_RF_out2_en	: out std_logic; --enables RF_out_X on B and C bus
 		
 		--(EX) ALU control Signals
-		ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
+		--ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
 		ALU_d1_in_sel, ALU_d2_in_sel	: out std_logic_vector(1 downto 0); --(ALU_top) 1 = select from a bus, 0 = don't.
 		ALU_fwd_data_in_en				: out std_logic; --(ALU_top) latches data from RF_out1/2 for forwarding
 		ALU_fwd_data_out_en				: out std_logic; -- (ALU_top) ALU forwarding register out enable
@@ -107,7 +107,7 @@ constant TIME_DELTA : time := 10 ns;
 	signal	ID_RF_out1_en, ID_RF_out2_en	: std_logic := '0'; --enables RF_out_X on B and C bus
 		
 		--(EX) ALU control Signals
-	signal	ALU_out1_en, ALU_out2_en		    : std_logic := '0'; --(CSAM) enables ALU_outX on A, B, or C bus
+	--signal	ALU_out1_en, ALU_out2_en		    : std_logic := '0'; --(CSAM) enables ALU_outX on A, B, or C bus
 	signal	ALU_d1_in_sel, ALU_d2_in_sel	 : std_logic_vector(1 downto 0) := "00"; --(ALU_top) 1 = select from a bus, 0 = don't.
 	signal	ALU_fwd_data_in_en				: std_logic := '0'; --(ALU_top) latches data from RF_out1/2 for forwarding
 	signal	ALU_fwd_data_out_en			: std_logic := '0'; -- (ALU_top) ALU forwarding register out enable
@@ -171,8 +171,8 @@ constant TIME_DELTA : time := 10 ns;
 		    ID_RF_out2_en	    => ID_RF_out2_en,
 		    
 		    --(EX) ALU control Signals
-      		ALU_out1_en		     =>	ALU_out1_en,		
-      		ALU_out2_en		     => ALU_out2_en,
+      		--ALU_out1_en		     =>	ALU_out1_en,		
+      		--ALU_out2_en		     => ALU_out2_en,
      		 ALU_d2_in_sel		   => ALU_d2_in_sel,
       		ALU_d1_in_sel		   => ALU_d1_in_sel,
 		    ALU_fwd_data_in_en   => ALU_fwd_data_in_en,
@@ -220,38 +220,38 @@ constant TIME_DELTA : time := 10 ns;
       
       -- first try some non-memory/ION operation
       PM_data_in <= "0000000100001000"; --ADD R2, R2
-      wait for TIME_DELTA;
+      wait for TIME_DELTA * 4;
       
-      -- try some non-memory/ION operation
-      PM_data_in <= "0001000100001000"; --SUB R2, R2
-      wait for TIME_DELTA;
-      
-      -- try some non-memory/ION operation
-      PM_data_in <= "1100000100001000"; --ANDI R2, #2
-      wait for TIME_DELTA;
-      
-      -- now try some a memory operation
-      PM_data_in <= "1000000100001000"; --LD R2, 0x08(R2)
-      wait for TIME_DELTA;
-      
-      -- now try some an GPIO write operation
-      PM_data_in <= "1011000100000001"; --WR R2
-      wait for TIME_DELTA;
-      
-      -- now try some an GPIO read operation
-      PM_data_in <= "1011001010000000"; --RD R5
-      wait for TIME_DELTA;
-      
-      -- now try some an I2C read operation
-      PM_data_in <= "1011001010000010"; --RD 0x00000, R5
-      wait for TIME_DELTA;
-      
-      -- now try some another immediate I2C write operation
-      PM_data_in <= "1011001110000011"; --WR 0x00000, R7
-      wait for TIME_DELTA;
-     
-      PM_data_in <= "1000000100001000"; --LD R2, 0x08(R2)
-      wait for 1000 ns;
+      ---- try some non-memory/ION operation
+--      PM_data_in <= "0001000100001000"; --SUB R2, R2
+--      wait for TIME_DELTA;
+--      
+--      -- try some non-memory/ION operation
+--      PM_data_in <= "1100000100001000"; --ANDI R2, #2
+--      wait for TIME_DELTA;
+--      
+--      -- now try some a memory operation
+--      PM_data_in <= "1000000100001000"; --LD R2, 0x08(R2)
+--      wait for TIME_DELTA;
+--      
+--      -- now try some an GPIO write operation
+--      PM_data_in <= "1011000100000001"; --WR R2
+--      wait for TIME_DELTA;
+--      
+--      -- now try some an GPIO read operation
+--      PM_data_in <= "1011001010000000"; --RD R5
+--      wait for TIME_DELTA;
+--      
+--      -- now try some an I2C read operation
+--      PM_data_in <= "1011001010000010"; --RD 0x00000, R5
+--      wait for TIME_DELTA;
+--      
+--      -- now try some another immediate I2C write operation
+--      PM_data_in <= "1011001110000011"; --WR 0x00000, R7
+--      wait for TIME_DELTA;
+--     
+--      PM_data_in <= "1000000100001000"; --LD R2, 0x08(R2)
+--      wait for 1000 ns;
       
     end process simulation;
 

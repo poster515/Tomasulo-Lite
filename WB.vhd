@@ -155,7 +155,7 @@ architecture behavioral of WB is
 	
 ---------------------------------------------------------------	
 begin
-	A_bus <= "ZZZZZZZZZZZZZZZZ";
+	
 	stall <= LAB_stall_in;
 	
 	--buffer A and C bus every time they change

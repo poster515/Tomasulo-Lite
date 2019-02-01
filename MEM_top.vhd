@@ -11,18 +11,19 @@ entity MEM_top is
 		--Input data and clock
 		reset_n, sys_clock	: in std_logic;	
 		mem_addr_in				: in std_logic_vector(10 downto 0);	--data memory address directly from ALU
+		MEM_in_1, MEM_in_2 	: in std_logic_vector(15 downto 0);
 		
 		--Control 
 		A_bus_out_en, C_bus_out_en		: in std_logic; --enables data memory output on A and C bus
-		A_bus_in_sel, C_bus_in_sel		: in std_logic; --enables A or C bus to data_in
+		MEM_in_1_sel, MEM_in_2_sel		: in std_logic; --enables MEM_in_1 or MEM_in_2 to data_in
 		wr_en									: in std_logic; --write enable for data memory
 		MEM_op								: in std_logic; --'1' = DM operation, '0' = forward data, not a memory operation 
 		
 		--Outputs
-		
+		MEM_out_1, MEM_out_2				: out std_logic_vector(15 downto 0)
 		
 		--Inouts
-		A_bus, C_bus	: inout std_logic_vector(15 downto 0)
+		
 	);
 end MEM_top;
 
@@ -79,17 +80,17 @@ begin
 	--latch inputs
 	mem_addr <= mem_addr_in;
 	
-	data_in <= 	A_bus when A_bus_in_sel = '1' else
-					C_bus when C_bus_in_sel = '1' else
-					A_bus;
+	data_in <= 	MEM_in_1 when MEM_in_1_sel = '1' else
+					MEM_in_2 when MEM_in_2_sel = '1' else
+					MEM_in_1;
 	
 	--latch outputs
 	
-	A_bus <= data_out when A_out_en_reg = '1' and reset_n = '1' and MEM_op = '1' else
+	MEM_out_1 <= data_out when A_out_en_reg = '1' and reset_n = '1' and MEM_op = '1' else
 				data_in  when A_out_en_reg = '1' and reset_n = '1' and MEM_op = '0' else
 				"ZZZZZZZZZZZZZZZZ";
 				
-	C_bus <= data_out when C_out_en_reg = '1' and reset_n = '1' and MEM_op = '1' else
+	MEM_out_2 <= data_out when C_out_en_reg = '1' and reset_n = '1' and MEM_op = '1' else
 				data_in  when A_out_en_reg = '1' and reset_n = '1' and MEM_op = '0' else
 				"ZZZZZZZZZZZZZZZZ";
 

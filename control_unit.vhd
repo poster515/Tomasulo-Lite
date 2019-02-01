@@ -40,7 +40,7 @@ entity control_unit is
 		ID_RF_out1_en, ID_RF_out2_en	: out std_logic; --enables RF_out_X on B and C bus
 		
 		--(EX) ALU control Signals
-		ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
+--		ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
 		ALU_d1_in_sel, ALU_d2_in_sel	: out std_logic_vector(1 downto 0); --(ALU_top) 1 = select from a bus, 0 = don't.
 		ALU_fwd_data_in_en				: out std_logic; --(ALU_top) latches data from RF_out1/2 for forwarding
 		ALU_fwd_data_out_en				: out std_logic; -- (ALU_top) ALU forwarding register out enable
@@ -80,14 +80,17 @@ architecture behavioral of control_unit is
 	signal EX_stall_out			: std_logic;
 	signal ID_EX_mem_address	: std_logic_vector(15 downto 0);
 	signal ID_EX_immediate_val	: std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
+	signal ID_reset_out			: std_logic;
  
 	--EX <-> MEM Signals
 	signal EX_MEM_IW				: std_logic_vector(15 downto 0); -- forwarding to MEM control unit
 	signal MEM_stall_out			: std_logic;
+	signal EX_reset_out			: std_logic;
 	
 	--MEM <-> WB Signals
 	signal MEM_WB_IW				: std_logic_vector(15 downto 0);
 	signal WB_stall_out			: std_logic;
+	--signal MEM_reset_out			: std_logic;
 	
 	
 
@@ -132,7 +135,8 @@ architecture behavioral of control_unit is
 		IW_out							: out std_logic_vector(15 downto 0); --goes to EX control unit
 		stall_out						: out std_logic;
 		immediate_val					: out	std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
-		mem_addr_out					: out std_logic_vector(15 downto 0)  --
+		mem_addr_out					: out std_logic_vector(15 downto 0);
+		reset_out						: out std_logic		--
 		);
 	end component;
 	
@@ -148,7 +152,7 @@ architecture behavioral of control_unit is
 			immediate_val_in			: in std_logic_vector(15 downto 0); --immediate value from ID stage
 			
 			--Control
-			ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
+--			ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
 			ALU_d1_in_sel, ALU_d2_in_sel	: out std_logic_vector(1 downto 0); --(ALU_top) 1 = select from a bus, 0 = don't.
 			ALU_fwd_data_in_en				: out std_logic; --(ALU_top) latches data from RF_out1/2 for forwarding
 			ALU_fwd_data_out_en				: out std_logic; -- (ALU_top) ALU forwarding register out enable
@@ -159,7 +163,8 @@ architecture behavioral of control_unit is
 			EX_stall_out				: out std_logic;
 			IW_out						: out std_logic_vector(15 downto 0); -- forwarding to MEM control unit
 			mem_addr_out				: out std_logic_vector(15 downto 0); -- memory address directly to ALU
-			immediate_val				: out	std_logic_vector(15 downto 0)	 --represents various immediate values from various OpCodes
+			immediate_val				: out	std_logic_vector(15 downto 0);	 --represents various immediate values from various OpCodes
+			reset_out					: out std_logic
 		);
 	end component;
 	
@@ -190,6 +195,7 @@ architecture behavioral of control_unit is
 			I2C_error_out				: out std_logic;	--in case we can't write to slave after three attempts, send to LAB for arbitration
 			IW_out						: out std_logic_vector(15 downto 0);
 			stall_out					: out std_logic
+			--reset_out					: out std_logic
 		);
 	end component;
 	
@@ -241,13 +247,14 @@ begin
 		IW_out			=> ID_EX_IW,			
 		stall_out		=> ID_stall_out,		
 		immediate_val	=> ID_EX_immediate_val,	
-		mem_addr_out 	=> ID_EX_mem_address	
+		mem_addr_out 	=> ID_EX_mem_address,
+		reset_out		=> ID_reset_out	
 	);
 	
 	EX_actual : EX
 	port map (
 		--Input data and clock
-		reset_n			=> reset_n, 
+		reset_n			=> ID_reset_out, 
 		sys_clock		=> sys_clock,	
 		IW_in				=> ID_EX_IW,
 		LAB_stall_in	=> LAB_stall_out,
@@ -257,8 +264,8 @@ begin
 		immediate_val_in	=> ID_EX_immediate_val,
 		
 		--Control
-		ALU_out1_en		=> ALU_out1_en, 
-		ALU_out2_en		=> ALU_out2_en,
+--		ALU_out1_en		=> ALU_out1_en, 
+--		ALU_out2_en		=> ALU_out2_en,
 		ALU_d1_in_sel	=> ALU_d1_in_sel, 
 		ALU_d2_in_sel	=> ALU_d2_in_sel,
 		ALU_fwd_data_in_en	=> ALU_fwd_data_in_en,
@@ -270,13 +277,14 @@ begin
 		EX_stall_out		=> EX_stall_out,
 		IW_out				=> EX_MEM_IW,	
 		mem_addr_out		=> ALU_mem_addr_out,
-		immediate_val		=> ALU_immediate_val
+		immediate_val		=> ALU_immediate_val,
+		reset_out			=>	EX_reset_out
 	);
 	
 	MEM_actual : MEM
 	port map ( 
 		--Input data and clock
-		reset_n						=> reset_n, 
+		reset_n						=> EX_reset_out, 
 		sys_clock					=> sys_clock,	
 		IW_in							=> EX_MEM_IW,
 		LAB_stall_in				=> LAB_stall_out,
@@ -303,6 +311,7 @@ begin
 		I2C_error_out				=> I2C_error_out,
 		IW_out						=> MEM_WB_IW,
 		stall_out					=> MEM_stall_out
+		--reset_out					=> MEM_reset_out
 	);
 	
 	WB_actual : WB

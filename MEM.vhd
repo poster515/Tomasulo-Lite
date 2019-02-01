@@ -34,11 +34,12 @@ entity MEM is
 		I2C_error_out	: out std_logic;	--in case we can't write to slave after three attempts, send to LAB for arbitration
 		IW_out			: out std_logic_vector(15 downto 0);
 		stall_out		: out std_logic
+		--reset_out		: out std_logic
 	);
 end MEM;
 
 architecture behavioral of MEM is
-	
+	signal reset_reg								: std_logic := '0';
 	signal stall_in								: std_logic := '0';
 	signal I2C_stall, I2C_GPIO_arb_stall	: std_logic;
 	signal I2C_out_en, GPIO_out_en			: std_logic; --output enables from the I2C read and GPIO read processes respectively
@@ -61,15 +62,18 @@ begin
 	begin
 	
 		if reset_n = '0' then
-		
+			--reset_reg 		<= '0';
 			I2C_r_en 		<= '0'; 	-- IW_in(1 downto 0) = "10"
 			I2C_wr_en 		<= '0'; 	-- IW_in(1 downto 0) = "11"
 			I2C_machine 	<= idle;
 			I2C_stall 		<= '0';
 			I2C_out_en  	<= '0';
 			I2C_error_out 	<= '0';
+			slave_addr		<= "0000000";
 		
 		elsif rising_edge(sys_clock) then
+			
+			--reset_reg <= '1';
 		
 			case I2C_machine is
 				
@@ -207,5 +211,6 @@ begin
 	--latch inputs
 	
 	--latch outputs
+	--reset_out <= reset_reg;
 	
 end behavioral;

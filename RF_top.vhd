@@ -71,14 +71,21 @@ begin
 			
 		elsif rising_edge(clk) then
 		
-			--latch outputs
-			if (RF_out_1_en = '1') then
-				RF_out_1 <= RF(out1_index);
-				
-			elsif (RF_out_1_en = '1') then
-				RF_out_2 <= RF(out2_index);
-
-			end if; --out signals
+--			--latch outputs
+--			if (RF_out_1_en = '1') then
+--				RF_out_1 <= RF(out1_index);
+--				
+--			elsif (RF_out_1_en = '1') then
+--				RF_out_2 <= RF(out2_index);
+--
+--			end if; --out signals
 		end if; --reset_n
 	end process;
+	
+	--latch outputs
+	RF_out_1 <= RF(out1_index) when RF_out_1_en = '1' else
+						RF(0);
+		
+	RF_out_2 <= RF(out2_index) when RF_out_2_en = '1' else
+						RF(0);
 end behavioral;
