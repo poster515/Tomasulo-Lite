@@ -21,9 +21,8 @@ entity EX is
 		immediate_val_in		: in std_logic_vector(15 downto 0); --immediate value from ID stage
 		
 		--Control
-		--ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
+		ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
 		ALU_d1_in_sel, ALU_d2_in_sel	: out std_logic_vector(1 downto 0); --(ALU_top) 1 = select from a bus, 0 = don't.
-		ALU_fwd_data_in_en				: out std_logic; --(ALU_top) latches data from RF_out1/2 for forwarding
 		ALU_fwd_data_out_en				: out std_logic; -- (ALU_top) ALU forwarding register out enable
 		
 		--Outputs
@@ -44,7 +43,6 @@ architecture behavioral of EX is
 	signal ALU_inst_sel_reg		: std_logic_vector(1 downto 0);
 	signal immediate_val_reg	: std_logic_vector(15 downto 0);
 	signal mem_addr_reg			: std_logic_vector(15 downto 0);
-	signal ALU_fwd_data_in_en_reg : std_logic; --
 	constant opcode_translator : array_16_4 := ("0000", --add
 																 "0001", --sub
 																 "0010", --mult
@@ -75,12 +73,10 @@ begin
 			ALU_inst_sel_reg			<= "00";
 			mem_addr_reg				<= "0000000000000000";
 			immediate_val_reg 		<= "0000000000000000";
-			--ALU_out1_en 				<= '0';
-			--ALU_out2_en 				<= '0';
+			ALU_out1_en 				<= '0';
+			ALU_out2_en 				<= '0';
 			EX_stall_out 				<= '0';
-			ALU_fwd_data_in_en 		<= '0';
 			ALU_fwd_data_out_en 		<= '0';
-			ALU_fwd_data_in_en_reg 	<= '0';
 			ALU_d1_in_sel 				<= "00";
 			ALU_d2_in_sel 				<= "00";
 			IW_out 						<= "0000000000000000";
@@ -109,19 +105,14 @@ begin
 				ALU_d2_in_sel(1) <= (IW_in(15) and not(IW_in(13)) and not(IW_in(12))) or (not(IW_in(15)) and not(IW_in(14)) and IW_in(0));
 				
 				
---				ALU_out1_en <= not(IW_in(15)) or (not(IW_in(13)) and not(IW_in(12)));
---				ALU_out2_en <= (not(IW_in(15)) and not(IW_in(14)) and IW_in(13)) or 
---										(IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and IW_in(1)) or
---										(IW_in(15) and not(IW_in(14)) and IW_in(13) and IW_in(12) and IW_in(0));
+				ALU_out1_en <= not(IW_in(15)) or (not(IW_in(13)) and not(IW_in(12)));
+				ALU_out2_en <= (not(IW_in(15)) and not(IW_in(14)) and IW_in(13)) or 
+										(IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and IW_in(1)) or
+										(IW_in(15) and not(IW_in(14)) and IW_in(13) and IW_in(12) and IW_in(0));
 				
-				
-				ALU_fwd_data_in_en <= IW_in(15) and not(IW_in(14)) and 
-											((IW_in(1) and not(IW_in(13)) and not(IW_in(12))) or (IW_in(0) and IW_in(13) and IW_in(12)));
-				ALU_fwd_data_in_en_reg <= IW_in(15) and not(IW_in(14)) and IW_in(1) and (IW_in(13) xnor IW_in(12));
-				
-				if ALU_fwd_data_in_en_reg = '1' then
+				--stores (1000..1X), I2C/GPIO writes (1011..X1) need to forward data from ALU
+				if (IW_in(15) and not(IW_in(14)) and ((not(IW_in(13)) and not(IW_in(12)) and IW_in(1)) or (IW_in(13) and IW_in(12) and IW_in(0))))  = '1' then
 					ALU_fwd_data_out_en <= '1';
-					ALU_fwd_data_in_en_reg <= '0';
 				else
 					ALU_fwd_data_out_en <= '0';
 				end if;

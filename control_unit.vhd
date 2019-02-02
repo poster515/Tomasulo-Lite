@@ -40,9 +40,8 @@ entity control_unit is
 		ID_RF_out1_en, ID_RF_out2_en	: out std_logic; --enables RF_out_X on B and C bus
 		
 		--(EX) ALU control Signals
---		ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
+		ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
 		ALU_d1_in_sel, ALU_d2_in_sel	: out std_logic_vector(1 downto 0); --(ALU_top) 1 = select from a bus, 0 = don't.
-		ALU_fwd_data_in_en				: out std_logic; --(ALU_top) latches data from RF_out1/2 for forwarding
 		ALU_fwd_data_out_en				: out std_logic; -- (ALU_top) ALU forwarding register out enable
 		
 		ALU_op								: out std_logic_vector(3 downto 0);
@@ -152,9 +151,8 @@ architecture behavioral of control_unit is
 			immediate_val_in			: in std_logic_vector(15 downto 0); --immediate value from ID stage
 			
 			--Control
---			ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
+			ALU_out1_en, ALU_out2_en		: out std_logic; --(EX) enables ALU_outX on A, B, or C bus
 			ALU_d1_in_sel, ALU_d2_in_sel	: out std_logic_vector(1 downto 0); --(ALU_top) 1 = select from a bus, 0 = don't.
-			ALU_fwd_data_in_en				: out std_logic; --(ALU_top) latches data from RF_out1/2 for forwarding
 			ALU_fwd_data_out_en				: out std_logic; -- (ALU_top) ALU forwarding register out enable
 			
 			--Outputs
@@ -264,11 +262,10 @@ begin
 		immediate_val_in	=> ID_EX_immediate_val,
 		
 		--Control
---		ALU_out1_en		=> ALU_out1_en, 
---		ALU_out2_en		=> ALU_out2_en,
+		ALU_out1_en		=> ALU_out1_en, 
+		ALU_out2_en		=> ALU_out2_en,
 		ALU_d1_in_sel	=> ALU_d1_in_sel, 
 		ALU_d2_in_sel	=> ALU_d2_in_sel,
-		ALU_fwd_data_in_en	=> ALU_fwd_data_in_en,
 		ALU_fwd_data_out_en	=> ALU_fwd_data_out_en,
 		
 		--Outputs

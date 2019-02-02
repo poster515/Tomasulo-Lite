@@ -5,19 +5,21 @@ use ieee.numeric_std.all;
 entity ALU_top is
 	port (
 		--Input data and clock
-		RF_in_1, RF_in_2	: in std_logic_vector(15 downto 0);
-		MEM_in, WB_in		: in std_logic_vector(15 downto 0); --
-		MEM_address			: in std_logic_vector(15 downto 0); --memory address forwarded directly from LAB
-		value_immediate	: in std_logic_vector(15 downto 0); --Reg2 data field from IW directly from EX
+		sys_clock, reset_n	: in std_logic;
+		RF_in_1, RF_in_2		: in std_logic_vector(15 downto 0);
+		MEM_in, WB_in			: in std_logic_vector(15 downto 0); --
+		MEM_address				: in std_logic_vector(15 downto 0); --memory address forwarded directly from LAB
+		value_immediate		: in std_logic_vector(15 downto 0); --Reg2 data field from IW directly from EX
 																				--used to forward shift/rotate distance and immediate value for addi & subi
 
 		--Control signals
-		ALU_op				: in std_logic_vector(3 downto 0); 	--dictates ALU operation (i.e., OpCode)
-		ALU_inst_sel		: in std_logic_vector(1 downto 0); 	--dictates what sub-function to execute (last two bits of OpCode)
-		ALU_d2_in_sel		: in std_logic_vector(1 downto 0); 	--(EX) control which input to send to ALU input 2
-		ALU_d1_in_sel 		: in std_logic_vector(1 downto 0); 	--(EX) control which input to send to ALU input 1
-
-		ALU_fwd_data_out_en	: in std_logic; --(EX) selects fwd reg to output data onto A, B, or C bus (EX)
+		ALU_op					: in std_logic_vector(3 downto 0); 	--dictates ALU operation (i.e., OpCode)
+		ALU_inst_sel			: in std_logic_vector(1 downto 0); 	--dictates what sub-function to execute (last two bits of OpCode)
+		ALU_d2_in_sel			: in std_logic_vector(1 downto 0); 	--(EX) control which input to send to ALU input 2
+		ALU_d1_in_sel 			: in std_logic_vector(1 downto 0); 	--(EX) control which input to send to ALU input 1
+		
+		ALU_out1_en, ALU_out2_en	: in std_logic; --enables latching ALU results into ALU_outX_reg
+		ALU_fwd_data_out_en			: in std_logic; --(EX) selects fwd reg to output data onto A, B, or C bus (EX)
 		
 		--Outputs
 		ALU_SR 					: out std_logic_vector(3 downto 0); --provides | Zero (Z) | Overflow (V) | Negative (N) | Carry (C) |
@@ -69,7 +71,8 @@ architecture behavioral of ALU_top is
 	end component mux_2_new;
 
 	signal ALU_out_1, ALU_out_2	 			: std_logic_vector(15 downto 0); --output signals from the ALU
---	signal ALU_out_1, ALU_out_2	 			: std_logic_vector(15 downto 0); --output signals from the ALU
+	signal ALU_out1_reg, ALU_out2_reg		: std_logic_vector(15 downto 0); --output registers for ALU_top
+	signal ALU_SR_reg								: std_logic_vector(3 downto 0); --
 	signal ALU_data_in_1, ALU_data_in_2		: std_logic_vector(15 downto 0); --signal between data_in_2_mux and data_in_2 input of ALU
 	signal ALU_status								: std_logic_vector(3 downto 0);	--ALU temporary status register
 --	signal ALU_fwd_data_reg, ALU_fwd_data_in	: std_logic_vector(15 downto 0); --stores forwarding data (e.g., DM stores)
@@ -116,11 +119,32 @@ begin
 		result  	=> ALU_data_in_2
 	);
 	
+	process(reset_n, sys_clock, ALU_out_1, ALU_out_2, ALU_out1_en, ALU_out2_en)
+	begin
+		if reset_n = '0' then
+			ALU_out1_reg 	<= "0000000000000000";
+			ALU_out2_reg 	<= "0000000000000000";
+			ALU_SR_reg		<= "0000";
+			
+		elsif rising_edge(sys_clock) then
+			if ALU_out1_en = '1' then
+				ALU_out1_reg 	<= ALU_out_1;
+			end if;
+			
+			if ALU_fwd_data_out_en = '0' and ALU_out2_en = '1' then
+				ALU_out2_reg 	<= ALU_out_2;
+			elsif ALU_fwd_data_out_en = '1' and ALU_out2_en = '1' then
+				ALU_out2_reg 	<= RF_in_1; --forwarding data for stores, e.g.
+			end if;
+			
+			ALU_SR_reg		<= ALU_status;
+		
+		end if; --reset_n
+	end process;
+	
 	--latch outputs
-	ALU_top_out_1 <= ALU_out_1;
-	ALU_top_out_2 <= ALU_out_2 when ALU_fwd_data_out_en = '0' else
-							RF_in_1 when ALU_fwd_data_out_en = '1' else
-								ALU_out_2;
-	ALU_SR <= ALU_status;
+	ALU_top_out_1 	<= ALU_out1_reg;
+	ALU_top_out_2 	<= ALU_out2_reg;
+	ALU_SR 			<= ALU_SR_reg;
 	
 end behavioral;
