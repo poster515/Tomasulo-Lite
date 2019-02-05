@@ -18,10 +18,8 @@ entity MEM is
 		I2C_op_run				: in std_logic;	--when high, lets CU know that there is a CU operation occurring
 		
 		--MEM Control Outputs
-		MEM_in_sel		: out std_logic; --selects bus for MEM_top to select data from 
-		MEM_out_en		: out std_logic; --enables MEM output on busses, goes to CSAM for arbitration
-		MEM_wr_en		: out std_logic; --write enable for data memory
-		MEM_op			: out std_logic;
+		MEM_out_mux_sel		: out std_logic_vector(1 downto 0); --enables MEM output 
+		MEM_wr_en				: out std_logic; --write enable for data memory
 
 		--ION Control Outputs
 		GPIO_r_en, GPIO_wr_en 	: out std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
@@ -146,6 +144,7 @@ begin
 		if reset_n = '0' then
 			
 			IW_out <= "0000000000000000";
+			MEM_out_mux_sel <= "00";
 		
 			GPIO_r_en 	<= '0'; 	-- IW_in(1 downto 0) = "00"
 			GPIO_out_en	<= '0'; 	-- IW_in(1 downto 0) = "00", signal goes to out_en_arbitration process for arbitration
@@ -153,9 +152,6 @@ begin
 			GPIO_wr_en 	<= '0'; 	-- IW_in(1 downto 0) = "01"
 			ION_in_sel	<= '0'; 	-- IW_in(1 downto 0) = "01", signal goes to CSAM for arbitration
 			
-			MEM_op 		<= '0';	--else its not a memory operation
-			MEM_in_sel	<= '0';	--IW_in(1) = '1' is for stores
-			MEM_out_en	<= '0';	--IW_in(1) = '0' is for loads
 			MEM_wr_en	<= '0';	--IW_in(1) = '1' is for stores
 
 		elsif rising_edge(sys_clock) then
@@ -164,39 +160,44 @@ begin
 			
 				IW_out <= IW_in;	--forward IW to WB stage
 				
+				--stores (1000..0X), need to forward data from data memory
+				if (IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and not(IW_in(1))) = '1' then
+					MEM_out_mux_sel <= "01";
+					
+				--for all ALU (i.e., 0XXX) operations or LOGI (1100), need to forward ALU_out_1 data through MEM block to WB	
+				elsif (IW_in(15) = '0') or ((IW_in(15) and IW_in(14)) = '1') then
+					MEM_out_mux_sel <= "10";
+					
+				--else just forward on ALU_out_2 data through MEM block (not sure this can ever happen)
+				else	
+					MEM_out_mux_sel <= "11";
+					
+				end if;
+				
 				--for GPIO operations (1011) 
 				if IW_in(15 downto 12) = "1011" then 
 					
 					GPIO_r_en 	<= not(IW_in(1)) and not(IW_in(0)); -- IW_in(1 downto 0) = "00"
-					GPIO_out_en	<= not(IW_in(1)) and not(IW_in(0)); -- IW_in(1 downto 0) = "00", goes to out_en_arbitration process for arbitration
+					GPIO_out_en	<= not(IW_in(1)) and not(IW_in(0)); -- IW_in(1 downto 0) = "00"
 					
 					GPIO_wr_en 	<= not(IW_in(1)) and IW_in(0); 		-- IW_in(1 downto 0) = "01"
 					ION_in_sel	<= not(IW_in(1)) and IW_in(0); 		-- IW_in(1 downto 0) = "01", signal goes to CSAM for arbitration
 					
-					MEM_op 		<= '0';	--
-					MEM_in_sel	<= '0';	--
-					MEM_out_en	<= '0';	--
 					MEM_wr_en	<= '0';	--
 					
 				--for Data Memory operations (1000)
-				elsif IW_in(15 downto 12) = "1000" then
+				elsif IW_in(15 downto 12) = "1000" and IW_in(1) = '1' then
 				
-					MEM_op 		<= '1';
-					MEM_in_sel	<= IW_in(1);		--IW_in(1) = '1' is for stores
-					MEM_out_en	<= not(IW_in(1));	--IW_in(1) = '0' is for loads
 					MEM_wr_en	<= IW_in(1);		--IW_in(1) = '1' is for stores 
 				
 				--for all other instructions
 				else
 				
 					GPIO_r_en 	<= '0'; -- IW_in(1 downto 0) = "00"
-					GPIO_out_en	<= '0'; -- IW_in(1 downto 0) = "00", goes to out_en_arbitration process for arbitration
+					GPIO_out_en	<= '0'; -- IW_in(1 downto 0) = "00"
 					GPIO_wr_en 	<= '0'; -- IW_in(1 downto 0) = "01"
 					ION_in_sel	<= '0';
 				
-					MEM_op 		<= '0';	--else its not a memory operation
-					MEM_in_sel	<= '0';	--IW_in(1) = '1' is for stores
-					MEM_out_en	<= '0';	--IW_in(1) = '0' is for loads
 					MEM_wr_en	<= '0';	--IW_in(1) = '1' is for stores
 					
 				end if;

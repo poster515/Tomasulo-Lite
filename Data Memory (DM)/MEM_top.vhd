@@ -10,24 +10,31 @@ entity MEM_top is
    port ( 
 		--Input data and clock
 		reset_n, sys_clock	: in std_logic;	
-		mem_addr_in				: in std_logic_vector(10 downto 0);	--data memory address directly from ALU
 		MEM_in_1, MEM_in_2 	: in std_logic_vector(15 downto 0);
 		
 		--Control 
-		A_bus_out_en, C_bus_out_en		: in std_logic; --enables data memory output on A and C bus
-		MEM_in_1_sel, MEM_in_2_sel		: in std_logic; --enables MEM_in_1 or MEM_in_2 to data_in
-		wr_en									: in std_logic; --write enable for data memory
-		MEM_op								: in std_logic; --'1' = DM operation, '0' = forward data, not a memory operation 
+		MEM_out_mux_sel		: in std_logic_vector(1 downto 0);
+		wr_en						: in std_logic; --write enable for data memory
 		
-		--Outputs
-		MEM_out_1, MEM_out_2				: out std_logic_vector(15 downto 0)
-		
-		--Inouts
-		
+		--Output
+		MEM_out_top				: out std_logic_vector(15 downto 0)
+	
 	);
 end MEM_top;
 
 architecture behavioral of MEM_top is
+
+	component mux_4_new is
+	PORT
+	(
+		data0x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+		data1x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+		data2x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+		data3x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+		sel			: IN STD_LOGIC_VECTOR (1 DOWNTO 0);
+		result		: OUT STD_LOGIC_VECTOR (15 DOWNTO 0)
+	);
+	end component mux_4_new;
 
 	component DataMem is
 	port
@@ -40,19 +47,32 @@ architecture behavioral of MEM_top is
 		);
 	end component;
 	
-	signal mem_addr					: std_logic_vector(10 downto 0);
-	signal data_in, data_out		: std_logic_vector(15 downto 0);
-	signal A_out_en_reg, C_out_en_reg	: std_logic;
+	signal mem_addr_reg				: std_logic_vector(10 downto 0);
+	signal wr_en_reg					: std_logic;
+	signal data_in_reg, MEM_out_top_reg, data_out, MEM_mux_out		: std_logic_vector(15 downto 0);
+	signal MEM_out_mux_sel_reg 		: std_logic_vector(1 downto 0);
+
 	
 begin
 
+	--output mux
+	MEM_out_mux	: mux_4_new
+	port map (
+		data0x	=> "0000000000000000",
+		data1x  	=> data_out,		--data from DM 		
+		data2x  	=> MEM_in_1,		--data from ALU output
+		data3x	=> MEM_in_2,		--data forwarded through ALU
+		sel 		=> MEM_out_mux_sel_reg,
+		result  	=> MEM_mux_out
+	);
+	
 	data_memory : DataMem
 	port map
 		(
-			address	=> mem_addr,
+			address	=> MEM_in_1(10 downto 0),
 			clock		=> sys_clock,
-			data		=> data_in,
-			wren		=> wr_en,
+			data		=> MEM_in_2,
+			wren		=> wr_en_reg,
 			q			=> data_out
 		);
 
@@ -61,37 +81,17 @@ begin
 		if reset_n = '0' then
 			
 		elsif rising_edge(sys_clock) then
-		
-			if A_bus_out_en = '1' then
-				A_out_en_reg <= '1';
-				
-			elsif C_bus_out_en = '1' then
-				C_out_en_reg <= '1';
-			
-			else
-				A_out_en_reg <= '0';
-				C_out_en_reg <= '0';
-			
-			end if; --A_bus_out_en
+
+			wr_en_reg				<= wr_en;
+			MEM_out_mux_sel_reg 	<= MEM_out_mux_sel;
+			MEM_out_top_reg		<= MEM_mux_out;
 			
 		end if; --reset_n
 	end process;
 	
 	--latch inputs
-	mem_addr <= mem_addr_in;
-	
-	data_in <= 	MEM_in_1 when MEM_in_1_sel = '1' else
-					MEM_in_2 when MEM_in_2_sel = '1' else
-					MEM_in_1;
-	
-	--latch outputs
-	
-	MEM_out_1 <= data_out when A_out_en_reg = '1' and reset_n = '1' and MEM_op = '1' else
-				data_in  when A_out_en_reg = '1' and reset_n = '1' and MEM_op = '0' else
-				"ZZZZZZZZZZZZZZZZ";
-				
-	MEM_out_2 <= data_out when C_out_en_reg = '1' and reset_n = '1' and MEM_op = '1' else
-				data_in  when A_out_en_reg = '1' and reset_n = '1' and MEM_op = '0' else
-				"ZZZZZZZZZZZZZZZZ";
 
+	--latch outputs
+	MEM_out_top <= MEM_out_top_reg;
+	
 end behavioral;

@@ -54,6 +54,7 @@ entity control_unit is
 		MEM_MEM_out_en						: out std_logic; --enables MEM output on busses, goes to CSAM for arbitration
 		MEM_MEM_wr_en						: out std_logic; --write enable for data memory
 		MEM_MEM_op							: out std_logic;
+		MEM_MEM_fwd_data_out_en			: out std_logic; -- (MEM_top) MEM forwarding register out enable
 		
 		MEM_GPIO_r_en, MEM_GPIO_wr_en : out std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
 		MEM_I2C_r_en, MEM_I2C_wr_en	: out std_logic; --initiates reads/writes for I2C (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
@@ -181,6 +182,7 @@ architecture behavioral of control_unit is
 			MEM_out_en					: out std_logic; --enables MEM output on busses, goes to CSAM for arbitration
 			MEM_wr_en					: out std_logic; --write enable for data memory
 			MEM_op						: out std_logic;
+			MEM_fwd_data_out_en		: out std_logic; -- (MEM_top) MEM forwarding register out enable
 
 			--ION Control Outputs
 			GPIO_r_en, GPIO_wr_en 	: out std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
@@ -294,6 +296,7 @@ begin
 		MEM_out_en					=> MEM_MEM_out_en,
 		MEM_wr_en					=> MEM_MEM_wr_en,
 		MEM_op						=> MEM_MEM_op,
+		MEM_fwd_data_out_en		=> MEM_MEM_fwd_data_out_en,
 
 		--ION Control Outputs
 		GPIO_r_en					=> MEM_GPIO_r_en, 
