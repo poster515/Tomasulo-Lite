@@ -14,13 +14,7 @@ entity control_unit is
 		LAB_mem_addr_out					: in std_logic_vector(15 downto 0); 
 		LAB_ID_IW							: in std_logic_vector(15 downto 0); 
 		LAB_stall_out						: in std_logic;
-		
-		--TEST INPUTS ONLY, REMOVE AFTER CSAM INSTANTIATED
-		WB_A_bus_in_sel					: in std_logic; 	-- from CSAM, selects data from memory stage to buffer in ROB
-		WB_C_bus_in_sel					: in std_logic; 	-- from CSAM, selects data from memory stage to buffer in ROB
-		WB_B_bus_out_en					: in std_logic;	-- from CSAM, if '1', we can write result on B_bus
-		WB_C_bus_out_en					: in std_logic; 	-- from CSAM, if '1', we can write result on C_bus
-		
+
 		--TEST OUTPUT ONLY, REMOVE AFTER LAB INSTANTIATED (signal goes to LAB for arbitration)
 		I2C_error_out						: out std_logic; 	
 		
@@ -50,24 +44,21 @@ entity control_unit is
 		ALU_immediate_val					: out	std_logic_vector(15 downto 0);	 --represents various immediate values from various OpCodes
 		
 		--(MEM) MEM control Signals
-		MEM_MEM_in_sel						: out std_logic; --selects bus for MEM_top to select data from 
-		MEM_MEM_out_en						: out std_logic; --enables MEM output on busses, goes to CSAM for arbitration
+		MEM_MEM_out_mux_sel				: out std_logic_vector(1 downto 0); --
 		MEM_MEM_wr_en						: out std_logic; --write enable for data memory
-		MEM_MEM_op							: out std_logic;
-		MEM_MEM_fwd_data_out_en			: out std_logic; -- (MEM_top) MEM forwarding register out enable
 		
-		MEM_GPIO_r_en, MEM_GPIO_wr_en : out std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
-		MEM_I2C_r_en, MEM_I2C_wr_en	: out std_logic; --initiates reads/writes for I2C (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
-		MEM_ION_out_en						: out std_logic; --enables input_buffer onto either A or B bus for GPIO reads, goes to CSAM for arbitration
-		MEM_ION_in_sel						: out std_logic; --enables A or B bus onto output_buffer for digital writes, goes to CSAM for arbitration
-		MEM_slave_addr						: out std_logic_vector(6 downto 0);
+		MEM_GPIO_in_en, MEM_GPIO_wr_en 	: out std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
+		MEM_I2C_r_en, MEM_I2C_wr_en		: out std_logic; --initiates reads/writes for I2C (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
+		MEM_slave_addr							: out std_logic_vector(6 downto 0);
 		
-		--(WB) WB control Signals
+		--(WB) WB control Signals and Input/Output data
 		WB_RF_in_demux						: out std_logic_vector(4 downto 0); -- selects which 
-		WB_RF_in_en, WB_wr_en			: out std_logic;	-- RF_in_en sent to CSAM for arbitration. wr_en also sent to CSAM, although it's passed through. 
+		WB_wr_en								: out std_logic;	-- RF_in_en sent to CSAM for arbitration. wr_en also sent to CSAM, although it's passed through. 
 		
-		--Inouts
-		A_bus, B_bus, C_bus	: inout std_logic_vector(15 downto 0) --A/C bus because we need access to memory stage outputs, B/C bus because RF has access to them
+		MEM_out_top				: in std_logic_vector(15 downto 0);
+		GPIO_out					: in std_logic_vector(15 downto 0);
+		I2C_out					: in std_logic_vector(15 downto 0);
+		WB_data_out				: out std_logic_vector(15 downto 0)
 	);
 end control_unit;
 
@@ -178,17 +169,12 @@ architecture behavioral of control_unit is
 			I2C_op_run					: in std_logic;	--when high, lets CU know that there is a CU operation occurring
 			
 			--MEM Control Outputs
-			MEM_in_sel					: out std_logic; --selects bus for MEM_top to select data from 
-			MEM_out_en					: out std_logic; --enables MEM output on busses, goes to CSAM for arbitration
 			MEM_wr_en					: out std_logic; --write enable for data memory
-			MEM_op						: out std_logic;
-			MEM_fwd_data_out_en		: out std_logic; -- (MEM_top) MEM forwarding register out enable
-
+			MEM_out_mux_sel		: out std_logic_vector(1 downto 0); --enables MEM output 
+			
 			--ION Control Outputs
-			GPIO_r_en, GPIO_wr_en 	: out std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
+			GPIO_in_en, GPIO_wr_en 	: out std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
 			I2C_r_en, I2C_wr_en		: out std_logic; --initiates reads/writes for I2C (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
-			ION_out_en					: out std_logic; --enables input_buffer onto either A or B bus for GPIO reads, goes to CSAM for arbitration
-			ION_in_sel					: out std_logic; --enables A or B bus onto output_buffer for digital writes, goes to CSAM for arbitration
 			slave_addr					: out std_logic_vector(6 downto 0);
 			
 			--Outputs
@@ -203,23 +189,20 @@ architecture behavioral of control_unit is
 		generic ( ROB_DEPTH : integer := 10 );
 		port ( 
 			--Input data and clock
-			reset_n, sys_clock		: in std_logic;	
-			IW_in, PM_data_in			: in std_logic_vector(15 downto 0); --IW from MEM and from PM, via LAB, respectively
-			LAB_stall_in				: in std_logic;		--set high when an upstream CU block needs this 
+			reset_n, sys_clock	: in std_logic;	
+			IW_in, PM_data_in		: in std_logic_vector(15 downto 0); --IW from MEM and from PM, via LAB, respectively
+			LAB_stall_in			: in std_logic;		--set high when an upstream CU block needs this 
+			MEM_out_top				: in std_logic_vector(15 downto 0);
+			GPIO_out					: in std_logic_vector(15 downto 0);
+			I2C_out					: in std_logic_vector(15 downto 0);
 			
 			--Control
-			RF_in_demux					: out std_logic_vector(4 downto 0); -- selects which 
-			RF_in_en, wr_en			: out std_logic;	-- RF_in_en sent to CSAM for arbitration. wr_en also sent to CSAM, although it's passed through. 
-			A_bus_in_sel				: in std_logic; 	-- from CSAM, selects data from memory stage to buffer in ROB
-			C_bus_in_sel				: in std_logic; 	-- from CSAM, selects data from memory stage to buffer in ROB
-			B_bus_out_en				: in std_logic;	-- from CSAM, if '1', we can write result on B_bus
-			C_bus_out_en				: in std_logic;	-- from CSAM, if '1', we can write result on C_bus
+			RF_in_demux				: out std_logic_vector(4 downto 0); -- selects which register to write back to
+			RF_wr_en					: out std_logic;	--
 						
 			--Outputs
-			stall_out					: out std_logic;
-
-			--Inouts
-			A_bus, B_bus, C_bus		: inout std_logic_vector(15 downto 0) --A/C bus because we need access to memory stage outputs, B/C bus because RF has access to them
+			stall_out		: out std_logic;
+			WB_data_out		: out std_logic_vector(15 downto 0)
 		);
 	end component;
 	
@@ -254,30 +237,30 @@ begin
 	EX_actual : EX
 	port map (
 		--Input data and clock
-		reset_n			=> ID_reset_out, 
-		sys_clock		=> sys_clock,	
-		IW_in				=> ID_EX_IW,
-		LAB_stall_in	=> LAB_stall_out,
-		WB_stall_in		=> WB_stall_out,
-		MEM_stall_in	=> MEM_stall_out,
-		mem_addr_in			=> ID_EX_mem_address,
-		immediate_val_in	=> ID_EX_immediate_val,
+		reset_n					=> ID_reset_out, 
+		sys_clock				=> sys_clock,	
+		IW_in						=> ID_EX_IW,
+		LAB_stall_in			=> LAB_stall_out,
+		WB_stall_in				=> WB_stall_out,
+		MEM_stall_in			=> MEM_stall_out,
+		mem_addr_in				=> ID_EX_mem_address,
+		immediate_val_in		=> ID_EX_immediate_val,
 		
 		--Control
-		ALU_out1_en		=> ALU_out1_en, 
-		ALU_out2_en		=> ALU_out2_en,
-		ALU_d1_in_sel	=> ALU_d1_in_sel, 
-		ALU_d2_in_sel	=> ALU_d2_in_sel,
+		ALU_out1_en				=> ALU_out1_en, 
+		ALU_out2_en				=> ALU_out2_en,
+		ALU_d1_in_sel			=> ALU_d1_in_sel, 
+		ALU_d2_in_sel			=> ALU_d2_in_sel,
 		ALU_fwd_data_out_en	=> ALU_fwd_data_out_en,
 		
 		--Outputs
-		ALU_op				=> ALU_op,
-		ALU_inst_sel		=> ALU_inst_sel,
-		EX_stall_out		=> EX_stall_out,
-		IW_out				=> EX_MEM_IW,	
-		mem_addr_out		=> ALU_mem_addr_out,
-		immediate_val		=> ALU_immediate_val,
-		reset_out			=>	EX_reset_out
+		ALU_op					=> ALU_op,
+		ALU_inst_sel			=> ALU_inst_sel,
+		EX_stall_out			=> EX_stall_out,
+		IW_out					=> EX_MEM_IW,	
+		mem_addr_out			=> ALU_mem_addr_out,
+		immediate_val			=> ALU_immediate_val,
+		reset_out				=>	EX_reset_out
 	);
 	
 	MEM_actual : MEM
@@ -292,19 +275,14 @@ begin
 		I2C_op_run					=> I2C_op_run,
 		
 		--MEM Control Outputs
-		MEM_in_sel					=> MEM_MEM_in_sel,
-		MEM_out_en					=> MEM_MEM_out_en,
+		MEM_out_mux_sel			=> MEM_MEM_out_mux_sel,
 		MEM_wr_en					=> MEM_MEM_wr_en,
-		MEM_op						=> MEM_MEM_op,
-		MEM_fwd_data_out_en		=> MEM_MEM_fwd_data_out_en,
-
+		
 		--ION Control Outputs
-		GPIO_r_en					=> MEM_GPIO_r_en, 
+		GPIO_in_en					=> MEM_GPIO_in_en, 
 		GPIO_wr_en 					=> MEM_GPIO_wr_en,
 		I2C_r_en						=> MEM_I2C_r_en, 
 		I2C_wr_en					=> MEM_I2C_wr_en,
-		ION_out_en					=> MEM_ION_out_en,
-		ION_in_sel					=> MEM_ION_in_sel,
 		slave_addr					=> MEM_slave_addr,
 		
 		--Outputs
@@ -322,23 +300,17 @@ begin
 		IW_in							=> MEM_WB_IW, 
 		PM_data_in					=> PM_data_in,
 		LAB_stall_in				=> LAB_stall_out,
+		MEM_out_top					=> MEM_out_top,
+		GPIO_out						=> GPIO_out,
+		I2C_out						=> I2C_out,
 		
 		--Control
 		RF_in_demux					=> WB_RF_in_demux,
-		RF_in_en						=> WB_RF_in_en, 
-		wr_en							=> WB_wr_en,
-		A_bus_in_sel				=> WB_A_bus_in_sel,
-		C_bus_in_sel				=> WB_C_bus_in_sel,
-		B_bus_out_en				=> WB_B_bus_out_en,
-		C_bus_out_en				=> WB_C_bus_out_en,
-					
+		RF_wr_en						=> WB_wr_en,
+			
 		--Outputs
 		stall_out					=> WB_stall_out,
-
-		--Inouts
-		A_bus							=> A_bus, 
-		B_bus							=> B_bus, 		
-		C_bus							=> C_bus
+		WB_data_out					=> WB_data_out
 	);
 		
 		

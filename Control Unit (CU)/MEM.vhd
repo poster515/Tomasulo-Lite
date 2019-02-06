@@ -22,10 +22,8 @@ entity MEM is
 		MEM_wr_en				: out std_logic; --write enable for data memory
 
 		--ION Control Outputs
-		GPIO_r_en, GPIO_wr_en 	: out std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
+		GPIO_in_en, GPIO_wr_en 	: out std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
 		I2C_r_en, I2C_wr_en		: out std_logic; --initiates reads/writes for I2C (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
-		ION_out_en					: out std_logic; --enables input_buffer onto either A or B bus for GPIO reads, goes to CSAM for arbitration
-		ION_in_sel					: out std_logic; --enables A or B bus onto output_buffer for digital writes, goes to CSAM for arbitration
 		slave_addr					: out std_logic_vector(6 downto 0);
 		
 		--Outputs
@@ -39,8 +37,7 @@ end MEM;
 architecture behavioral of MEM is
 	signal reset_reg								: std_logic := '0';
 	signal stall_in								: std_logic := '0';
-	signal I2C_stall, I2C_GPIO_arb_stall	: std_logic;
-	signal I2C_out_en, GPIO_out_en			: std_logic; --output enables from the I2C read and GPIO read processes respectively
+	signal I2C_stall								: std_logic;
 	signal ION_results_ready_reg				: std_logic := '0'; --register tracking whether ION results are ready, make asynchronous
 
 	type I2C_state is (idle, running, unknown);
@@ -48,24 +45,19 @@ architecture behavioral of MEM is
 	
 begin
 	--combinational logic to compute stall signals
-	stall_in 	<= LAB_stall_in or WB_stall_in;
-	stall_out 	<= I2C_stall or I2C_GPIO_arb_stall or stall_in;
-	
-	--combinational logic to de-conflict ION output writes. should prioritize I2C reads since they take the longest	
-	ION_out_en 				<= I2C_out_en or GPIO_out_en;
-	I2C_GPIO_arb_stall 	<= I2C_out_en and GPIO_out_en;
+	stall_in 				<= LAB_stall_in or WB_stall_in;
+	stall_out 				<= I2C_stall or stall_in;
 
 	--process to just handle I2C operations
 	I2C_operation : process(reset_n, sys_clock, IW_in, I2C_op_run) 
 	begin
-	
+		--this process can and should be independent of external stalls, because it takes so long
 		if reset_n = '0' then
 			--reset_reg 		<= '0';
 			I2C_r_en 		<= '0'; 	-- IW_in(1 downto 0) = "10"
 			I2C_wr_en 		<= '0'; 	-- IW_in(1 downto 0) = "11"
 			I2C_machine 	<= idle;
 			I2C_stall 		<= '0';
-			I2C_out_en  	<= '0';
 			I2C_error_out 	<= '0';
 			slave_addr		<= "0000000";
 		
@@ -78,7 +70,6 @@ begin
 				when idle => 
 				
 					I2C_stall 		<= '0';
-					I2C_out_en  	<= '0';
 					I2C_error_out 	<= '0';
 				
 					if IW_in(15 downto 12) = "1011" and IW_in(1) = '1' then
@@ -106,10 +97,6 @@ begin
 						
 					elsif I2C_op_run = '0' then --I2C operation is complete, write results onto bus
 					
-						if IW_in(1 downto 0) = "10" then --I2C read operation
-							I2C_out_en  	<= '1';
-						end if; 
-						
 						I2C_machine 	<= idle;
 						I2C_stall 		<= '0'; --since I2C operation is complete, can execute next command and there is no more stall
 						
@@ -144,15 +131,10 @@ begin
 		if reset_n = '0' then
 			
 			IW_out <= "0000000000000000";
-			MEM_out_mux_sel <= "00";
-		
-			GPIO_r_en 	<= '0'; 	-- IW_in(1 downto 0) = "00"
-			GPIO_out_en	<= '0'; 	-- IW_in(1 downto 0) = "00", signal goes to out_en_arbitration process for arbitration
-			
-			GPIO_wr_en 	<= '0'; 	-- IW_in(1 downto 0) = "01"
-			ION_in_sel	<= '0'; 	-- IW_in(1 downto 0) = "01", signal goes to CSAM for arbitration
-			
-			MEM_wr_en	<= '0';	--IW_in(1) = '1' is for stores
+			MEM_out_mux_sel <= "00"; --goes to MEM_top but oh well
+			GPIO_in_en	<= '0'; 	--
+			GPIO_wr_en 	<= '0'; 	--
+			MEM_wr_en	<= '0';	--
 
 		elsif rising_edge(sys_clock) then
 			
@@ -160,49 +142,46 @@ begin
 			
 				IW_out <= IW_in;	--forward IW to WB stage
 				
-				--stores (1000..0X), need to forward data from data memory
+				--loads (1000..0X), need to forward data from data memory
 				if (IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and not(IW_in(1))) = '1' then
+					MEM_wr_en	<= '0';	--don't want to enable writing to DM here
 					MEM_out_mux_sel <= "01";
 					
+				--stores (1000..1X)
+				elsif IW_in(15 downto 12) = "1000" and IW_in(1) = '1' then
+					MEM_wr_en	<= '1';		--
+					MEM_out_mux_sel <= "00";
+					
 				--for all ALU (i.e., 0XXX) operations or LOGI (1100), need to forward ALU_out_1 data through MEM block to WB	
-				elsif (IW_in(15) = '0') or ((IW_in(15) and IW_in(14)) = '1') then
+				elsif ((IW_in(15) = '0') or (IW_in(15 downto 12) = "1100")) then
+					MEM_wr_en	<= '0';	--don't want to enable writing to DM here
 					MEM_out_mux_sel <= "10";
 					
-				--else just forward on ALU_out_2 data through MEM block (not sure this can ever happen)
+				--else just forward on '0' through MEM block (not sure this can ever happen)
 				else	
-					MEM_out_mux_sel <= "11";
+					MEM_wr_en	<= '0';	--don't want to enable writing to DM here
+					MEM_out_mux_sel <= "00";
 					
 				end if;
 				
 				--for GPIO operations (1011) 
 				if IW_in(15 downto 12) = "1011" then 
 					
-					GPIO_r_en 	<= not(IW_in(1)) and not(IW_in(0)); -- IW_in(1 downto 0) = "00"
-					GPIO_out_en	<= not(IW_in(1)) and not(IW_in(0)); -- IW_in(1 downto 0) = "00"
+					GPIO_in_en	<= not(IW_in(1)) and not(IW_in(0)); -- IW_in(1 downto 0) = "00", enables digital input data to be latched (read)
+					GPIO_wr_en 	<= not(IW_in(1)) and IW_in(0); 		-- IW_in(1 downto 0) = "01", enables writing data to digital outputs (write)
 					
-					GPIO_wr_en 	<= not(IW_in(1)) and IW_in(0); 		-- IW_in(1 downto 0) = "01"
-					ION_in_sel	<= not(IW_in(1)) and IW_in(0); 		-- IW_in(1 downto 0) = "01", signal goes to CSAM for arbitration
-					
-					MEM_wr_en	<= '0';	--
-					
-				--for Data Memory operations (1000)
-				elsif IW_in(15 downto 12) = "1000" and IW_in(1) = '1' then
-				
-					MEM_wr_en	<= IW_in(1);		--IW_in(1) = '1' is for stores 
-				
 				--for all other instructions
 				else
-				
-					GPIO_r_en 	<= '0'; -- IW_in(1 downto 0) = "00"
-					GPIO_out_en	<= '0'; -- IW_in(1 downto 0) = "00"
+					GPIO_in_en	<= '0'; -- IW_in(1 downto 0) = "00"
 					GPIO_wr_en 	<= '0'; -- IW_in(1 downto 0) = "01"
-					ION_in_sel	<= '0';
-				
-					MEM_wr_en	<= '0';	--IW_in(1) = '1' is for stores
 					
 				end if;
 
 			else
+				--don't want these signals enabled, could have unintended consequences during stall
+				GPIO_in_en	<= '0'; 	--
+				GPIO_wr_en 	<= '0'; 	--
+				MEM_wr_en	<= '0';	--
 				
 			end if; --stall_in
 

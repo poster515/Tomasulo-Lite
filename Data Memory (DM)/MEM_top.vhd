@@ -79,6 +79,9 @@ begin
 	process(reset_n, sys_clock)
 	begin
 		if reset_n = '0' then
+			wr_en_reg				<= '0';
+			MEM_out_mux_sel_reg 	<= "00";
+			MEM_out_top_reg		<= "0000000000000000";
 			
 		elsif rising_edge(sys_clock) then
 
