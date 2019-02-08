@@ -81,7 +81,7 @@ architecture behavioral of control_unit is
 	--MEM <-> WB Signals
 	signal MEM_WB_IW				: std_logic_vector(15 downto 0);
 	signal WB_stall_out			: std_logic;
-	--signal MEM_reset_out			: std_logic;
+	signal MEM_reset_out			: std_logic;
 	
 	
 
@@ -180,8 +180,8 @@ architecture behavioral of control_unit is
 			--Outputs
 			I2C_error_out				: out std_logic;	--in case we can't write to slave after three attempts, send to LAB for arbitration
 			IW_out						: out std_logic_vector(15 downto 0);
-			stall_out					: out std_logic
-			--reset_out					: out std_logic
+			stall_out					: out std_logic;
+			reset_out					: out std_logic
 		);
 	end component;
 	
@@ -189,7 +189,8 @@ architecture behavioral of control_unit is
 		generic ( ROB_DEPTH : integer := 10 );
 		port ( 
 			--Input data and clock
-			reset_n, sys_clock	: in std_logic;	
+			reset_n, reset_MEM	: in std_logic;
+			sys_clock				: in std_logic;	
 			IW_in, PM_data_in		: in std_logic_vector(15 downto 0); --IW from MEM and from PM, via LAB, respectively
 			LAB_stall_in			: in std_logic;		--set high when an upstream CU block needs this 
 			MEM_out_top				: in std_logic_vector(15 downto 0);
@@ -288,14 +289,15 @@ begin
 		--Outputs
 		I2C_error_out				=> I2C_error_out,
 		IW_out						=> MEM_WB_IW,
-		stall_out					=> MEM_stall_out
-		--reset_out					=> MEM_reset_out
+		stall_out					=> MEM_stall_out,
+		reset_out					=> MEM_reset_out
 	);
 	
 	WB_actual : WB
 	port map ( 
 		--Input data and clock
 		reset_n						=> reset_n, 
+		reset_MEM					=> MEM_reset_out,
 		sys_clock					=> sys_clock,	
 		IW_in							=> MEM_WB_IW, 
 		PM_data_in					=> PM_data_in,

@@ -29,8 +29,8 @@ entity MEM is
 		--Outputs
 		I2C_error_out	: out std_logic;	--in case we can't write to slave after three attempts, send to LAB for arbitration
 		IW_out			: out std_logic_vector(15 downto 0);
-		stall_out		: out std_logic
-		--reset_out		: out std_logic
+		stall_out		: out std_logic;
+		reset_out		: out std_logic
 	);
 end MEM;
 
@@ -49,11 +49,11 @@ begin
 	stall_out 				<= I2C_stall or stall_in;
 
 	--process to just handle I2C operations
-	I2C_operation : process(reset_n, sys_clock, IW_in, I2C_op_run) 
+	I2C_operation : process(reset_n, sys_clock) 
 	begin
 		--this process can and should be independent of external stalls, because it takes so long
 		if reset_n = '0' then
-			--reset_reg 		<= '0';
+			reset_reg 		<= '0';
 			I2C_r_en 		<= '0'; 	-- IW_in(1 downto 0) = "10"
 			I2C_wr_en 		<= '0'; 	-- IW_in(1 downto 0) = "11"
 			I2C_machine 	<= idle;
@@ -63,7 +63,7 @@ begin
 		
 		elsif rising_edge(sys_clock) then
 			
-			--reset_reg <= '1';
+			reset_reg <= '1';
 		
 			case I2C_machine is
 				
@@ -124,6 +124,8 @@ begin
 		end if; --reset_n
 		
 	end process;
+	
+	reset_out <= reset_reg;
 				
 	--process to handle just GPIO and data memory operations
 	GPIO_operation : process(reset_n, sys_clock)

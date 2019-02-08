@@ -14,7 +14,8 @@ entity WB is
 	generic ( ROB_DEPTH : integer := 10 );
    port ( 
 		--Input data and clock
-		reset_n, sys_clock	: in std_logic;	
+		reset_n, reset_MEM 	: in std_logic;
+		sys_clock				: in std_logic;	
 		IW_in, PM_data_in		: in std_logic_vector(15 downto 0); --IW from MEM and from PM, via LAB, respectively
 		LAB_stall_in			: in std_logic;		--set high when an upstream CU block needs this 
 		MEM_out_top				: in std_logic_vector(15 downto 0);
@@ -57,7 +58,6 @@ architecture behavioral of WB is
 	
 	signal WB_out_mux_sel					: std_logic_vector(1 downto 0); --selects data input to redirect to RF
 	signal stall, zero_inst_match			: std_logic; --overall stall signal;
-	signal A_bus_result, C_bus_result	: std_logic_vector(15 downto 0); --buffers result from A or C bus
 	signal i	: integer range 0 to ROB_DEPTH - 1;
 	
 	--type declaration for actual ROB, which has 10 entries
@@ -180,7 +180,7 @@ begin
 	stall <= LAB_stall_in;
 	
 	--update whether ROB zeroth instruction matches the new IW_in, does not depend on ROB(0).inst itself since it won't change
-	process(ROB_actual, IW_in)
+	process(IW_in)
 	begin
 		if ROB_actual(0).inst = IW_in and ROB_actual(0).valid = '1' then
 			zero_inst_match <= '1';
@@ -194,7 +194,8 @@ begin
 		if reset_n = '0' then
 			stall_out 		<= '0';
 			RF_in_demux 	<= "00000";
-			RF_wr_en 			<= '0';
+			RF_wr_en 		<= '0';
+			WB_out_mux_sel <= "01";
 			
 		elsif rising_edge(sys_clock) then
 			
@@ -204,36 +205,38 @@ begin
 
 				if zero_inst_match = '1' then --have a match to zeroth ROB inst and therefore re-issue result
 					
-					--report "Made it to ROB reorder code.";
-					ROB_actual <= update_ROB(ROB_actual, PM_data_in);
-					
 					--report "Zeroth instruction matches IW_in.";
+					if reset_MEM = '1' then
 					
-					--for loads and ALU operations, forward MEM_top_data to RF
-					if ((IW_in(15 downto 12) = "1000") and (IW_in(1) = '0')) or (IW_in(15) = '0') then
-						WB_out_mux_sel <= "01";
-						RF_wr_en <= '1';
-						RF_in_demux <= IW_in(11 downto 7);	--use IW to find destination register for the aforementioned instructions
-						
-					--GPIO reads
-					elsif (IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "00") then
-						WB_out_mux_sel <= "10";
-						RF_wr_en <= '1';
-						RF_in_demux <= IW_in(11 downto 7);	--use IW to find destination register for the aforementioned instructions
-						
-					--I2C reads	
-					elsif (IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "10") then
-						WB_out_mux_sel <= "11";
-						RF_wr_en <= '1';
-						RF_in_demux <= IW_in(11 downto 7);	--use IW to find destination register for the aforementioned instructions
-						
-					else
-						WB_out_mux_sel <= "00";
-						RF_wr_en <= '0';
-						RF_in_demux <= "00000";	--
+						--report "Made it to ROB reorder code.";
+						ROB_actual <= update_ROB(ROB_actual, PM_data_in);
 					
-					end if;
-				
+						--for loads and ALU operations, forward MEM_top_data to RF
+						if ((IW_in(15 downto 12) = "1000") and (IW_in(1) = '0')) or (IW_in(15) = '0') or
+								(IW_in(15 downto 12) = "1100") then
+							WB_out_mux_sel <= "01";
+							RF_wr_en <= '1';
+							RF_in_demux <= IW_in(11 downto 7);	--use IW to find destination register for the aforementioned instructions
+							
+						--GPIO reads
+						elsif (IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "00") then
+							WB_out_mux_sel <= "10";
+							RF_wr_en <= '1';
+							RF_in_demux <= IW_in(11 downto 7);	--use IW to find destination register for the aforementioned instructions
+							
+						--I2C reads	
+						elsif (IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "10") then
+							WB_out_mux_sel <= "11";
+							RF_wr_en <= '1';
+							RF_in_demux <= IW_in(11 downto 7);	--use IW to find destination register for the aforementioned instructions
+							
+						else
+							WB_out_mux_sel <= "00";
+							RF_wr_en <= '0';
+							RF_in_demux <= "00000";	--
+						
+						end if; --
+					end if; --reset_MEM				
 				elsif IW_in(15 downto 12) = "1000" and IW_in(1) = '0' then --don't have a match to zeroth instruction, receiving load data
 					
 					--buffer A_bus_result in ROB_actual
@@ -249,8 +252,7 @@ begin
 					--buffer C_bus_result in ROB_actual
 					ROB_actual <= buffer_result(ROB_actual, I2C_out, IW_in, PM_data_in);
 					
-				else --just default to buffering the incoming PM data
-				
+				else --just default to buffering the incoming PM data, if the CU/MEM output reset signal is high
 					ROB_actual <= bufferPM_IW(ROB_actual, PM_data_in);
 
 				end if; --zero_inst_match
