@@ -21,11 +21,11 @@ entity CPU is
 		--TEST OUTPUT ONLY, REMOVE AFTER LAB INSTANTIATED (signal goes to LAB for arbitration)
 		I2C_error_out						: out std_logic; 	
 		
-		--TEST OUTPUTS ONLY, REMOVE AFTER ALU_TOP INSTANTIATED
-		RF_out_1, RF_out_2				: inout std_logic_vector(15 downto 0);
+--		--TEST OUTPUTS ONLY, REMOVE AFTER ALU_TOP INSTANTIATED
+--		RF_out_1, RF_out_2				: inout std_logic_vector(15 downto 0);
 
 		--TEST OUTPUT ONLY, REMOVE AFTER MEM_TOP INSTANTIATED
-		ALU_top_out_1, ALU_top_out_2	: out std_logic_vector(15 downto 0);
+--		ALU_top_out_1, ALU_top_out_2	: inout std_logic_vector(15 downto 0);
 		ALU_SR								: out std_logic_vector(3 downto 0);
 				
 		--TEST INPUT ONLY, REMOVE AFTER PROGRAM MEMORY INSTANTIATED
@@ -37,31 +37,47 @@ entity CPU is
 		I2C_error, I2C_op_run			: in std_logic;	
 		
 		--(EX) ALU control Signals
-		ALU_out1_en, ALU_out2_en		: inout std_logic; --enables ALU_outX on A, B, or C bus
-		ALU_d1_in_sel, ALU_d2_in_sel	: inout std_logic_vector(1 downto 0); --(ALU_top) 1 = select from a bus, 0 = don't.
-		ALU_fwd_data_out_en				: inout std_logic; -- (ALU_top) ALU forwarding register out enable
-		
-		ALU_op								: inout std_logic_vector(3 downto 0);
-		ALU_inst_sel						: inout std_logic_vector(1 downto 0);
-		ALU_mem_addr_out					: inout std_logic_vector(15 downto 0); -- memory address directly to ALU
-		ALU_immediate_val					: inout	std_logic_vector(15 downto 0);	 --represents various immediate values from various OpCodes
+--		ALU_out1_en, ALU_out2_en		: inout std_logic; --enables ALU_outX on A, B, or C bus
+--		ALU_d1_in_sel, ALU_d2_in_sel	: inout std_logic_vector(1 downto 0); --(ALU_top) 1 = select from a bus, 0 = don't.
+--		ALU_fwd_data_out_en				: inout std_logic; -- (ALU_top) ALU forwarding register out enable
+--		
+--		ALU_op								: inout std_logic_vector(3 downto 0);
+--		ALU_inst_sel						: inout std_logic_vector(1 downto 0);
+--		ALU_mem_addr_out					: inout std_logic_vector(15 downto 0); -- memory address directly to ALU
+--		ALU_immediate_val					: inout	std_logic_vector(15 downto 0);	 --represents various immediate values from various OpCodes
 --		
 		--(MEM) MEM control Signals
-		MEM_MEM_out_mux_sel				: out std_logic_vector(1 downto 0); --
-		MEM_MEM_wr_en						: out std_logic; --write enable for data memory
+--		MEM_MEM_out_mux_sel				: inout std_logic_vector(1 downto 0); --
+--		MEM_MEM_wr_en						: inout std_logic; --write enable for data memory
 		
 		MEM_GPIO_in_en, MEM_GPIO_wr_en 	: out std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
 		MEM_I2C_r_en, MEM_I2C_wr_en		: out std_logic; --initiates reads/writes for I2C (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
 		MEM_slave_addr							: out std_logic_vector(6 downto 0);
 		
 		--(WB) WB control Signals and Input/Output data
-		MEM_out_top				: in std_logic_vector(15 downto 0);
+--		MEM_out_top				: inout std_logic_vector(15 downto 0);
 		GPIO_out					: in std_logic_vector(15 downto 0);
 		I2C_out					: in std_logic_vector(15 downto 0)
 	);
 end CPU;
 
 architecture structural of CPU is
+	signal ID_RF_out_1_mux					: std_logic_vector(4 downto 0);	--controls first output mux
+	signal ID_RF_out_2_mux					: std_logic_vector(4 downto 0);	--controls second output mux
+	signal ID_RF_out1_en, ID_RF_out2_en	: std_logic; -- 
+	signal WB_data								: std_logic_vector(15 downto 0);
+	signal WB_wr_en							: std_logic;
+	signal WB_RF_in_demux					: std_logic_vector(4 downto 0);
+	signal ALU_out1_en, ALU_out2_en		: std_logic;
+	signal ALU_op								: std_logic_vector(3 downto 0); 	--dictates ALU operation (i.e., OpCode)
+	signal ALU_inst_sel						: std_logic_vector(1 downto 0); 	--dictates what sub-function to execute (last two bits of OpCode)
+	signal ALU_d1_in_sel, ALU_d2_in_sel	: std_logic_vector(1 downto 0); 	--(EX) control which input to send to ALU input 2
+	signal ALU_fwd_data_out_en				: std_logic;	 
+	signal ALU_mem_addr_out, ALU_immediate_val	: std_logic_vector(15 downto 0);
+	signal RF_out_1, RF_out_2, MEM_out_top			: std_logic_vector(15 downto 0);
+	signal MEM_MEM_out_mux_sel				: std_logic_vector(1 downto 0); --
+	signal MEM_MEM_wr_en						: std_logic; --write enable for data memory
+	signal ALU_top_out_1, ALU_top_out_2	: std_logic_vector(15 downto 0);
 
 	component control_unit is
 	port(
@@ -113,7 +129,7 @@ architecture structural of CPU is
 		MEM_out_top				: in std_logic_vector(15 downto 0);
 		GPIO_out					: in std_logic_vector(15 downto 0);
 		I2C_out					: in std_logic_vector(15 downto 0);
-		WB_data_out				: out std_logic_vector(15 downto 0)
+		WB_data_out				: inout std_logic_vector(15 downto 0)
 	);
 	end component;
 	
@@ -161,19 +177,22 @@ architecture structural of CPU is
 	);
 	end component;
 	
-	signal ID_RF_out_1_mux					: std_logic_vector(4 downto 0);	--controls first output mux
-	signal ID_RF_out_2_mux					: std_logic_vector(4 downto 0);	--controls second output mux
-	signal ID_RF_out1_en, ID_RF_out2_en	: std_logic; -- 
-	signal WB_data								: std_logic_vector(15 downto 0);
-	signal WB_wr_en							: std_logic;
-	signal WB_RF_in_demux					: std_logic_vector(4 downto 0);
---	signal ALU_out1_en, ALU_out2_en		: std_logic;
---	signal ALU_op								: std_logic_vector(3 downto 0); 	--dictates ALU operation (i.e., OpCode)
---	signal ALU_inst_sel						: std_logic_vector(1 downto 0); 	--dictates what sub-function to execute (last two bits of OpCode)
---	signal ALU_d1_in_sel, ALU_d2_in_sel	: std_logic_vector(1 downto 0); 	--(EX) control which input to send to ALU input 2
---	signal ALU_fwd_data_out_en				: std_logic;	 
---	signal ALU_mem_addr_out, ALU_immediate_val	: std_logic_vector(15 downto 0);
---	signal RF_out_1, RF_out_2				: std_logic_vector(15 downto 0);
+	component MEM_top is
+	port ( 
+		--Input data and clock
+		reset_n, sys_clock	: in std_logic;	
+		MEM_in_1, MEM_in_2 	: in std_logic_vector(15 downto 0);
+		
+		--Control 
+		MEM_out_mux_sel		: in std_logic_vector(1 downto 0);
+		wr_en						: in std_logic; --write enable for data memory
+		
+		--Output
+		MEM_out_top				: out std_logic_vector(15 downto 0)
+	
+	);
+	end component;
+	
 begin
 
 	control_unit_top	: control_unit
@@ -194,7 +213,7 @@ begin
 		PM_data_in							=> PM_data_in,
 		--PC	: out std_logic_vector(10 downto 0);
 		
-		--MEM Feedback Signals
+		--ION Feedback Signals
 		I2C_error							=> I2C_error, 
 		I2C_op_run							=> I2C_op_run,
 		
@@ -217,8 +236,8 @@ begin
 		ALU_immediate_val					=> ALU_immediate_val,	--MAPPED
 		
 		--(MEM) MEM control Signals
-		MEM_MEM_out_mux_sel				=> MEM_MEM_out_mux_sel,
-		MEM_MEM_wr_en						=> MEM_MEM_wr_en,
+		MEM_MEM_out_mux_sel				=> MEM_MEM_out_mux_sel,	--MAPPED
+		MEM_MEM_wr_en						=> MEM_MEM_wr_en,			--MAPPED
 		
 		MEM_GPIO_in_en						=> MEM_GPIO_in_en, 
 		MEM_GPIO_wr_en 					=> MEM_GPIO_wr_en,
@@ -230,7 +249,7 @@ begin
 		WB_RF_in_demux						=> WB_RF_in_demux,	--MAPPED
 		WB_wr_en								=> WB_wr_en,			--MAPPED
 		
-		MEM_out_top				=> MEM_out_top,
+		MEM_out_top				=> MEM_out_top,					--MAPPED
 		GPIO_out					=> GPIO_out,
 		I2C_out					=> I2C_out,
 		WB_data_out				=> WB_data							--MAPPED
@@ -282,6 +301,23 @@ begin
 		ALU_SR 			=> ALU_SR,
 		ALU_top_out_1	=> ALU_top_out_1,
 		ALU_top_out_2	=> ALU_top_out_2
+	);
+	
+	MEM	: MEM_top
+	port map ( 
+		--Input data and clock
+		sys_clock			=> sys_clock,
+		reset_n				=> reset_n,
+		MEM_in_1				=> ALU_top_out_1, 
+		MEM_in_2 			=> ALU_top_out_2,
+		
+		--Control 
+		MEM_out_mux_sel	=> MEM_MEM_out_mux_sel,
+		wr_en					=> MEM_MEM_wr_en,
+		
+		--Output
+		MEM_out_top			=> MEM_out_top
+	
 	);
 	
 	process(reset_n, sys_clock)

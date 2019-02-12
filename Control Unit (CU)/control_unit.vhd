@@ -58,7 +58,7 @@ entity control_unit is
 		MEM_out_top				: in std_logic_vector(15 downto 0);
 		GPIO_out					: in std_logic_vector(15 downto 0);
 		I2C_out					: in std_logic_vector(15 downto 0);
-		WB_data_out				: out std_logic_vector(15 downto 0)
+		WB_data_out				: inout std_logic_vector(15 downto 0)
 	);
 end control_unit;
 
@@ -203,7 +203,7 @@ architecture behavioral of control_unit is
 						
 			--Outputs
 			stall_out		: out std_logic;
-			WB_data_out		: out std_logic_vector(15 downto 0)
+			WB_data_out		: inout std_logic_vector(15 downto 0)
 		);
 	end component;
 	
