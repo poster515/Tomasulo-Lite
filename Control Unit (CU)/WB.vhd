@@ -131,42 +131,55 @@ architecture behavioral of WB is
 	variable IW_updated	: std_logic := '0';
 	 
 	begin
-	
-		n_clear_zero := convert_CZ(not(clear_zero));
+		IW_updated		:= '0';
+		n_clear_zero 	:= convert_CZ(not(clear_zero));
 		
 		for i in 0 to ROB_DEPTH - 2 loop
-		
+			--report "loop iteration i = " & integer'image(i);
 			if ROB_temp(i).valid = '0' then
-			
+				--report "1";
 				if PM_buffer_en = '1' then
-					report "Buffering PM_data_in at ROB slot " & integer'image(i);
+					--report "Buffering PM_data_in at ROB slot " & integer'image(i);
 					ROB_temp(i).inst 	:= PM_data_in;
 					ROB_temp(i).valid := '1';
 					exit;
 				end if;
 			
 			elsif ROB_temp(i).valid = '1' and ROB_temp(i + 1).valid = '0' then
-			
+				--report "2";
 				if PM_buffer_en = '1' then
-					report "Buffering PM_data_in at ROB slot " & integer'image(i + n_clear_zero);
+					--report "Buffering PM_data_in at ROB slot " & integer'image(i + n_clear_zero);
 					ROB_temp(i + n_clear_zero).inst 	:= PM_data_in;
 					ROB_temp(i + n_clear_zero).valid := '1';
 					exit;
 				end if;
 
 			elsif ROB_temp(i + 1).valid = '1' and ROB_temp(i + 1).inst = IW_in then
-			
+				--report "3...IW_result_en = " & integer'image(convert_CZ(IW_result_en)) & " and IW_updated = " & integer'image(convert_CZ(IW_updated));
 				if IW_result_en = '1' and IW_updated = '0' then
-					report "Updating ROB entry at slot " & integer'image(i + 1);
+					--report "Updating ROB entry at slot " & integer'image(i + 1);
 					ROB_temp(i + n_clear_zero).result 		:= IW_result;
 					ROB_temp(i + n_clear_zero).inst 			:= ROB_temp(i + 1).inst;
 					ROB_temp(i + n_clear_zero).valid 		:= '1';
 					ROB_temp(i + n_clear_zero).complete 	:= '1';
 					IW_updated := '1';
+					
+				else 
+					
+					ROB_temp(i) := ROB_temp(i + convert_CZ(clear_zero));
+				
 				end if;
 				
+			elsif i = ROB_DEPTH - 2 and clear_zero = '1' and ROB_temp(ROB_DEPTH - 1).valid = '1' then
+				--for when the ROB is full, we want to buffer incoming PM_data_in, and can clear the zeroth instruction (i.e., make room)
+				if PM_buffer_en = '1' then
+					--report "Buffering PM_data_in at slot " & integer'image(ROB_DEPTH - 1);
+					ROB_temp(ROB_DEPTH - 1).inst 	:= PM_data_in;
+					ROB_temp(ROB_DEPTH - 1).valid := '1';
+				end if;
+			
 			else
-
+				--report "Hit 'else' statement, shifting ROB accordingly...clear_zero = " & integer'image(1 - n_clear_zero) & " and i = " & integer'image(i);
 				ROB_temp(i) := ROB_temp(i + convert_CZ(clear_zero));
 				
 			end if; --ROB_temp(i).valid
@@ -194,7 +207,7 @@ begin
 	stall <= LAB_stall_in;
 	
 	--update whether ROB zeroth instruction matches the new IW_in, does not depend on ROB(0).inst itself since it won't change
-	process(IW_in)
+	process(IW_in, ROB_actual)
 	begin
 		if ROB_actual(0).inst = IW_in and ROB_actual(0).valid = '1' and zero_inst_match = '0' then
 			zero_inst_match <= '1';
@@ -246,7 +259,7 @@ begin
 					end if; --reset_MEM	
 				else --IW_in does not match zeroth instruction, therefore need to buffer results in ROB
 				
-					clear_zero_inst 	<= '0'; --disable clearing the zeroth instruction
+					--clear_zero_inst 	<= '0'; --disable clearing the zeroth instruction
 				
 					--if reset_MEM = '1', then we know incoming data and IW_in are valid, and can choose to do something with them
 					if reset_MEM = '1' then
@@ -254,10 +267,22 @@ begin
 						IW_to_update		<= IW_in;
 						IW_update_en		<= '1';
 						
-						if ROB_actual(0).complete = '1' then
+--						if ROB_actual(0).complete = '1' then
+--							RF_wr_en 			<= '1';
+--							RF_in_demux 		<= ROB_actual(0).inst(11 downto 7);	--
+--							clear_zero_inst 	<= '1';	--enable clearing zeroth instruction if its complete
+--						
+--						els
+						
+						if ROB_actual(1).complete = '1' and clear_zero_inst = '1' then
 							RF_wr_en 			<= '1';
+							RF_in_demux 		<= ROB_actual(1).inst(11 downto 7);	--
+							clear_zero_inst 	<= '1';	--enable clearing zeroth instruction if its complete
+							
 						else 
 							RF_wr_en 			<= '0';
+							clear_zero_inst 	<= '0'; --disable clearing the zeroth instruction
+							
 						end if;
 						
 					else
@@ -270,7 +295,7 @@ begin
 				end if; --zero_inst_match
 				
 				--this if..else series assigns the correct data input corresponding to IW_in
-				if ROB_actual(0).complete = '1' then
+				if (ROB_actual(0).complete = '1') or (ROB_actual(1).complete = '1' and clear_zero_inst = '1') then
 					WB_out_mux_sel <= "00";
 					
 				--for loads and ALU operations, forward MEM_top_data to RF
