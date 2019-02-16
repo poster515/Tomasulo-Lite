@@ -10,54 +10,21 @@ entity CPU is
 		reset_n, sys_clock	: in std_logic;	
 		digital_in				: in std_logic_vector(15 downto 0); --top level General Purpose inputs
 		digital_out				: out std_logic_vector(15 downto 0); --top level General Purpose outputs, driven by ION
-		--I2C_sda, I2C_scl		: inout std_logic; --top level chip inputs/outputs
-		
-		--TEST INPUTS UNTIL ALL SUB-BLOCKS ARE INSTANTIATED
+		I2C_sda, I2C_scl		: inout std_logic; --top level chip inputs/outputs
+
 		--TEST INPUTS ONLY, REMOVE AFTER LAB INSTANTIATED
 		LAB_mem_addr_out					: in std_logic_vector(15 downto 0); 
 		LAB_ID_IW							: in std_logic_vector(15 downto 0); 
 		LAB_stall_out						: in std_logic;
 
-		--TEST OUTPUT ONLY, REMOVE AFTER LAB INSTANTIATED (signal goes to LAB for arbitration)
+		--TEST OUTPUTS ONLY, REMOVE AFTER LAB INSTANTIATED (signal goes to LAB for arbitration)
 		I2C_error_out						: out std_logic; 	
-		
---		--TEST OUTPUTS ONLY, REMOVE AFTER ALU_TOP INSTANTIATED
---		RF_out_1, RF_out_2				: inout std_logic_vector(15 downto 0);
-
-		--TEST OUTPUT ONLY, REMOVE AFTER MEM_TOP INSTANTIATED
---		ALU_top_out_1, ALU_top_out_2	: inout std_logic_vector(15 downto 0);
 		ALU_SR								: out std_logic_vector(3 downto 0);
 				
 		--TEST INPUT ONLY, REMOVE AFTER PROGRAM MEMORY INSTANTIATED
-		PM_data_in							: in std_logic_vector(15 downto 0);
+		PM_data_in							: in std_logic_vector(15 downto 0)
 		
 		--END TEST INPUTS/OUTPUTS
-
-		--MEM Feedback Signals
-		I2C_error, I2C_op_run			: in std_logic;	
-		
-		--(EX) ALU control Signals
---		ALU_out1_en, ALU_out2_en		: inout std_logic; --enables ALU_outX on A, B, or C bus
---		ALU_d1_in_sel, ALU_d2_in_sel	: inout std_logic_vector(1 downto 0); --(ALU_top) 1 = select from a bus, 0 = don't.
---		ALU_fwd_data_out_en				: inout std_logic; -- (ALU_top) ALU forwarding register out enable
---		
---		ALU_op								: inout std_logic_vector(3 downto 0);
---		ALU_inst_sel						: inout std_logic_vector(1 downto 0);
---		ALU_mem_addr_out					: inout std_logic_vector(15 downto 0); -- memory address directly to ALU
---		ALU_immediate_val					: inout	std_logic_vector(15 downto 0);	 --represents various immediate values from various OpCodes
---		
-		--(MEM) MEM control Signals
---		MEM_MEM_out_mux_sel				: inout std_logic_vector(1 downto 0); --
---		MEM_MEM_wr_en						: inout std_logic; --write enable for data memory
-		
-		MEM_GPIO_in_en, MEM_GPIO_wr_en 	: out std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
-		MEM_I2C_r_en, MEM_I2C_wr_en		: out std_logic; --initiates reads/writes for I2C (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
-		MEM_slave_addr							: out std_logic_vector(6 downto 0);
-		
-		--(WB) WB control Signals and Input/Output data
---		MEM_out_top				: inout std_logic_vector(15 downto 0);
-		GPIO_out					: in std_logic_vector(15 downto 0);
-		I2C_out					: in std_logic_vector(15 downto 0)
 	);
 end CPU;
 
@@ -78,6 +45,12 @@ architecture structural of CPU is
 	signal MEM_MEM_out_mux_sel				: std_logic_vector(1 downto 0); --
 	signal MEM_MEM_wr_en						: std_logic; --write enable for data memory
 	signal ALU_top_out_1, ALU_top_out_2	: std_logic_vector(15 downto 0);
+	signal MEM_slave_addr					: std_logic_vector(6 downto 0);
+	signal MEM_GPIO_in_en, MEM_GPIO_wr_en 	: std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
+	signal MEM_I2C_r_en, MEM_I2C_wr_en		: std_logic; --initiates reads/writes for I2C (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
+	signal I2C_error, I2C_op_run			: std_logic;	
+	signal GPIO_out							: std_logic_vector(15 downto 0);
+	signal I2C_out								: std_logic_vector(15 downto 0);
 
 	component control_unit is
 	port(
@@ -191,6 +164,30 @@ architecture structural of CPU is
 		MEM_out_top				: out std_logic_vector(15 downto 0)
 	
 	);
+	end component;
+	
+	component ION is
+	port (
+		--Input data and clock
+		clk 				: in std_logic;
+		digital_in		: in std_logic_vector(15 downto 0);	--reading digital inputs on chip
+		ION_data_in		: in std_logic_vector(15 downto 0);	--data from MEM block
+		slave_addr		: in std_logic_vector(6 downto 0); --dedicated signal from CU, data comes from R2 field of IW, only 31 slave addresses available
+		 
+		--Control signals
+		reset_n								: in std_logic; --all registers reset to 0 when this goes low
+		GPIO_in_en, GPIO_wr_en 			: in std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
+		I2C_r_en, I2C_wr_en				: in std_logic; --initiates reads/writes for I2C (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
+
+		--Outputs
+		digital_out			: out std_logic_vector(15 downto 0); --
+		I2C_error			: out	std_logic;	--in case we can't write to slave after three attempts
+		I2C_op_run			: out std_logic;	--when high, lets CU know that there is a CU operation occurring
+		GPIO_out, I2C_out	: out std_logic_vector(15 downto 0); --GPIO and I2C module outputs
+		
+		--Input/Outputs
+		I2C_sda, I2C_scl	: inout std_logic --high level chip inputs/outputs
+		);
 	end component;
 	
 begin
@@ -319,6 +316,33 @@ begin
 		MEM_out_top			=> MEM_out_top
 	
 	);
+	
+	ION_actual : ION
+	port map (
+   --Input data and clock
+	clk 				=> sys_clock,
+	digital_in		=> digital_in,
+	ION_data_in		=> ALU_top_out_1,
+	slave_addr		=> MEM_slave_addr,
+	 
+	--Control signals
+	reset_n			=> reset_n,					
+	GPIO_in_en		=> MEM_GPIO_in_en, 
+	GPIO_wr_en 		=> MEM_GPIO_wr_en,	
+	I2C_r_en			=> MEM_I2C_r_en, 
+	I2C_wr_en		=> MEM_I2C_wr_en,	
+	
+   --Outputs
+   digital_out		=> digital_out,	
+	I2C_error		=> I2C_error, 
+	I2C_op_run		=> I2C_op_run,		
+	GPIO_out			=> GPIO_out,
+	I2C_out			=> I2C_out,
+	
+	--Input/Outputs
+	I2C_sda			=> I2C_sda,
+	I2C_scl			=> I2C_scl
+   );
 	
 	process(reset_n, sys_clock)
 	begin
