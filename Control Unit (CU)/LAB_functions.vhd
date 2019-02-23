@@ -63,32 +63,34 @@ package body LAB_functions is
 		
 	begin
 		
-		for i in issued_inst to LAB_MAX - 2 loop
-			if (LAB_temp(i).inst_valid = '1') and (LAB_temp(i + 1).inst_valid = '0') then
-			
-				LAB_temp(i).inst := PM_data_in;
-				LAB_temp(i + 1).addr			:= (others => '0');
+		for i in 0 to LAB_MAX - 2 loop
+			if i >= issued_inst then
+				if (LAB_temp(i).inst_valid = '1') and (LAB_temp(i + 1).inst_valid = '0') then
 				
-				if PM_data_in(15 downto 14) = "10" and ((PM_data_in(1) nand PM_data_in(0)) = '1') then
-					LAB_temp(i + 1).addr_valid	:= '0';
-				else
-					LAB_temp(i + 1).addr_valid	:= '1';
-				end if;
-				
-			elsif i = LAB_MAX - 2 and LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '1' then
-			
-				LAB_temp(i + 1).inst 		:= PM_data_in;
-				LAB_temp(i + 1).addr			:= (others => '0');
+					LAB_temp(i).inst := PM_data_in;
+					LAB_temp(i + 1).addr			:= (others => '0');
 					
-				if PM_data_in(15 downto 14) = "10" and ((PM_data_in(1) nand PM_data_in(0)) = '1') then
-					LAB_temp(i + 1).addr_valid	:= '0';
-				else
-					LAB_temp(i + 1).addr_valid	:= '1';
-				end if;
+					if PM_data_in(15 downto 14) = "10" and ((PM_data_in(1) nand PM_data_in(0)) = '1') then
+						LAB_temp(i + 1).addr_valid	:= '0';
+					else
+						LAB_temp(i + 1).addr_valid	:= '1';
+					end if;
+					
+				elsif i = LAB_MAX - 2 and LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '1' then
 				
-			else
-				LAB_temp(i) := LAB_temp(i + 1);
-			end if;
+					LAB_temp(i + 1).inst 		:= PM_data_in;
+					LAB_temp(i + 1).addr			:= (others => '0');
+						
+					if PM_data_in(15 downto 14) = "10" and ((PM_data_in(1) nand PM_data_in(0)) = '1') then
+						LAB_temp(i + 1).addr_valid	:= '0';
+					else
+						LAB_temp(i + 1).addr_valid	:= '1';
+					end if;
+					
+				else
+					LAB_temp(i) := LAB_temp(i + 1);
+				end if;
+			end if; --i >= issued_inst
 		end loop; --for i
 		
 		return LAB_temp; --come here if there are no spots available

@@ -12,23 +12,17 @@ entity CPU is
 		digital_out				: out std_logic_vector(15 downto 0); --top level General Purpose outputs, driven by ION
 		I2C_sda, I2C_scl		: inout std_logic; --top level chip inputs/outputs
 
-		--TEST INPUTS ONLY, REMOVE AFTER LAB INSTANTIATED
-		LAB_mem_addr_out					: in std_logic_vector(15 downto 0); 
-		LAB_ID_IW							: in std_logic_vector(15 downto 0); 
-		LAB_stall_out						: in std_logic;
-
 		--TEST OUTPUTS ONLY, REMOVE AFTER LAB INSTANTIATED (signal goes to LAB for arbitration)
 		I2C_error_out						: out std_logic; 	
-		ALU_SR								: out std_logic_vector(3 downto 0);
-				
-		--TEST INPUT ONLY, REMOVE AFTER PROGRAM MEMORY INSTANTIATED
-		PM_data_in							: in std_logic_vector(15 downto 0)
-		
+		ALU_SR								: out std_logic_vector(3 downto 0)
+
 		--END TEST INPUTS/OUTPUTS
 	);
 end CPU;
 
 architecture structural of CPU is
+	signal PC									: std_logic_vector(10 downto 0);
+	signal PM_data								: std_logic_vector(15 downto 0);
 	signal ID_RF_out_1_mux					: std_logic_vector(4 downto 0);	--controls first output mux
 	signal ID_RF_out_2_mux					: std_logic_vector(4 downto 0);	--controls second output mux
 	signal ID_RF_out1_en, ID_RF_out2_en	: std_logic; -- 
@@ -54,10 +48,6 @@ architecture structural of CPU is
 
 	component control_unit is
 	port(
-		--TEST INPUTS ONLY, REMOVE AFTER LAB INSTANTIATED
-		LAB_mem_addr_out					: in std_logic_vector(15 downto 0); 
-		LAB_ID_IW							: in std_logic_vector(15 downto 0); 
-		LAB_stall_out						: in std_logic;
 
 		--TEST OUTPUT ONLY, REMOVE AFTER LAB INSTANTIATED (signal goes to LAB for arbitration)
 		I2C_error_out						: out std_logic; 	
@@ -67,7 +57,7 @@ architecture structural of CPU is
 		--Input data and clock
 		reset_n, sys_clock				: in std_logic;	
 		PM_data_in							: in std_logic_vector(15 downto 0);
-		--PC	: out std_logic_vector(10 downto 0);
+		PC										: out std_logic_vector(10 downto 0);
 		
 		--MEM Feedback Signals
 		I2C_error, I2C_op_run			: in std_logic;	
@@ -106,6 +96,14 @@ architecture structural of CPU is
 	);
 	end component;
 	
+	component ProgMem is
+	port (
+		address	: IN STD_LOGIC_VECTOR (10 DOWNTO 0);
+		clock		: IN STD_LOGIC  := '1';
+		q			: OUT STD_LOGIC_VECTOR (15 DOWNTO 0)
+	);
+	end component ProgMem;
+		
 	component RF_top is
 	port (
 		--Input data and clock
@@ -194,10 +192,6 @@ begin
 
 	control_unit_top	: control_unit
 	port map (
-		--TEST INPUTS ONLY, REMOVE AFTER LAB INSTANTIATED
-		LAB_mem_addr_out					=> LAB_mem_addr_out,
-		LAB_ID_IW							=> LAB_ID_IW,
-		LAB_stall_out						=> LAB_stall_out,
 
 		--TEST OUTPUT ONLY, REMOVE AFTER LAB INSTANTIATED (signal goes to LAB for arbitration)
 		I2C_error_out						=> I2C_error_out,
@@ -207,8 +201,8 @@ begin
 		--Input data and clock
 		reset_n								=> reset_n, 
 		sys_clock							=> sys_clock,
-		PM_data_in							=> PM_data_in,
-		--PC	: out std_logic_vector(10 downto 0);
+		PM_data_in							=> PM_data,
+		PC										=> PC,
 		
 		--ION Feedback Signals
 		I2C_error							=> I2C_error, 
@@ -250,6 +244,13 @@ begin
 		GPIO_out					=> GPIO_out,
 		I2C_out					=> I2C_out,
 		WB_data_out				=> WB_data							--MAPPED
+	);
+	
+	PM : ProgMem 
+	port map (
+		address	=> PC,
+		clock		=> not(sys_clock),
+		q			=> PM_data
 	);
 	
 	RF	: RF_top
