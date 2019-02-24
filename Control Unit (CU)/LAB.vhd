@@ -25,6 +25,22 @@ entity LAB is
 	);
 end entity LAB;
 
+--need to finalize branch instruction capability
+--thinking that the LAB will need to tell WB stage ROB that subsequent instructions are being executed speculatively, if they are.
+--this can be a new flag in the ROB, and only commit results to RF if the results are no longer speculative
+
+--for LAB, need to mark all subsequent instructions fetched from PM as speculative (to WB stage)
+--if PM_data_hazard is '0' though, should be able to retrieve them immediately and adjust program counter as needed
+--this may involve including a third output mux from the RF directly to the LAB stage.
+
+--otherwise, branch instruction will sit in LAB, eventually get issued, and get executed
+--when the ALU_SR input to LAB is read, the program counter can be updated accordingly, and instructions in WB can
+--be de-marked as 'speculative'
+--this appears to be the least-invasive solution. 
+
+--as part of construction, can also evaluate two remaining instructions: branch if not less than (BNLT) and branch if not greater than (BNGT)
+--these instructions would involve subtraction (which means re-evaluation of control signal construction) and looking simply at the ALU_SR. 
+
 ------------------------------------------------------------
 --since "1111" is an unused OpCode, use the instruction word "1111111111111111" as an EOP signal
 architecture arch of LAB is
@@ -131,6 +147,7 @@ begin
 						if mem_op = '1' then
 							IW_reg <= "1111111111111111"; --issue no-op
 						else
+							--this will speculatively execute contiguous instructions in PM
 							IW_reg <= PM_data_in;
 						end if;
 					end if;
