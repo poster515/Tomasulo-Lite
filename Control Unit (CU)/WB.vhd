@@ -115,8 +115,8 @@ begin
 				end if; 
 				
 				stall_out <= '0';
-
-				if zero_inst_match = '1' and ROB_actual(0).specul = '0' then --have a non-speculative match to zeroth ROB inst and therefore re-issue result
+				--TODO: how to shift down ROB without issuing commit signals to RF, if the instruction is a branch?
+				if zero_inst_match = '1' and (ROB_actual(0).specul = '0' or (results_available = '1' and condition_met = '0')) then --have a non-speculative match to zeroth ROB inst and therefore re-issue result
 					
 					--if reset_MEM = '1', then we know incoming data and IW_in are valid, and can choose to do something with them
 					if reset_MEM = '1' then
@@ -238,13 +238,13 @@ begin
 				if PM_data_in(15 downto 12) /= "1001" then
 				
 					if PM_data_in(15 downto 12) = "1010" then
-						speculate_results <= '1';
-						ROB_actual <= update_ROB(ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data_out, IW_update_en, clear_zero_inst, results_available, condition_met, '1');
+						speculate_results 	<= '1';
+						ROB_actual 			<= update_ROB(ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data_out, IW_update_en, clear_zero_inst, results_available, condition_met, '1');
 					elsif results_available = '1' and condition_met = '1' then
-						speculate_results <= '0';
-						ROB_actual <= update_ROB(ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data_out, IW_update_en, clear_zero_inst, results_available, condition_met, '0');
+						speculate_results 	<= '0';
+						ROB_actual 			<= update_ROB(ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data_out, IW_update_en, clear_zero_inst, results_available, condition_met, '0');
 					else 
-						ROB_actual <= update_ROB(ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data_out, IW_update_en, clear_zero_inst, results_available, condition_met, speculate_results);
+						ROB_actual 			<= update_ROB(ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data_out, IW_update_en, clear_zero_inst, results_available, condition_met, speculate_results);
 					end if;
 					
 				end if;

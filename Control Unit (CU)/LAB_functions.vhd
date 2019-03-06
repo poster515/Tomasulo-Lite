@@ -7,10 +7,10 @@ package LAB_functions is
 	--LAB declarations
 	type LAB_entry is
 		record
-		  inst			: std_logic_vector(15 downto 0);	--buffers instruction
-		  inst_valid   : std_logic; 							--0 = not valid/not used, 1 = valid and in pipeline or waiting for commit 	
-		  addr			: std_logic_vector(15 downto 0);	--buffers memory address, if applicable
-		  addr_valid   : std_logic; 							--0 = not valid/not used, 1 = valid and in pipeline or waiting for commit 	
+			inst		: std_logic_vector(15 downto 0);	--buffers instruction
+			inst_valid  : std_logic; 							--0 = not valid/not used, 1 = valid and in pipeline or waiting for commit 	
+			addr		: std_logic_vector(15 downto 0);	--buffers memory address, if applicable
+			addr_valid  : std_logic; 							--0 = not valid/not used, 1 = valid and in pipeline or waiting for commit 	
 		end record;
 	
 	--type declaration for actual LAB, which has 5 entries, one for each pipeline stage
@@ -18,14 +18,31 @@ package LAB_functions is
 	
 	type ROB_entry is
 		record
-		  inst		: std_logic_vector(15 downto 0);	--buffers instruction
-		  complete  : std_logic; 							-- 0 = no result yet, 1 = valid result buffered
-		  valid		: std_logic;							--tracks if valid instruction buffered
+		  inst			: std_logic_vector(15 downto 0);	--buffers instruction
+		  complete  	: std_logic; 							-- 0 = no result yet, 1 = valid result buffered
+		  valid			: std_logic;							--tracks if valid instruction buffered
 		  result		: std_logic_vector(15 downto 0); --buffers result. 
 		  specul		: std_logic;							--'0' = not speculative, '1' = speculative
 		end record;
 	
 	type ROB is array(9 downto 0) of ROB_entry;
+	
+	type branch_addr is
+		record
+			addr_met	: std_logic_vector(15 downto 0);	--buffers branch address
+			addr_unmet	: std_logic_vector(15 downto 0);	--buffers PC_reg + 1, at time that branch is fetched from PM
+			addr_valid  : std_logic; 						--0 = not valid/not used, 1 = valid and in pipeline or waiting for commit 
+		end record;
+		
+	type branch_addrs is array (9 downto 0) of branch_addr;
+	
+	--function to update "branches", which manages all currently unresolved branch instructions
+	function store_shift_branch_addr(	branches			: in branch_addr;
+										results_available	: in std_logic;
+										addr_valid			: in std_logic;
+										addr_met			: in std_logic_vector(15 downto 0)
+										addr_unmet			: in std_logic_vector(10 downto 0))
+		return branch_addr;
 	
 	--function which initializes LAB	tags									
 	function init_LAB (	LAB_in	: in LAB_actual;
@@ -58,7 +75,7 @@ package body LAB_functions is
 		return LAB_actual is
 								
 		variable i 			: integer 		:= 0;	
-		variable LAB_temp : LAB_actual 	:= LAB_in;
+		variable LAB_temp 	: LAB_actual 	:= LAB_in;
 		
 	begin
 		
@@ -72,12 +89,65 @@ package body LAB_functions is
 		return LAB_temp;
 	end function;
 	
+	--function to update "branches", which manages all currently unresolved branch instructions
+	--TODO: finish this function. 
+	function store_shift_branch_addr(	branches			: in branch_addrs;
+										results_available	: in std_logic;
+										addr_valid			: in std_logic;
+										addr_met			: in std_logic_vector(15 downto 0)
+										addr_unmet			: in std_logic_vector(10 downto 0))
+		return branch_addr is
+		variable branches_temp	: branch_addrs;
+		variable i 				: integer range 0 to 9;
+	begin
+		for i in 0 to 9 loop
+			--condition covers when we get to a location in the branches that isn't valid, i.e., we can buffer branch addresses there
+			if branches_temp(i).addr_valid = '0' then
+			
+				if addr_valid = '1' then
+					branches_temp(i).addr_met 		:= addr_met;
+					branches_temp(i).addr_unmet 	:= addr_unmet;
+					branches_temp(i).addr_valid 	:= '1';
+					exit;
+				end if;
+				
+			--condition for when we've gotten to the last valid instruction in the branch_addrs
+			elsif branches_temp(i).addr_valid = '1' and branches_temp(i + 1).addr_valid = '0' then
+				
+				if addr_valid = '1' then
+					--n_clear_zero automatically shifts ROB entries
+					branches_temp(i + n_clear_zero).addr_met	:= addr_met;
+					branches_temp(i + n_clear_zero).addr_unmet	:= addr_unmet;
+					branches_temp(i + n_clear_zero).addr_valid 	:= '1';
+					
+					exit;
+				end if;
+
+			--condition for when the ROB is full, we want to buffer incoming PM_data_in, and can clear the zeroth instruction (i.e., make room)
+			elsif i = ROB_DEPTH - 2 and clear_zero = '1' and ROB_temp(ROB_DEPTH - 1).valid = '1' then
+				
+				if addr_valid = '1' then
+					
+					branches_temp(9).addr_met 		:= addr_met;
+					branches_temp(9).addr_unmet 	:= addr_unmet;
+					branches_temp(9).addr_valid 	:= '1';
+					
+				end if;
+			
+			else
+				--clear_zero automatically shifts ROB entries
+				ROB_temp(i) := ROB_temp(i + convert_CZ(clear_zero));
+				
+			end if; --ROB_temp(i).valid
+		end loop;
+	end function;
+	
 	--function to shift LAB down and buffer Program Memory input
 	--TODO: modify so we don't rearrange any branch instructions
 	function shiftLAB_and_bufferPM(	LAB_in		: in LAB_actual;
-												PM_data_in	: in std_logic_vector(15 downto 0);
-												issued_inst	: in integer; --location of instruction that was issued, start shift here
-												LAB_MAX		: in integer 		)
+									PM_data_in	: in std_logic_vector(15 downto 0);
+									issued_inst	: in integer; --location of instruction that was issued, start shift here
+									LAB_MAX		: in integer 		)
 		return LAB_actual is
 								
 		variable i 			: integer 		:= issued_inst;	

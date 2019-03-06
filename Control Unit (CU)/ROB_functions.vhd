@@ -77,7 +77,7 @@ package body ROB_functions is
 	return ROB is
 	
 	variable ROB_temp		: ROB := ROB_in;
-	variable i				: integer range 0 to ROB_DEPTH - 1;
+	variable i				: integer range 0 to 9;
 	variable n_clear_zero	: integer 	:= 0;
 	variable IW_updated		: std_logic := '0';
 	variable branch_updated	: std_logic := '0';
@@ -158,7 +158,7 @@ package body ROB_functions is
 			
 			else
 				--clear_zero automatically shifts ROB entries
-				--TODO, figure out how to handle branch clearing
+				--TODO, figure out how to handle branch clearing, and also how to keep track of the jump addresses
 				ROB_temp(i) := ROB_temp(i + convert_CZ(clear_zero));
 				
 			end if; --ROB_temp(i).valid
