@@ -57,7 +57,7 @@ architecture behavioral of WB is
 	signal PM_data_in_reg, IW_to_update 	: std_logic_vector(15 downto 0);
 	signal PM_data_valid, IW_update_en		: std_logic;
 	signal clear_zero_inst 					: std_logic;
-	signal i	: integer range 0 to ROB_DEPTH - 1;
+	signal i, j								: integer range 0 to ROB_DEPTH - 1;
 	
 	--signal tracks whether the next IW is a memory address (for jumps, loads, etc)
 	signal next_IW_is_addr	: std_logic;
@@ -85,7 +85,10 @@ begin
 		
 		elsif ROB_actual(1).inst = IW_in and ROB_actual(1).valid = '1' and zero_inst_match = '1' then
 			zero_inst_match <= '1';
-		
+			
+		elsif ROB_actual(0).inst(15 downto 12) = "1010" and (ROB_actual(0).specul = '0' or (results_available = '1' and condition_met = '1')) then
+			zero_inst_match <= '1';
+			
 		else
 			zero_inst_match <= '0';
 		end if;
@@ -110,7 +113,7 @@ begin
 			
 				--have to ensure that new PM_data_in is buffered, if its not EOP
 				if PM_data_in(15 downto 0) /= "1111111111111111" then
-					PM_data_in_reg <= PM_data_in;
+					PM_data_in_reg 	<= PM_data_in;
 					PM_data_valid	<= '1';	--enables buffering PM_data_in into ROB
 				end if; 
 				
@@ -126,7 +129,11 @@ begin
 						
 						--only if zeroth instruction is non-speculative can we write back results to RF
 						clear_zero_inst 	<= '1'; 	--enable clearing the zeroth instruction since zero_inst_match = '1'
-						RF_wr_en 			<= '1';	--enable writing back into RF
+						
+						--commit results if its not a branch or jump 
+						if ROB_actual(0).inst(15 downto 12)	/= "1010" and ROB_actual(0).inst(15 downto 12) /= "1001" then
+							RF_wr_en 			<= '1';	--enable writing back into RF
+						end if;
 						
 					else
 						RF_wr_en 			<= '0'; --disable writing back into RF
@@ -150,7 +157,9 @@ begin
 						--and the result is valid
 						if ROB_actual(1).complete = '1' and clear_zero_inst = '1' and ROB_actual(1).specul = '0' and ROB_actual(0).specul = '0' then
 							--only if first instruction is non-speculative can we write back results to RF
-							RF_wr_en 			<= not(ROB_actual(1).specul);
+							if ROB_actual(1).inst(15 downto 12)	/= "1010" and ROB_actual(1).inst(15 downto 12) /= "1001" then
+								RF_wr_en 			<= not(ROB_actual(1).specul);
+							end if;
 							clear_zero_inst 	<= not(ROB_actual(1).specul);	--enable clearing zeroth instruction if its complete
 							RF_in_demux 		<= ROB_actual(1).inst(11 downto 7);	--
 
@@ -202,6 +211,30 @@ begin
 		end if; --reset_n
 	end process;
 	
+	process(reset_n, ROB_actual)
+	begin
+		if reset_n = '0' then
+			frst_branch_inst	<= 0;
+			scnd_branch_index 	<= 0;
+		else 
+			for i in 0 to 9 loop
+				if ROB_actual(i)(15 downto 12) = "1010" and ROB_actual(i).specul = '1' then
+					frst_branch_inst <= i;
+					for j in 0 to 9 loop
+						--this statement sets the index of the first, speculative branch that hasn't been resolved yet in the ROB_actual
+						if ROB_actual(j)(15 downto 12) = "1010" and ROB_actual(j).specul = '0' and j > i then
+							scnd_branch_index <= i;
+							exit;
+						elsif j = 9 then 
+							scnd_branch_index <= 9;
+							exit;
+						end if;
+					end loop;
+				end if;
+			end loop;
+		end if;
+	end process;
+	
 	ROB_process : process(reset_n, sys_clock, ROB_actual)
 	begin
 		if reset_n = '0' then
@@ -235,16 +268,16 @@ begin
 				end if;
 				
 				--don't buffer jumps because they are unconditional
-				if PM_data_in(15 downto 12) /= "1001" then
+				if PM_data_in(15 downto 12) /= "1001" and next_IW_is_addr = '0' then
 				
 					if PM_data_in(15 downto 12) = "1010" then
 						speculate_results 	<= '1';
-						ROB_actual 			<= update_ROB(ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data_out, IW_update_en, clear_zero_inst, results_available, condition_met, '1');
+						ROB_actual 			<= update_ROB(ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data_out, IW_update_en, clear_zero_inst, results_available, condition_met, '1', last_branch_index);
 					elsif results_available = '1' and condition_met = '1' then
 						speculate_results 	<= '0';
-						ROB_actual 			<= update_ROB(ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data_out, IW_update_en, clear_zero_inst, results_available, condition_met, '0');
+						ROB_actual 			<= update_ROB(ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data_out, IW_update_en, clear_zero_inst, results_available, condition_met, '0', last_branch_index);
 					else 
-						ROB_actual 			<= update_ROB(ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data_out, IW_update_en, clear_zero_inst, results_available, condition_met, speculate_results);
+						ROB_actual 			<= update_ROB(ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data_out, IW_update_en, clear_zero_inst, results_available, condition_met, speculate_results, last_branch_index);
 					end if;
 					
 				end if;

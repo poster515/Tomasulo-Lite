@@ -24,7 +24,9 @@ entity LAB is
 		IW						: out std_logic_vector(15 downto 0);
 		MEM						: out std_logic_vector(15 downto 0); --MEM is the IW representing the next IW as part of LD, ST, JMP, BNE(Z) operations
 		LAB_reset_out			: out std_logic; --reset signal for ID stage
-		LAB_stall				: out std_logic
+		LAB_stall				: out std_logic;
+		condition_met			: out std_logic;	--signal to WB for ROB. as soon as "results_available" goes high, need to evaluate all instructions after first branch
+		results_available		: out std_logic		--signal to WB for ROB. as soon as it goes high, need to evaluate all instructions after first branch
 	);
 end entity LAB;
 
@@ -52,6 +54,9 @@ architecture arch of LAB is
 	--memory address there
 	signal LAB	: LAB_actual := (others => ((others => '0'), '0', (others => '0'), '1'));	
 
+	--array with addresses for all branch instructions
+	signal branches	: branch_addrs := (others => ((others => '0'), (others => '0'), '0'));
+	
 	--Program counter (PC) register
 	signal PC_reg		: std_logic_vector(10 downto 0);
 	
@@ -83,110 +88,15 @@ architecture arch of LAB is
 	signal branch			: std_logic := '0';
 	signal branch_reg		: std_logic := '0'; --this will be '1' so long as there is a branch instruction in ROB
 	
-	--unclocked and clocked signal which tells if the incoming instruction is an ALU instruction
-	signal ALU_op			: std_logic := '0';
-	signal ALU_op_reg		: std_logic := '0'; 
+	--signals to represent the applicable branch selection, whether the condition was met or not, and whether the result of a branch is available
+	signal bne, bnez		: std_logic;
 	
-	--signal tracking whether subsequent instructions are speculative or not
-	signal spec_op	: std_logic;
-	
-	--signals to represent the applicable branch selection, whether the condition was met or not, and whether the condition is known
-	signal bne, bnez, condition_met, condition_unknown, results_available	: std_logic;
-	
-	--delcare new state machine for branch management
-	type branch_states = {idle, condition_check, write_results, unknown};
-	signal branch_state	: branch_states := idle;
+	--signals for intra-ROB branch status determination, set in "ROB_branch" process
+	signal branch_exists, is_unresolved, bne_from_ROB, bnez_from_ROB	: std_logic;
 	
 	--TODO: figure out what to do with I2C_error signal from MEM block, which goes high when there are three mistries to 
 		--read/write from I2C slave
 		
-	--function to determine if results of branch condition are ready									
-	function results_ready( bne 			: in std_logic; 
-							bnez			: in std_logic; 
-							RF_in_3_valid 	: in std_logic;  
-							RF_in_4_valid	: in std_logic;   
-							RF_in_3			: in std_logic_vector(15 downto 0);
-							RF_in_4			: in std_logic_vector(15 downto 0);
-							ROB_in			: in ROB) 
-		return std_logic_vector(1 downto 0) is --std_logic_vector([[condition met]], [[results ready]])
-								
-		variable i, j 		: integer 		:= 0;	
-		variable LAB_temp 	: LAB_actual 	:= LAB_in;
-		
-	begin
-		if RF_in_3_valid = '1' and bnez = '1' then
-			--have a BNEZ, need Reg1, which is in the RF 
-			if RF_in_3 /= "0000000000000000" then
-				--write PM_data_in, which will now just be a memory address to jump to, to PC_reg somehow
-				return "11"; 
-			else
-				--write PC_reg + 1 to PC_reg, branch condition not met
-				return "01";
-			end if;
-			
-		elsif RF_in_3_valid = '1' and RF_in_4_valid = '1' and bne = '1' then
-			--have a BNE, need both operands, which are both in the RF 
-			if RF_in_3 /= RF_in_4 then
-				--write PM_data_in, which will now just be a memory address to jump to, to PC_reg somehow
-				return "11";
-			else
-				--write PC_reg + 1 to PC_reg, branch condition not met
-				return "01";
-			end if;
-		else 			--don't have one or both results issued to RF yet. check ROB if results are buffered as "complete" there 
-			for i in 0 to 9 loop
-				if ROB_in(i).inst(15 downto 12) = "1010" and ROB_in(i).valid = '1' then	--we have the first branch instruction in ROB
-					
-					for j in 9 downto 0 loop	--now loop from the top down to determine the first instruction right before the
-												--branch that matches the branch operand(s)
-						if ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and bnez = '1' and i > j then	--
-							--its a BNEZ, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
-							if ROB_in(j).result /= "0000000000000000" then
-								return "11";
-							else
-								return "01";
-							end if;
-							
-						else	--the above "if" handles all BNEZ instructions, this "else" handles all BNE instructions
-							if RF_in_3_valid = '1' and RF_in_4_valid = '0' and bne = '1' then 
-								--we only need to find Reg2 value in ROB
-								if ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(6 downto 2) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and bne = '1' and i > j then	--
-									--if its a BNE, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
-									if RF_in_3 /= ROB_in(j).result then
-										--write PM_data_in, which will now just be a memory address to jump to, to PC_reg somehow
-										return "11";
-									else
-										--write PC_reg + 1 to PC_reg, branch condition not met
-										return "01";
-									end if;
-								end if;
-								
-							elsif RF_in_3_valid = '0' and RF_in_4_valid = '1' and bne = '1' then --we need to find RF_in_3 value in ROB
-								--we only need to find Reg1 value in ROB
-								if ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and bne = '1' and i > j then	--
-									--if its a BNE, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
-									if RF_in_4 /= ROB_in(j).result then
-										--write PM_data_in, which will now just be a memory address to jump to, to PC_reg somehow
-										return "11";
-									else
-										--write PC_reg + 1 to PC_reg, branch condition not met
-										return "01";
-									end if;
-								end if;
-								
-							elsif RF_in_3_valid = '0' and RF_in_4_valid = '0' and bne = '1' then --we need to find RF_in_3 value and RF_in_4 value in ROB
-								--TODO: we need to find both Reg1 and Reg2 values
-								
-								
-							end if;
-						end if;
-						
-					end loop; --j
-				end if; --ROB_in(15 downto 12) = "1010"
-			end loop; --for i
-		end if; --RF_in_3_valid
-	end function;
-
 begin
 
 	main	: process(reset_n, sys_clock, LAB, stall_pipeline)
@@ -197,6 +107,7 @@ begin
 			
 			next_IW_to_MOAB 	<= '0';
 			LAB 				<= init_LAB(LAB, LAB_MAX);
+			branches			<= init_branches(branches, LAB_MAX);
 			IW_reg 				<= "1111111111111111";
 			LAB_reset_out 		<= '0';
 			
@@ -205,167 +116,126 @@ begin
 			--jumps are easily handled with "program_counter" process below 
 			--branches are constantly being evaluated with the state machine "branch_state" below
 			--ALU instructions are managed and re-ordered strictly between branches in ROB
+
+			--continually check for branch condition on PM_data_in
+			if branch = '1' then
+				--do initial check to see if results are available
+				results_available 	<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, ROB_in)(0); --'0' = not available, '1' = available
+				condition_met 		<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, ROB_in)(1); --'0' = not met, '1' = met
+
+			--this "elsif" handles other branches that currently exist in the ROB that have not been resolved yet. should continually monitor those, as determined by "ROB_branch" process below. 
+			--need this additional if case because the data sent to "results_result" differ from the above if case. 
+			elsif branch_exists = '1' and is_unresolved = '1' then	
+
+				results_available 	<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, ROB_in)(0); --'0' = not available, '1' = available
+				condition_met 		<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, ROB_in)(1); --'0' = not met, '1' = met
+
+			end if;
 			
-			case branch_state is
+			--if statements to record branch addresses (only if branch condition is unresolved still)
+			if branch_reg = '1' and results_available = '0' then
+				--this function will store the current PM_data_in, being the branch address, and shift the array down if a previous branch condition is resolved
+				branches <= store_shift_branch_addr(branches, results_available, '1', PM_data_in, PC_reg); --'1' is a bit stating that the next two bytes are valid data (PM_data_in)
+			else
+				--this function will just shift "branches" appropriately if a previous branch condition is resolved or the incoming branch is resolved
+				branches <= store_shift_branch_addr(branches, results_available, '0', "0000000000000000", "00000000000");
+			end if;
+
+			--if pipeline isn't stalled, just dispatch instruction
+			if stall_pipeline = '0' then 
 			
-				when idle => 
-					--continually check for branch condition
-					if branch = '1' then
-						
-						--do initial check to see if results are available
-						if results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, ROB_in)(0) = '1' then
-						
-							results_available 	<= '1'; 			--'0' = not available, '1' = available
-							condition_met 		<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, ROB_in)(1); --'0' = not met, '1' = met
-							branch_state 		<= write_results; 	--just go to the next state of writing back results
-							condition_unknown 	<= '0';				--condition known, send to ROB to mark every instruction from the currently resolved branch through the next branch in the ROB as "non-speculative"
-							
-						elsif results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, ROB_in) = '0' then
-							
-							results_available 	<= '0'; 			--'0' = not available, '1' = available
-							branch_state 		<= condition_check; --just go to the next state of continually checking branch condition every clock cycle
-							condition_unknown	<= '1';				--condition unknown, send to ROB to mark every instruction from the currently resolved branch through the next branch in the ROB as "speculative"
-							
-						end if;
-						
-					--TODO: create additional "elsif" to handle other branches in ROB, for example, if there are two or more branches issued, we need to be able to continually check for their resolution
-					--elsif [[other_branches_in_ROB]] then
-					--look for their resolution and mark results as speculative or non-speculative
-					--send this information back to ROB 
-					
-					else
-						branch_state <= idle;
-					end if;
+				--this first "if" handles the processor startup until we have a data hazard with incoming PM_data_in
+				if LAB(0).inst_valid = '0' then
 				
-				when condition_check =>
-				
-					--continually check if results are available
-					if results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, ROB_in)(0) = '1' then
-					
-						results_available 	<= '1'; 			--'0' = not available, '1' = available
-						condition_met 		<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, ROB_in)(1); --'0' = not met, '1' = met
-						branch_state 		<= write_results; 	--just go to the next state of writing back results
-						condition_unknown 	<= '0';				--condition known, send to ROB to mark every instruction from the currently resolved branch through the next branch in the ROB as "non-speculative"
-						
-					elsif results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, ROB_in)(0) = '0' then
-						
-						results_available 	<= '0'; 			--'0' = not available, '1' = available
-						branch_state 		<= condition_check; --just go to the next state of continually checking branch condition every clock cycle
-						condition_unknown 	<= '1'; 			--condition unknown, send to ROB to mark every instruction from the currently resolved branch through the next branch in the ROB as "speculative"
-						
-					end if;
+--				if PM_data_in matches any pipeline stage instruction (and the associated reset_n is high), then issue next
+--				valid, non-conflicting instruction or if none available, just buffer PM_data_in in LAB and issue a no-op command
+--				(i.e., "1111111111111111")
 	
-				when write_results => 
-					--need to mark every instruction from the currently resolved branch through the next branch in the ROB as "non-speculative"
-					condition_unknown 	<= '0';		--condition known, send to ROB to mark every instruction from the currently resolved branch through the next branch in the ROB as "non-speculative"
-					branch_state 		<= idle;
-				
-				when unknown => 
-					report "branch_state ended in impossible state.";
-					branch_state <= idle;
-			
-			end case;
-				
-			if ALU_op = '1' then
-				--if pipeline isn't stalled, just dispatch instruction
-				if stall_pipeline = '0' then 
-				
-					--this first "if" handles the processor startup until we have a data hazard with incoming PM_data_in
-					if LAB(0).inst_valid = '0' then
-					
-		--				if PM_data_in matches any pipeline stage instruction (and the associated reset_n is high), then issue next
-		--				valid, non-conflicting instruction or if none available, just buffer PM_data_in in LAB and issue a no-op command
-		--				(i.e., "1111111111111111")
-		
-						--if there's a conflict and its not a jump and its not a memory address
-						if PM_datahaz_status = '1' then 
-							
-							--have data conflict with ID, EX, or MEM stage 
-							--buffer into LAB(0)
-							LAB(0).inst 		<= PM_data_in;
-							LAB(0).inst_valid 	<= '1';
-							LAB(0).addr_valid 	<= not(branch or ld_st);
-							IW_reg 				<= "1111111111111111"; --issue no-op
+					--if there's a conflict and its not a jump and its not a memory address
+					if PM_datahaz_status = '1' then 
 						
-						else
-							--just issue PM_data_in
-							IW_reg <= PM_data_in;
-						end if;
+						--have data conflict with ID, EX, or MEM stage 
+						--buffer into LAB(0)
+						LAB(0).inst 		<= PM_data_in;
+						LAB(0).inst_valid 	<= '1';
+						LAB(0).addr_valid 	<= not(branch or ld_st);
+						IW_reg 				<= "1111111111111111"; --issue no-op
 					
 					else
-						--have at least one valid instruction waiting in LAB
-						--use loop to check for hazards against stages of the pipeline
-						for i in 0 to LAB_MAX - 1 loop
+						--just issue PM_data_in
+						IW_reg <= PM_data_in;
+					end if;
+				
+				else
+					--have at least one valid instruction waiting in LAB
+					--use loop to check for hazards against stages of the pipeline
+					for i in 0 to LAB_MAX - 1 loop
+						
+						if (((ID_dest_reg /= LAB(i).inst(11 downto 7)) and (ID_dest_reg /= LAB(i).inst(6 downto 2))) and ID_reset = '1') and 
+							(((EX_dest_reg /= LAB(i).inst(11 downto 7)) and (EX_dest_reg /= LAB(i).inst(6 downto 2))) and EX_reset = '1') and
+							(((MEM_dest_reg /= LAB(i).inst(11 downto 7)) and (MEM_dest_reg /= LAB(i).inst(6 downto 2))) and MEM_reset = '1') and
+							(LAB(i).inst_valid = '1') then --we don't have any conflict in pipeline and LAB instruction is valid
 							
-							if (((ID_dest_reg /= LAB(i).inst(11 downto 7)) and (ID_dest_reg /= LAB(i).inst(6 downto 2))) and ID_reset = '1') and 
-								(((EX_dest_reg /= LAB(i).inst(11 downto 7)) and (EX_dest_reg /= LAB(i).inst(6 downto 2))) and EX_reset = '1') and
-								(((MEM_dest_reg /= LAB(i).inst(11 downto 7)) and (MEM_dest_reg /= LAB(i).inst(6 downto 2))) and MEM_reset = '1') and
-								(LAB(i).inst_valid = '1') then --we don't have any conflict in pipeline
-								
-								--check if there are any hazards within the LAB for the ith entry (for memory instructions)
-								if datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) = "1000" and LAB(i).addr_valid = '1' then
-								
-									report "Issuing memory instruction.";
-									--if so, we can issue the ith instruction
-									IW_reg 		<= LAB(i).inst;
-									MEM_reg 	<= LAB(i).addr;
-									
-									--shift LAB down and buffer PM_data_in
-									LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX);
-									
-									--exit, we're done here
-									exit;
-								
-								--check if there are any hazards within the LAB now for the ith entry (for non-memory instructions)
-								elsif datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) /= "1000" then
-									
-									report "Issuing non-memory instruction.";
-									--if not, we can issue the ith instruction
-									IW_reg <= LAB(i).inst;
-									
-									--shift LAB down and buffer PM_data_in
-									LAB <= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX);
-									
-									--exit here, we're done
-									exit;
-									
-								else
-									--can't do anything if there's a data hazard for this LAB instruction, keep moving on
-									--just issue no-op by default
-									IW_reg 	<= "1111111111111111";
-									MEM_reg 	<= "0000000000000000";
-								end if; --datahaz_status
-								
-							elsif i = LAB_MAX - 1 and datahaz_status(i) = '1' then --LAB is full and the last instruction has a conflict
+							--check if there are any hazards within the LAB for the ith entry (for memory instructions)
+							if datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) = "1000" and LAB(i).addr_valid = '1' then
 							
-								if PM_datahaz_status = '0' then
-									IW_reg 		<= PM_data_in;
-									LAB_full 	<= '0';
-								else --can't do anything, keep PC where it is
-									LAB_full 	<= '1';
-									IW_reg 		<= "1111111111111111";
-									MEM_reg 	<= "0000000000000000";
-								end if;
+								report "Issuing memory instruction.";
+								--if so, we can issue the ith instruction
+								IW_reg 		<= LAB(i).inst;
+								MEM_reg 	<= LAB(i).addr;
+								
+								--shift LAB down and buffer PM_data_in
+								LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1');
+								
+								--exit, we're done here
+								exit;
+							
+							--check if there are any hazards within the LAB now for the ith entry (for non-memory instructions)
+							elsif datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) /= "1000" then
+								
+								report "Issuing non-memory instruction.";
+								--if not, we can issue the ith instruction
+								IW_reg 	<= LAB(i).inst;
+								
+								--shift LAB down and buffer PM_data_in
+								LAB 	<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1');
+								
+								--exit here, we're done
+								exit;
+								
 							else
-								--default to just issuing a no-op
+								--can't do anything if there's a data hazard for this LAB instruction, keep moving on, buffer PM but DON'T SHIFT LAB
+								--just issue no-op by default
+								LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '0');
 								IW_reg 		<= "1111111111111111";
 								MEM_reg 	<= "0000000000000000";
+							end if; --datahaz_status
+							
+						elsif i = LAB_MAX - 1 and datahaz_status(i) = '1' then --LAB is full and the last instruction has a conflict
+						
+							if PM_datahaz_status = '0' then
+								IW_reg 		<= PM_data_in;
+								LAB_full 	<= '0';
+							else --can't do anything, keep PC where it is
+								LAB_full 	<= '1';
+								IW_reg 		<= "1111111111111111";
+								MEM_reg 	<= "0000000000000000";
+							end if;
+						else
+							--default to just issuing a no-op
+							IW_reg 		<= "1111111111111111";
+							MEM_reg 	<= "0000000000000000";
 
-							end if; --various tags
-						end loop; --for i
-					
-					end if; --LAB(0).valid = '0' 
-					
-				else
-					--if stalled, just issue noop
-					IW_reg <= "1111111111111111";
-					
-				end if; --stall_pipeline
-					
+						end if; --various tags
+					end loop; --for i
+				
+				end if; --LAB(0).valid = '0' 
+				
 			else
-				--don't know what this instruction is, don't do anything or issue no-op
+				--if stalled, just issue noop
 				IW_reg <= "1111111111111111";
-			end if; --jump
+				
+			end if; --stall_pipeline
 					
 		end if; --reset_n
 	end process;
@@ -404,6 +274,14 @@ begin
 					--results are available and we can non-speculatively execute the next instructions. the "main" process will handle the rest. 
 					PC_reg 	<= std_logic_vector(unsigned(PC_reg) + 1);
 					
+				elsif branch_reg = '0' and results_available = '1' and condition_met = '1' then
+					--results are available and we can non-speculatively execute the branched instructions. the "main" process will handle the rest. 
+					PC_reg 	<= branches(0).addr_met(10 downto 0);
+					
+				elsif branch_reg = '0' and results_available = '1' and condition_met = '0' then
+					--results are available and we can non-speculatively execute the next instructions. the "main" process will handle the rest. 
+					PC_reg 	<= std_logic_vector(unsigned(branches(0).addr_unmet(10 downto 0)) + 1);
+					
 				else 
 					--otherwise increment PC to get next IW
 					PC_reg 	<= std_logic_vector(unsigned(PC_reg) + 1);
@@ -412,6 +290,42 @@ begin
 			end if; --sys_clock
 		end if; --reset_n
 	end process; --program_counter
+	
+	--process to determine whether an unresolved branch instruction exists in the ROB, this is used to then confirm if the results are ready
+	ROB_branch	: process (reset_n, ROB_in) 
+	begin
+		if reset_n = '0' then
+			branch_exists 	<= '0';
+			is_unresolved 	<= '0';
+			bne_from_ROB 	<= '0';
+			bnez_from_ROB 	<= '0';
+		else
+			for i in 0 to 9 loop
+				--find the first unresolved branch in the ROB, grab some info, and then exit 
+				if ROB_in(i).inst = "1010" and ROB_in(i).specul = '0' then
+				
+					branch_exists 	<= '1';
+					is_unresolved 	<= '0';
+					-- bne_from_ROB 	<= not(ROB_in(i).inst(1)) and ROB_in(i).inst(0);
+					-- bnez_from_ROB 	<= not(ROB_in(i).inst(1)) and not(ROB_in(i).inst(0));
+					exit;
+				elsif ROB_in(i).inst = "1010" and ROB_in(i).specul = '1' then
+				
+					branch_exists 	<= '1';
+					is_unresolved 	<= '1';
+					bne_from_ROB 	<= not(ROB_in(i).inst(1)) and ROB_in(i).inst(0);
+					bnez_from_ROB 	<= not(ROB_in(i).inst(1)) and not(ROB_in(i).inst(0));
+					exit;
+				else 
+					branch_exists 	<= '0';
+					is_unresolved 	<= '0';
+					bne_from_ROB 	<= '0';
+					bnez_from_ROB 	<= '0';
+				end if; 
+				
+			end loop; --i 
+		end if; --reset_n
+	end process;
 	
 	--process to generate combinational logic for input instructions
 	process(reset_n, PM_data_in, jump_reg) 
@@ -437,13 +351,11 @@ begin
 				
 			elsif (PM_data_in(15 downto 12) = "1000") and ld_st_reg = '0' then
 				ld_st 	<= '1'; --have a memory operation
-			elsif (PM_data_in(15) = '0') or (PM_data_in(15 downto 12) = "1011") or (PM_data_in(15 downto 12) = "1100") then
-				ALU_op 	<= '1'; --have an ALU operation
+
 			else
 				branch	<= '0';
 				ld_st 	<= '0';
 				jump	<= '0';
-				ALU_op 	<= '0';
 			end if;
 		end if; --reset_n
 						
@@ -457,7 +369,6 @@ begin
 			ld_st_reg 		<= '0';
 			branch_reg 		<= '0';
 			jump_reg		<= '0';
-			ALU_op_reg		<= '0';
 		elsif rising_edge(sys_clock) then
 			if jump = '1' and jump_reg = '0' then
 				jump_reg	<= '1';
@@ -468,14 +379,10 @@ begin
 			elsif ld_st = '1' and ld_st_reg = '0' then
 				ld_st_reg 	<= '1'; --
 				
-			elsif ALU_op = '1' then
-				ALU_op_reg		<= '1';
-				
 			else
 				ld_st_reg 		<= '0';
 				branch_reg 		<= '0';
 				jump_reg		<= '0';
-				ALU_op_reg		<= '0';
 			end if;
 		end if; --reset_n
 						
@@ -553,8 +460,6 @@ begin
 		end if; --reset_n
 		
 	end process;
-	
-	
 
 		--latch outputs
 		PC 	<= PC_reg;

@@ -54,6 +54,10 @@ package LAB_functions is
 									issued_inst	: in integer;
 									LAB_MAX		: in integer 		)
 		return LAB_actual;
+		
+	--function to type convert std_logic to integer
+	function convert_SL ( shift_LAB : in std_logic )
+		return integer;
 	
 	--function to determine if results of branch condition are ready	
 	function results_ready( bne 			: in std_logic; 
@@ -147,7 +151,8 @@ package body LAB_functions is
 	function shiftLAB_and_bufferPM(	LAB_in		: in LAB_actual;
 									PM_data_in	: in std_logic_vector(15 downto 0);
 									issued_inst	: in integer; --location of instruction that was issued, start shift here
-									LAB_MAX		: in integer 		)
+									LAB_MAX		: in integer;
+									shift_LAB	: in std_logic	)
 		return LAB_actual is
 								
 		variable i 			: integer 		:= issued_inst;	
@@ -159,28 +164,28 @@ package body LAB_functions is
 			if i >= issued_inst then
 				if (LAB_temp(i).inst_valid = '1') and (LAB_temp(i + 1).inst_valid = '0') then
 				
-					LAB_temp(i).inst := PM_data_in;
-					LAB_temp(i + 1).addr			:= (others => '0');
+					LAB_temp(i).inst 							:= PM_data_in;
+					LAB_temp(i + convert_SL(shift_LAB)).addr	:= (others => '0');
 					
 					if PM_data_in(15 downto 14) = "10" and ((PM_data_in(1) nand PM_data_in(0)) = '1') then
-						LAB_temp(i + 1).addr_valid	:= '0';
+						LAB_temp(i + convert_SL(shift_LAB)).addr_valid	:= '0';
 					else
-						LAB_temp(i + 1).addr_valid	:= '1';
+						LAB_temp(i + convert_SL(shift_LAB)).addr_valid	:= '1';
 					end if;
 					
 				elsif i = LAB_MAX - 2 and LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '1' then
 				
-					LAB_temp(i + 1).inst 		:= PM_data_in;
-					LAB_temp(i + 1).addr			:= (others => '0');
+					LAB_temp(i + convert_SL(shift_LAB)).inst 		:= PM_data_in;
+					LAB_temp(i + convert_SL(shift_LAB)).addr		:= (others => '0');
 						
 					if PM_data_in(15 downto 14) = "10" and ((PM_data_in(1) nand PM_data_in(0)) = '1') then
-						LAB_temp(i + 1).addr_valid	:= '0';
+						LAB_temp(i + convert_SL(shift_LAB)).addr_valid	:= '0';
 					else
-						LAB_temp(i + 1).addr_valid	:= '1';
+						LAB_temp(i + convert_SL(shift_LAB)).addr_valid	:= '1';
 					end if;
 					
 				else
-					LAB_temp(i) := LAB_temp(i + 1);
+					LAB_temp(i) := LAB_temp(i + convert_SL(shift_LAB));
 				end if;
 			end if; --i >= issued_inst
 		end loop; --for i
@@ -188,18 +193,32 @@ package body LAB_functions is
 		return LAB_temp; --come here if there are no spots available
 	end function;
 	
+	--function to type convert std_logic to integer
+	function convert_SL ( shift_LAB : in std_logic )
+	
+	return integer is
+
+	begin
+	
+		if shift_LAB = '1' then
+			return 1;
+		else
+			return 0;
+		end if;
+		
+	end;
+	
 	--function to determine if results of branch condition are ready	
 	function results_ready( bne 			: in std_logic; 
 							bnez			: in std_logic; 
-							RF_in_3_valid 	: in std_logic;  
-							RF_in_4_valid	: in std_logic;   
+							RF_in_3_valid 	: in std_logic;  --valid marker from RF for Reg1 field of branch IW
+							RF_in_4_valid	: in std_logic;  --valid marker from RF for Reg2 field of branch IW
 							RF_in_3			: in std_logic_vector(15 downto 0);
 							RF_in_4			: in std_logic_vector(15 downto 0);
 							ROB_in			: in ROB) 
 		return std_logic_vector(1 downto 0) is --std_logic_vector([[condition met]], [[results ready]])
 								
 		variable i, j 		: integer 		:= 0;	
-		variable LAB_temp 	: LAB_actual 	:= LAB_in;
 		
 	begin
 		if RF_in_3_valid = '1' and bnez = '1' then
