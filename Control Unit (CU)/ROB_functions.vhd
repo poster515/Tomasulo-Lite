@@ -92,123 +92,72 @@ package body ROB_functions is
 		
 		for i in 0 to 8 loop
 		
-			if results_available = '1' and condition_met = '1' then
-				--clear frst_branch_idx instruction (which is the first branch, whose condition was met)
+			if i < frst_branch_idx and results_available = '1' and condition_met = '1' then 
+				--by default, there are no invalid spots in this area to buffer PM_data_in
+				if ROB_temp(i + 1).valid = '1' and ROB_temp(i + 1).inst = IW_in then
+					if IW_result_en = '1' and IW_updated = '0' then
+						--n_clear_zero automatically shifts ROB entries
+						ROB_temp(i + n_clear_zero).result 	:= IW_result;
+						ROB_temp(i + n_clear_zero).inst 	:= ROB_temp(i + 1).inst;
+						IW_updated := '1';
+					end if;
+				else
+					ROB_temp(i) := ROB_temp(i + convert_CZ(clear_zero));
+				end if;
 				
-				--TODO: modify so we shift down one slot all instructions after the frst_branch_idx.
-				--condition covers when we get to a location in the ROB that isn't valid, i.e., we can buffer PM_data_in there
-				if ROB_temp(i).valid = '0' then
-					--DONE FOR NOW. 
+			elsif i >= frst_branch_idx and results_available = '1' and condition_met = '1' and i < scnd_branch_idx then
+				--shift all instructions down, and buffer PM_data_in or update ROB results as applicable
+				if ROB_temp(i + 1).valid = '0' then 
+					--we can buffer PM_data_in right here, and shift down this range of instructions since the branch condition was met
 					if PM_buffer_en = '1' then
-						ROB_temp(i).inst 	:= PM_data_in;
-						ROB_temp(i).valid 	:= '1';
-						--"condition_met" isn't ready until next clock cycle (because we have to buffer the branch address and I chose to wait a clock cycle)
-						if PM_data_in(15 downto 12) = "1010" then
-							ROB_temp(i).specul	:= '1';
-						else
-							ROB_temp(i).specul	:= '0';
-						end if;
+						ROB_temp(i + n_clear_zero).inst 	:= PM_data_in;
+						ROB_temp(i + n_clear_zero).valid 	:= '1';
+						ROB_temp(i + n_clear_zero).specul	:= '1';
+						ROB_temp(i + n_clear_zero).specul	:= '0';
 						exit;
 					end if;
-					
-				--condition for when we've gotten to the last valid instruction in the ROB
-				elsif ROB_temp(i).valid = '1' and ROB_temp(i + 1).valid = '0' then
-					--DONE FOR NOW. 
-					if PM_buffer_en = '1' then
-						--n_clear_zero automatically shifts ROB entries
-						if i < frst_branch_idx then
-							ROB_temp(i + n_clear_zero).inst 	:= PM_data_in;
-							ROB_temp(i + n_clear_zero).valid 	:= '1';
-							
-							--"condition_met" isn't ready until next clock cycle
-							if PM_data_in(15 downto 12) = "1010" then
-								ROB_temp(i + n_clear_zero).specul	:= '1';
-							else
-								ROB_temp(i + n_clear_zero).specul	:= speculate_res;
-							end if;
-							exit;
-						else
-							--since we've passed the branch instruction which was met, we can simply overwrite that slot in the ROB. 
-							ROB_temp(i).inst 	:= PM_data_in;
-							ROB_temp(i).valid 	:= '1';
-							
-							--"condition_met" isn't ready until next clock cycle
-							if PM_data_in(15 downto 12) = "1010" then
-								ROB_temp(i).specul	:= '1';
-							else
-								ROB_temp(i).specul	:= speculate_res;
-							end if;
-							exit;
-						end if;
-
-					end if;
-
-				--condition for when the next instruction is valid and matches IW_in, so we can shift ROB down and update IW_in result
-				elsif ROB_temp(i + 1).valid = '1' and ROB_temp(i + 1).inst = IW_in then
-					--TODO: FINISH FOR BRANCH COMPLETION. 
-					--if we can update IW_in entry, and we haven't updated any result yet, in case of identical instructions
+				elsif IW_in = ROB_temp(i + 1).inst and ROB_temp(i + 1).valid = '1' then 
+					--we can shift the matching instruction down a slot
 					if IW_result_en = '1' and IW_updated = '0' then
 						--n_clear_zero automatically shifts ROB entries
 						ROB_temp(i + n_clear_zero).result 		:= IW_result;
 						ROB_temp(i + n_clear_zero).inst 		:= ROB_temp(i + 1).inst;
-						
-						if results_avail = '1' and condition_met = '1' and (i + 1) <= scnd_branch_idx then 
-							ROB_temp(i + n_clear_zero).valid 		:= '1';
-							ROB_temp(i + n_clear_zero).complete 	:= '1';
-							ROB_temp(i + n_clear_zero).specul 		:= '0';
-						elsif results_avail = '1' and condition_met = '0' and (i + 1) <= scnd_branch_idx then 
-							ROB_temp(i + n_clear_zero).valid 		:= '0';
-							ROB_temp(i + n_clear_zero).complete 	:= '0';
-							ROB_temp(i + n_clear_zero).specul 		:= '0';
-						elsif results_avail = '0' then
-							ROB_temp(i + n_clear_zero).valid 		:= '1';
-							ROB_temp(i + n_clear_zero).complete 	:= '1';
-							ROB_temp(i + n_clear_zero).specul 		:= ROB_temp(i + 1).specul;
-						else
-						
-						end if;
+						IW_updated := '1';
+					end if;
+				end if;
+			
+			elsif i >= scnd_branch_idx and results_available = '1' and condition_met = '1' then
+				--these results are still speculative. buffer PM_data_in or update ROB results as applicable
+				if ROB_temp(i + 1).valid = '0' then 
+					--we can buffer PM_data_in right here, mark as speculative
+					if PM_buffer_en = '1' then
+						ROB_temp(i + n_clear_zero).inst 	:= PM_data_in;
+						ROB_temp(i + n_clear_zero).valid 	:= '1';
+						ROB_temp(i + n_clear_zero).specul	:= '1';
+						IW_updated := '1';
+						exit;
+					end if;--PM_buffer_en
+				elsif IW_in = ROB_temp(i + 1).inst and ROB_temp(i + 1).valid = '1' then 
+					--we can shift the matching instruction down a slot
+					if IW_result_en = '1' and IW_updated = '0' then
+						--n_clear_zero automatically shifts ROB entries
+						ROB_temp(i + n_clear_zero).result 		:= IW_result;
+						ROB_temp(i + n_clear_zero).inst 		:= ROB_temp(i + 1).inst;
 						IW_updated := '1';
 						
-					else 
-						--n_clear_zero automatically shifts ROB entries
-						ROB_temp(i) := ROB_temp(i + convert_CZ(clear_zero));
-					
 					end if;
-					
-				--condition for when the ROB is full, we want to buffer incoming PM_data_in, and can clear the zeroth instruction (i.e., make room)
-				elsif i = ROB_DEPTH - 2 and clear_zero = '1' and ROB_temp(ROB_DEPTH - 1).valid = '1' then
-					--TODO: FINISH FOR BRANCH COMPLETION. 
-					if PM_buffer_en = '1' then
-						
-						ROB_temp(ROB_DEPTH - 1).inst 	:= PM_data_in;
-						ROB_temp(ROB_DEPTH - 1).valid 	:= '1';
-						--"condition_met" isn't ready until next clock cycle
-						if PM_data_in(15 downto 12) = "1010" then
-							ROB_temp(ROB_DEPTH - 1).specul	:= '1';
-						else
-							ROB_temp(ROB_DEPTH - 1).specul	:= speculate_res;
-						end if;
-					end if;
+				end if;
 				
-				else
-					--TODO: FINISH FOR BRANCH COMPLETION. 
-					--clear_zero automatically shifts ROB entries
-					ROB_temp(i)	:= ROB_temp(i + convert_CZ(clear_zero));
-					
-				end if; --ROB_temp(i).valid
-				
-			elsif results_available = '1' and condition_met = '0' then
-				--clear all instruction from frst_branch_idx to the end of the ROB because the branch condition was not met
-				--TODO: implement the below "else" instructions, shifting down the new PM_data_in to buffer to the frst_branch_idx slot. 
-			else
-				--we're just operating normally, with or without branches in the ROB
-				
+			elsif results_available = '0'then
+
 				--condition covers when we get to a location in the ROB that isn't valid, i.e., we can buffer PM_data_in there
 				if ROB_temp(i).valid = '0' then
 				
 					if PM_buffer_en = '1' then
+						--just insert here 
 						ROB_temp(i).inst 	:= PM_data_in;
 						ROB_temp(i).valid 	:= '1';
+						
 						--"condition_met" isn't ready until next clock cycle (because we have to buffer the branch address and I chose to wait a clock cycle)
 						if PM_data_in(15 downto 12) = "1010" then
 							ROB_temp(i).specul	:= '1';
@@ -244,22 +193,10 @@ package body ROB_functions is
 						--n_clear_zero automatically shifts ROB entries
 						ROB_temp(i + n_clear_zero).result 		:= IW_result;
 						ROB_temp(i + n_clear_zero).inst 		:= ROB_temp(i + 1).inst;
+						ROB_temp(i + n_clear_zero).valid 		:= '1';
+						ROB_temp(i + n_clear_zero).complete 	:= '1';
+						ROB_temp(i + n_clear_zero).specul 		:= ROB_temp(i + 1).specul;
 						
-						if results_avail = '1' and condition_met = '1' and (i + 1) <= scnd_branch_idx then 
-							ROB_temp(i + n_clear_zero).valid 		:= '1';
-							ROB_temp(i + n_clear_zero).complete 	:= '1';
-							ROB_temp(i + n_clear_zero).specul 		:= '0';
-						elsif results_avail = '1' and condition_met = '0' and (i + 1) <= scnd_branch_idx then 
-							ROB_temp(i + n_clear_zero).valid 		:= '0';
-							ROB_temp(i + n_clear_zero).complete 	:= '0';
-							ROB_temp(i + n_clear_zero).specul 		:= '0';
-						elsif results_avail = '0' then
-							ROB_temp(i + n_clear_zero).valid 		:= '1';
-							ROB_temp(i + n_clear_zero).complete 	:= '1';
-							ROB_temp(i + n_clear_zero).specul 		:= ROB_temp(i + 1).specul;
-						else
-						
-						end if;
 						IW_updated := '1';
 						
 					else 
@@ -281,6 +218,7 @@ package body ROB_functions is
 						else
 							ROB_temp(ROB_DEPTH - 1).specul	:= speculate_res;
 						end if;
+						exit;
 					end if;
 				
 				else
