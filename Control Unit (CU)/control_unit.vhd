@@ -6,14 +6,10 @@ library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use ieee.numeric_std.all;
 use work.arrays.ALL;
+use work.control_unit_types.all;
 
 entity control_unit is
    port ( 
-	
-		--TEST INPUTS ONLY, REMOVE AFTER LAB INSTANTIATED
-		LAB_mem_addr_out					: in std_logic_vector(15 downto 0); 
-		LAB_ID_IW							: in std_logic_vector(15 downto 0); 
-		LAB_stall_out						: in std_logic;
 
 		--TEST OUTPUT ONLY, REMOVE AFTER LAB INSTANTIATED (signal goes to LAB for arbitration)
 		I2C_error_out						: out std_logic; 	
@@ -23,15 +19,21 @@ entity control_unit is
 		--Input data and clock
 		reset_n, sys_clock				: in std_logic;	
 		PM_data_in							: in std_logic_vector(15 downto 0);
-		--PC	: out std_logic_vector(10 downto 0);
+		PC										: out std_logic_vector(10 downto 0);
+		RF_in_3, RF_in_4					: in std_logic_vector(15 downto 0);
+		RF_in_3_valid, RF_in_4_valid	: in std_logic;
+		ALU_SR_in							: in std_logic_vector(3 downto 0);
 		
 		--MEM Feedback Signals
 		I2C_error, I2C_op_run			: in std_logic;	
 		
-		--(ID) RF control Signals
+		--(ID) RF control signals
 		ID_RF_out_1_mux					: out std_logic_vector(4 downto 0);	--controls first output mux
 		ID_RF_out_2_mux					: out std_logic_vector(4 downto 0);	--controls second output mux
+		ID_RF_out_3_mux					: out std_logic_vector(4 downto 0);	--controls third output mux
+		ID_RF_out_4_mux					: out std_logic_vector(4 downto 0);	--controls fourth output mux
 		ID_RF_out1_en, ID_RF_out2_en	: out std_logic; --enables RF_out_X on B and C bus
+		ID_RF_out3_en, ID_RF_out4_en	: out std_logic; --enables RF_out_X on B and C bus
 		
 		--(EX) ALU control Signals
 		ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
@@ -64,6 +66,13 @@ end control_unit;
 
 architecture behavioral of control_unit is
 
+	signal LAB_stall				: std_logic; --signal to logically or all other CU stall signals
+	
+	--LAB <-> ID Signals
+	signal LAB_ID_IW				: std_logic_vector(15 downto 0);
+	signal LAB_mem_addr_out		: std_logic_vector(15 downto 0);
+	signal LAB_reset_out			: std_logic;
+	signal LAB_stall_out			: std_logic;
 	signal ID_stall_out			: std_logic;
 	
 	--ID <-> EX Signals
@@ -83,51 +92,64 @@ architecture behavioral of control_unit is
 	signal WB_stall_out			: std_logic;
 	signal MEM_reset_out			: std_logic;
 	
+	--WB <-> LAB signals
+	signal condition_met			: std_logic;
+	signal results_available	: std_logic;
+	signal ROB_in					: ROB;
 	
-
---	component LAB is
---		generic ( 	LAB_MAX	: integer	:= 5;	
---						LAB2_MAX : integer 	:= 5 	);
---		port (
---
---			sys_clock, reset_n  	: in std_logic;
---			stall_pipeline			: in std_logic; --needed when waiting for certain commands, should be formulated in top level CU module
---			ID_tag			: in std_logic_vector(4 downto 0); --source registers for instruction in ID stage
---			EX_tag			: in std_logic_vector(4 downto 0); --source registers for instruction in EX stage (results available)
---			MEM_tag			: in std_logic_vector(4 downto 0); --source registers for instruction in MEM stage (results available)
---			WB_tag			: in std_logic_vector(4 downto 0); --source registers for instruction in WB stage (results available)
---			
---			tag_to_commit	: in integer;	--input from WB stage, which denotes the tag of the instruction that has been written back, only valid for single clock
---			
---			PM_data_in		: in 	std_logic_vector(15 downto 0);
---			PC					: out std_logic_vector(10 downto 0);
---			IW					: out std_logic_vector(15 downto 0);
---			MEM				: out std_logic_vector(15 downto 0)	--MEM is the IW representing the next IW as part of LD, ST, JMP, BNE(Z) operations
---		);
---	end component;
+	component LAB_test is
+		generic ( 	LAB_MAX		: integer	:= 5;
+						ROB_DEPTH 	: integer	:= 10	);
+		port (
+			reset_n, sys_clock  	: in std_logic;
+			stall_pipeline			: in std_logic; --needed when waiting for certain commands, should be formulated in top level CU module
+			ID_dest_reg				: in std_logic_vector(4 downto 0); --source registers for instruction in ID stage (results available)
+			EX_dest_reg				: in std_logic_vector(4 downto 0); --source registers for instruction in EX stage (results available)
+			MEM_dest_reg			: in std_logic_vector(4 downto 0); --source registers for instruction in MEM stage (results available)
+			ID_reset, EX_reset, MEM_reset	: in std_logic;
+			PM_data_in				: in std_logic_vector(15 downto 0);
+			RF_in_3, RF_in_4		: in std_logic_vector(15 downto 0);
+			RF_in_3_valid			: in std_logic;
+			RF_in_4_valid			: in std_logic;
+			ROB_in					: in ROB;
+			ALU_SR_in				: in std_logic_vector(3 downto 0);
+			
+			PC							: out std_logic_vector(10 downto 0);
+			IW							: out std_logic_vector(15 downto 0);
+			MEM						: out std_logic_vector(15 downto 0); --MEM is the IW representing the next IW as part of LD, ST, JMP, BNE(Z) operations
+			LAB_reset_out			: out std_logic; --reset signal for ID stage
+			LAB_stall				: out std_logic;
+			RF_out_3_mux			: out std_logic_vector(4 downto 0);
+			RF_out_4_mux			: out std_logic_vector(4 downto 0);
+			RF_out_3_en				: out std_logic;
+			RF_out_4_en				: out std_logic;
+			condition_met			: inout std_logic;	--signal to WB for ROB. as soon as "results_available" goes high, need to evaluate all instructions after first branch
+			results_available		: inout std_logic		--signal to WB for ROB. as soon as it goes high, need to evaluate all instructions after first branch
+		);
+	end component;
 
 	component ID is
 		port ( 
 			--Input data and clock
-		reset_n, sys_clock			: in std_logic;	
-		IW_in								: in std_logic_vector(15 downto 0);
-		LAB_stall_in					: in std_logic;
-		WB_stall_in						: in std_logic;		--set high when an upstream CU block needs this 
-		MEM_stall_in					: in std_logic;
-		EX_stall_in						: in std_logic;
-		mem_addr_in						: in std_logic_vector(15 downto 0);
-		
-		--Control
-		RF_out_1_mux					: out std_logic_vector(4 downto 0);	--controls first output mux
-		RF_out_2_mux					: out std_logic_vector(4 downto 0);	--controls second output mux
-		RF_out1_en, RF_out2_en		: out std_logic; --enables RF_out_X on B and C bus
-		
-		--Outputs
-		IW_out							: out std_logic_vector(15 downto 0); --goes to EX control unit
-		stall_out						: out std_logic;
-		immediate_val					: out	std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
-		mem_addr_out					: out std_logic_vector(15 downto 0);
-		reset_out						: out std_logic		--
+			reset_n, sys_clock			: in std_logic;	
+			IW_in								: in std_logic_vector(15 downto 0);
+			LAB_stall_in					: in std_logic;
+			WB_stall_in						: in std_logic;		--set high when an upstream CU block needs this 
+			MEM_stall_in					: in std_logic;
+			EX_stall_in						: in std_logic;
+			mem_addr_in						: in std_logic_vector(15 downto 0);
+			
+			--Control
+			RF_out_1_mux					: out std_logic_vector(4 downto 0);	--controls first output mux
+			RF_out_2_mux					: out std_logic_vector(4 downto 0);	--controls second output mux
+			RF_out1_en, RF_out2_en		: out std_logic; --enables RF_out_X on B and C bus
+			
+			--Outputs
+			IW_out							: out std_logic_vector(15 downto 0); --goes to EX control unit
+			stall_out						: out std_logic;
+			immediate_val					: out	std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
+			mem_addr_out					: out std_logic_vector(15 downto 0);
+			reset_out						: out std_logic		--
 		);
 	end component;
 	
@@ -189,13 +211,15 @@ architecture behavioral of control_unit is
 		generic ( ROB_DEPTH : integer := 10 );
 		port ( 
 			--Input data and clock
-			reset_n, reset_MEM	: in std_logic;
+			reset_n, reset_MEM 	: in std_logic;
 			sys_clock				: in std_logic;	
 			IW_in, PM_data_in		: in std_logic_vector(15 downto 0); --IW from MEM and from PM, via LAB, respectively
 			LAB_stall_in			: in std_logic;		--set high when an upstream CU block needs this 
 			MEM_out_top				: in std_logic_vector(15 downto 0);
 			GPIO_out					: in std_logic_vector(15 downto 0);
 			I2C_out					: in std_logic_vector(15 downto 0);
+			condition_met			: in std_logic;		--signal to WB for ROB. as soon as "results_available" goes high, need to evaluate all instructions after first branch
+			results_available		: in std_logic;		--signal to WB for ROB. as soon as it goes high, need to evaluate all instructions after first branch
 			
 			--Control
 			RF_in_demux				: out std_logic_vector(4 downto 0); -- selects which register to write back to
@@ -203,16 +227,52 @@ architecture behavioral of control_unit is
 						
 			--Outputs
 			stall_out		: out std_logic;
-			WB_data_out		: inout std_logic_vector(15 downto 0)
+			WB_data_out		: out std_logic_vector(15 downto 0);
+			ROB_out			: out ROB
 		);
 	end component;
 	
 begin
 
+	LAB_stall <= ID_stall_out or EX_stall_out or MEM_stall_out or WB_stall_out;
+	
+	--currently using the LAB, ID, and EX feedback signals for data hazard checks, vice ID, EX, and MEM
+	LAB	: LAB_test
+		port map(
+
+		reset_n			=> reset_n, 
+		sys_clock		=> sys_clock,
+		stall_pipeline	=> LAB_stall,
+		ID_dest_reg		=> LAB_ID_IW(11 downto 7),	
+		EX_dest_reg		=> ID_EX_IW(11 downto 7),
+		MEM_dest_reg	=> EX_MEM_IW(11 downto 7),
+		ID_reset			=> LAB_reset_out,
+		EX_reset			=> ID_reset_out, 
+		MEM_reset		=> EX_reset_out,
+		PM_data_in		=> PM_data_in,
+		RF_in_3			=> RF_in_3,
+		RF_in_4			=> RF_in_4,
+		RF_in_3_valid	=> RF_in_3_valid,
+		RF_in_4_valid	=> RF_in_4_valid,
+		ROB_in			=>	ROB_in,
+		ALU_SR_in		=> ALU_SR_in,
+		PC					=> PC,
+		IW					=> LAB_ID_IW,
+		MEM				=> LAB_mem_addr_out,
+		LAB_reset_out 	=> LAB_reset_out,
+		LAB_stall		=> LAB_stall_out,
+		RF_out_3_mux	=> ID_RF_out_3_mux,
+		RF_out_4_mux	=> ID_RF_out_4_mux,
+		RF_out_3_en		=> ID_RF_out3_en,
+		RF_out_4_en		=> ID_RF_out4_en,
+		condition_met	=> condition_met,
+		results_available	=> results_available
+	);
+
 	ID_actual	: ID
 	port map ( 
 		--Input data and clock
-		reset_n			=> reset_n, 
+		reset_n			=> LAB_reset_out, 
 		sys_clock		=> sys_clock,	
 		IW_in				=> LAB_ID_IW,
 		LAB_stall_in	=> LAB_stall_out,
@@ -305,6 +365,8 @@ begin
 		MEM_out_top					=> MEM_out_top,
 		GPIO_out						=> GPIO_out,
 		I2C_out						=> I2C_out,
+		condition_met				=> condition_met,
+		results_available			=> results_available,
 		
 		--Control
 		RF_in_demux					=> WB_RF_in_demux,
@@ -312,7 +374,8 @@ begin
 			
 		--Outputs
 		stall_out					=> WB_stall_out,
-		WB_data_out					=> WB_data_out
+		WB_data_out					=> WB_data_out,
+		ROB_out						=> ROB_in
 	);
 		
 		

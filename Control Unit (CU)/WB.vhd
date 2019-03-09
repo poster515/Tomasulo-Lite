@@ -12,29 +12,30 @@ use ieee.numeric_std.all;
 use work.arrays.ALL;
 use work.LAB_functions.ALL;
 use work.ROB_functions.ALL;
+use work.control_unit_types.all;
 
 entity WB is
 	generic ( ROB_DEPTH : integer := 10 );
    port ( 
 		--Input data and clock
-		reset_n, reset_MEM 		: in std_logic;
+		reset_n, reset_MEM 	: in std_logic;
 		sys_clock				: in std_logic;	
 		IW_in, PM_data_in		: in std_logic_vector(15 downto 0); --IW from MEM and from PM, via LAB, respectively
 		LAB_stall_in			: in std_logic;		--set high when an upstream CU block needs this 
 		MEM_out_top				: in std_logic_vector(15 downto 0);
-		GPIO_out				: in std_logic_vector(15 downto 0);
+		GPIO_out					: in std_logic_vector(15 downto 0);
 		I2C_out					: in std_logic_vector(15 downto 0);
 		condition_met			: in std_logic;		--signal to WB for ROB. as soon as "results_available" goes high, need to evaluate all instructions after first branch
-		results_available		: in std_logic		--signal to WB for ROB. as soon as it goes high, need to evaluate all instructions after first branch
+		results_available		: in std_logic;		--signal to WB for ROB. as soon as it goes high, need to evaluate all instructions after first branch
 		
 		--Control
 		RF_in_demux				: out std_logic_vector(4 downto 0); -- selects which register to write back to
-		RF_wr_en				: out std_logic;	--
+		RF_wr_en					: out std_logic;	--
 					
 		--Outputs
 		stall_out		: out std_logic;
-		WB_data_out		: inout std_logic_vector(15 downto 0);
-		ROB_actual		: inout ROB
+		WB_data_out		: out std_logic_vector(15 downto 0);
+		ROB_out			: out ROB
 	);
 end WB;
 
@@ -52,12 +53,15 @@ architecture behavioral of WB is
 	);
 	end component mux_4_new;
 
-	signal WB_out_mux_sel					: std_logic_vector(1 downto 0); --selects data input to redirect to RF
-	signal stall, zero_inst_match			: std_logic; 					--overall stall signal;
-	signal PM_data_in_reg, IW_to_update 	: std_logic_vector(15 downto 0);
-	signal PM_data_valid, IW_update_en		: std_logic;
-	signal clear_zero_inst 					: std_logic;
-	signal i, j								: integer range 0 to ROB_DEPTH - 1;
+	signal WB_out_mux_sel								: std_logic_vector(1 downto 0); --selects data input to redirect to RF
+	signal stall, zero_inst_match						: std_logic; 					--overall stall signal;
+	signal PM_data_in_reg, IW_to_update 			: std_logic_vector(15 downto 0);
+	signal WB_data											: std_logic_vector(15 downto 0);
+	signal PM_data_valid, IW_update_en				: std_logic;
+	signal clear_zero_inst, speculate_results		: std_logic;
+	signal i, j												: integer range 0 to ROB_DEPTH;
+	signal frst_branch_index, scnd_branch_index	: integer range 0 to ROB_DEPTH;
+	signal ROB_actual										: ROB;
 	
 	--signal tracks whether the next IW is a memory address (for jumps, loads, etc)
 	signal next_IW_is_addr	: std_logic;
@@ -67,18 +71,18 @@ begin
 	--mux for WB output
 	WB_out_mux	: mux_4_new
 	port map (
-		data0x		=> ROB_actual(0).result,
+		data0x	=> ROB_actual(0).result,
 		data1x  	=> MEM_out_top, 		
 		data2x  	=> GPIO_out,
-		data3x		=> I2C_out,
+		data3x	=> I2C_out,
 		sel 		=> WB_out_mux_sel,
-		result  	=> WB_data_out
+		result  	=> WB_data
 	);
 	
 	stall <= LAB_stall_in;
 	
 	--update whether ROB zeroth instruction matches the new IW_in, does not depend on ROB(0).inst itself since it won't change
-	process(IW_in, ROB_actual)
+	process(IW_in, ROB_actual, results_available, condition_met)
 	begin
 		if ROB_actual(0).inst = IW_in and ROB_actual(0).valid = '1' and zero_inst_match = '0' then
 			zero_inst_match <= '1';
@@ -97,15 +101,15 @@ begin
 	process(reset_n, sys_clock, stall)
 	begin
 		if reset_n = '0' then
-			stall_out 		<= '0';
-			RF_in_demux 	<= "00000";
-			RF_wr_en 		<= '0';
+			stall_out 			<= '0';
+			RF_in_demux 		<= "00000";
+			RF_wr_en 			<= '0';
 			WB_out_mux_sel 	<= "01";
-			clear_zero_inst <= '0'; 
-			IW_update_en	<= '0';
-			PM_data_valid	<= '0';
+			clear_zero_inst 	<= '0'; 
+			IW_update_en		<= '0';
+			PM_data_valid		<= '0';
 			PM_data_in_reg 	<= "0000000000000000";
-			IW_to_update	<= "0000000000000000";
+			IW_to_update		<= "0000000000000000";
 			
 		elsif rising_edge(sys_clock) then
 			
@@ -213,26 +217,26 @@ begin
 	
 	process(reset_n, ROB_actual)
 	begin
-		if reset_n = '0' then
-			frst_branch_inst	<= 0;
-			scnd_branch_index 	<= 0;
-		else 
-			for i in 0 to 9 loop
-				if ROB_actual(i)(15 downto 12) = "1010" and ROB_actual(i).specul = '1' then
-					frst_branch_inst <= i;
-					for j in 0 to 9 loop
+		if reset_n = '1' then
+			for i in 0 to ROB_DEPTH - 1 loop
+				if ROB_actual(i).inst(15 downto 12) = "1010" and ROB_actual(i).specul = '1' then
+					frst_branch_index <= i;
+					for j in 0 to ROB_DEPTH - 1 loop
 						--this statement sets the index of the first, speculative branch that hasn't been resolved yet in the ROB_actual
-						if ROB_actual(j)(15 downto 12) = "1010" and ROB_actual(j).specul = '0' and j > i then
+						if ROB_actual(j).inst(15 downto 12) = "1010" and ROB_actual(j).specul = '1' and j > i then
 							scnd_branch_index <= i;
 							exit;
-						elsif j = 9 then 
-							scnd_branch_index <= 9;
+						elsif j = ROB_DEPTH - 1 then 
+							scnd_branch_index <= ROB_DEPTH;
 							exit;
 						end if;
 					end loop;
+				elsif i = ROB_DEPTH - 1 then 
+					frst_branch_index <= ROB_DEPTH;
+					exit;
 				end if;
 			end loop;
-		end if;
+		end if; --reset_n
 	end process;
 	
 	ROB_process : process(reset_n, sys_clock, ROB_actual)
@@ -240,25 +244,25 @@ begin
 		if reset_n = '0' then
 		
 			--reset ROB
-			ROB_actual <= initialize_ROB(ROB_actual);
+			ROB_actual <= initialize_ROB(ROB_actual, ROB_DEPTH);
 			
 		elsif sys_clock'event and sys_clock = '1' then
 			--update_ROB parameters:
 			
---			ROB_in 			: in ROB;
---			PM_data_in		: in std_logic_vector(15 downto 0);
---			PM_buffer_en	: in std_logic;
---			IW_in			: in std_logic_vector(15 downto 0);
---			IW_result		: in std_logic_vector(15 downto 0);
---			IW_result_en	: in std_logic;
---			clear_zero		: in std_logic
+--			ROB_in 				: in ROB;
+--			PM_data_in			: in std_logic_vector(15 downto 0);
+--			PM_buffer_en		: in std_logic;
+--			IW_in					: in std_logic_vector(15 downto 0);
+--			IW_result			: in std_logic_vector(15 downto 0);
+--			IW_result_en		: in std_logic;
+--			clear_zero			: in std_logic;			--this remains '0' if the ROB(0).specul = '1'
+--			results_avail		: in std_logic;
+--			condition_met		: in std_logic;
+--			speculate_res		: in std_logic;			--ONLY FOR PM_data_in (this is set upon receiving a branch, to let ROB know that subsequent instructions are speculative)
+--			frst_branch_idx	: in integer;
+--			scnd_branch_idx	: in integer;
+--			ROB_DEPTH			: in integer
 			
-			--values set in main portion of WB
---			PM_data_in_reg 	
---			PM_data_valid		
---			IW_to_update		
---			IW_update_en		
---			clear_zero_inst 	
 			if next_IW_is_addr = '1' then
 				next_IW_is_addr <= '0';
 			else 
@@ -272,12 +276,15 @@ begin
 				
 					if PM_data_in(15 downto 12) = "1010" then
 						speculate_results 	<= '1';
-						ROB_actual 			<= update_ROB(ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data_out, IW_update_en, clear_zero_inst, results_available, condition_met, '1', last_branch_index);
+						ROB_actual 				<= update_ROB(	ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data, IW_update_en, clear_zero_inst, 
+																		results_available, condition_met, '1', frst_branch_index, scnd_branch_index, ROB_DEPTH);
 					elsif results_available = '1' and condition_met = '1' then
 						speculate_results 	<= '0';
-						ROB_actual 			<= update_ROB(ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data_out, IW_update_en, clear_zero_inst, results_available, condition_met, '0', last_branch_index);
+						ROB_actual 				<= update_ROB(	ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data, IW_update_en, clear_zero_inst, 
+																		results_available, condition_met, '0', frst_branch_index, scnd_branch_index, ROB_DEPTH);
 					else 
-						ROB_actual 			<= update_ROB(ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data_out, IW_update_en, clear_zero_inst, results_available, condition_met, speculate_results, last_branch_index);
+						ROB_actual 				<= update_ROB(	ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data, IW_update_en, clear_zero_inst, 
+																		results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 					end if;
 					
 				end if;
@@ -286,5 +293,8 @@ begin
 			
 		end if; --reset_n
 	end process;
+	
+	ROB_out 		<= ROB_actual;
+	WB_data_out	<= WB_data;
 	
 end behavioral;
