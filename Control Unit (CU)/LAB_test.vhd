@@ -82,9 +82,8 @@ architecture arch of LAB_test is
 	--std_logic tracking if there are any data hazards between PM_data_in and pipeline and LAB instructions
 	signal PM_datahaz_status : std_logic;
 	
-	--unclocked and clocked signals which tells if the incoming instruction is a jump instruction
+	--unclocked signals which tells if the incoming instruction is a jump instruction
 	signal jump				: std_logic := '0';
-	signal jump_reg			: std_logic := '0';
 	
 	--unclocked and clocked signal which tells if the incoming instruction is a load or store instruction
 	signal ld_st			: std_logic := '0';
@@ -263,7 +262,7 @@ begin
 					--if we're stalled, keep PC where its at
 					PC_reg 	<= PC_reg;
 					
-				elsif jump_reg = '1' then
+				elsif jump = '1' then
 					--for jumps, grab immediate value and update PC_reg
 					PC_reg 	<= std_logic_vector(unsigned(PM_data_in(11 downto 1)));
 					
@@ -333,7 +332,7 @@ begin
 	end process;
 	
 	--process to generate combinational logic for input instructions
-	process(reset_n, PM_data_in, jump_reg, branch_reg, ld_st_reg) 
+	process(reset_n, PM_data_in, branch_reg, ld_st_reg) 
 	begin
 		--sets branch_ld_st if the new PM_data_in is a jump or branch instruction
 		if reset_n = '0' then
@@ -341,7 +340,7 @@ begin
 			branch 		<= '0';
 			jump		<= '0';
 		elsif reset_n = '1' then
-			if (PM_data_in(15 downto 12) = "1001") and jump_reg = '0' then
+			if (PM_data_in(15 downto 12) = "1001") then
 				jump	<= '1';
 			elsif (PM_data_in(15 downto 12) = "1010") and branch_reg = '0' then
 				--TODO: can we just look at the ROB contents every clock to constantly try and resolve any speculative branches in the ROB? not just when PM_data_in is a branch?
@@ -366,19 +365,14 @@ begin
 						
 	end process;
 	
-	--process to generate clocked registers for input instructions
+	--process to generate clocked registers for branch and data memory instructions
 	process(reset_n, sys_clock, PM_data_in) 
 	begin
-		--sets branch_ld_st if the new PM_data_in is a jump or branch instruction
 		if reset_n = '0' then
 			ld_st_reg 		<= '0';
 			branch_reg 		<= '0';
-			jump_reg		<= '0';
 		elsif rising_edge(sys_clock) then
-			if jump = '1' and jump_reg = '0' then
-				jump_reg	<= '1';
-				
-			elsif branch = '1' and branch_reg = '0' then
+			if branch = '1' and branch_reg = '0' then
 				branch_reg 	<= '1';
 				
 			elsif ld_st = '1' and ld_st_reg = '0' then
@@ -387,7 +381,7 @@ begin
 			else
 				ld_st_reg 		<= '0';
 				branch_reg 		<= '0';
-				jump_reg		<= '0';
+				
 			end if;
 		end if; --reset_n
 						
