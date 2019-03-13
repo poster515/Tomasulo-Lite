@@ -11,7 +11,6 @@ entity LAB_test is
 	generic ( 	LAB_MAX		: integer	:= 5;
 					ROB_DEPTH 	: integer	:= 10	);
 	port (
-
 		reset_n, sys_clock  	: in std_logic;
 		stall_pipeline			: in std_logic; --needed when waiting for certain commands, should be formulated in top level CU module
 		ID_dest_reg				: in std_logic_vector(4 downto 0); --source registers for instruction in ID stage (results available)
@@ -117,6 +116,8 @@ begin
 			
 		elsif rising_edge(sys_clock) then
 			LAB_reset_out		<= '1';
+			LAB <= LAB;
+			branches <= branches;
 			--jumps are easily handled with "program_counter" process below 
 			--branches are constantly being evaluated with the state machine "branch_state" below
 			--ALU instructions are managed and re-ordered strictly between branches in ROB
@@ -304,6 +305,9 @@ begin
 			bne_from_ROB 	<= '0';
 			bnez_from_ROB 	<= '0';
 		else
+			bne_from_ROB 	<= '0';
+			bnez_from_ROB 	<= '0';
+		
 			for i in 0 to 9 loop
 				--find the first unresolved branch in the ROB, grab some info, and then exit 
 				if ROB_in(i).inst(15 downto 12) = "1010" and ROB_in(i).specul = '0' then
@@ -331,39 +335,23 @@ begin
 		end if; --reset_n
 	end process;
 	
-	--process to generate combinational logic for input instructions
-	process(reset_n, PM_data_in, branch_reg, ld_st_reg) 
-	begin
-		--sets branch_ld_st if the new PM_data_in is a jump or branch instruction
-		if reset_n = '0' then
-			ld_st 		<= '0';
-			branch 		<= '0';
-			jump		<= '0';
-		elsif reset_n = '1' then
-			if (PM_data_in(15 downto 12) = "1001") then
-				jump	<= '1';
-			elsif (PM_data_in(15 downto 12) = "1010") and branch_reg = '0' then
-				--TODO: can we just look at the ROB contents every clock to constantly try and resolve any speculative branches in the ROB? not just when PM_data_in is a branch?
-				branch 	<= '1';
-				
-				RF_out_3_mux 	<= PM_data_in(11 downto 7);
-				RF_out_4_mux 	<= PM_data_in(6 downto 2);
-				RF_out_3_en		<= '1';
-				RF_out_4_en		<= '1';
-				bne				<= not(PM_data_in(1)) and not(PM_data_in(0));
-				bnez			<= not(PM_data_in(1)) and PM_data_in(0);
-				
-			elsif (PM_data_in(15 downto 12) = "1000") and ld_st_reg = '0' then
-				ld_st 	<= '1'; --have a memory operation
-
-			else
-				branch	<= '0';
-				ld_st 	<= '0';
-				jump	<= '0';
-			end if;
-		end if; --reset_n
-						
-	end process;
+	--set load/store indicator ("1000")
+	ld_st <= PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and not(PM_data_in(12));
+	
+	--set jump indicator ("1001")
+	jump <= PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12);
+	
+	--set branch indicator ("1010") and associated control signals 
+	branch <= PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
+	
+	RF_out_3_mux 	<= PM_data_in(11 downto 7);
+	RF_out_4_mux 	<= PM_data_in(6 downto 2);
+	--enable RF outputs 3 and 4 when a branch instruction is received
+	RF_out_3_en		<= PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
+	RF_out_4_en		<= PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
+	--establish the applicable branch type when the branch instruction is received
+	bne				<= not(PM_data_in(1)) and not(PM_data_in(0)) and PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
+	bnez				<= not(PM_data_in(1)) and PM_data_in(0) and PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
 	
 	--process to generate clocked registers for branch and data memory instructions
 	process(reset_n, sys_clock, PM_data_in) 
