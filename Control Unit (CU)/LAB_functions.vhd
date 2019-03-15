@@ -108,7 +108,7 @@ package body LAB_functions is
 				--incoming instruction is a new, valid branch instruction and should be buffered 
 				if addr_valid = '1' then
 					branches_temp(i).addr_met 		:= addr_met;
-					branches_temp(i).addr_unmet 	:= addr_unmet;
+					branches_temp(i).addr_unmet 	:= "00000" & addr_unmet;
 					branches_temp(i).addr_valid 	:= '1';
 					exit;
 				end if;
@@ -119,7 +119,7 @@ package body LAB_functions is
 				if addr_valid = '1' then
 					--n_clear_zero automatically shifts "branches" entries
 					branches_temp(i + n_clear_zero).addr_met		:= addr_met;
-					branches_temp(i + n_clear_zero).addr_unmet	:= addr_unmet;
+					branches_temp(i + n_clear_zero).addr_unmet	:= "00000" & addr_unmet;
 					branches_temp(i + n_clear_zero).addr_valid 	:= '1';
 					
 					exit;
@@ -165,7 +165,7 @@ package body LAB_functions is
 			if i >= issued_inst then
 				if (LAB_temp(i).inst_valid = '1') and (LAB_temp(i + 1).inst_valid = '0') then
 				
-					LAB_temp(i).inst 							:= PM_data_in;
+					LAB_temp(i + convert_SL(shift_LAB)).inst 	:= PM_data_in;
 					LAB_temp(i + convert_SL(shift_LAB)).addr	:= (others => '0');
 					
 					if PM_data_in(15 downto 14) = "10" and ((PM_data_in(1) nand PM_data_in(0)) = '1') then
