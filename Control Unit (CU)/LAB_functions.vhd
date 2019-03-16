@@ -162,29 +162,32 @@ package body LAB_functions is
 	begin
 		
 		for i in 0 to LAB_MAX - 2 loop
+				
 			if i >= issued_inst then
 				if (LAB_temp(i).inst_valid = '1') and (LAB_temp(i + 1).inst_valid = '0') then
-				
-					LAB_temp(i + convert_SL(shift_LAB)).inst 	:= PM_data_in;
-					LAB_temp(i + convert_SL(shift_LAB)).addr	:= (others => '0');
+					report "At LAB spot " & integer'image(i) & " we can buffer PM_data_in";
+					LAB_temp(i + convert_SL(not(shift_LAB))).inst 			:= PM_data_in;
+					LAB_temp(i + convert_SL(not(shift_LAB))).inst_valid 	:= '1';
+					LAB_temp(i + convert_SL(not(shift_LAB))).addr			:= (others => '0');
 					
 					if PM_data_in(15 downto 14) = "10" and ((PM_data_in(1) nand PM_data_in(0)) = '1') then
-						LAB_temp(i + convert_SL(shift_LAB)).addr_valid	:= '0';
+						LAB_temp(i + convert_SL(not(shift_LAB))).addr_valid	:= '0';
 					else
-						LAB_temp(i + convert_SL(shift_LAB)).addr_valid	:= '1';
+						LAB_temp(i + convert_SL(not(shift_LAB))).addr_valid	:= '1';
 					end if;
-					
+					exit;
 				elsif i = LAB_MAX - 2 and LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '1' then
-				
-					LAB_temp(i + convert_SL(shift_LAB)).inst 		:= PM_data_in;
-					LAB_temp(i + convert_SL(shift_LAB)).addr		:= (others => '0');
+					report "at end of LAB, buffering PM_data_in at last LAB spot.";
+					LAB_temp(i + convert_SL(not(shift_LAB))).inst 			:= PM_data_in;
+					LAB_temp(i + convert_SL(not(shift_LAB))).inst_valid 	:= '1';
+					LAB_temp(i + convert_SL(not(shift_LAB))).addr			:= (others => '0');
 						
 					if PM_data_in(15 downto 14) = "10" and ((PM_data_in(1) nand PM_data_in(0)) = '1') then
-						LAB_temp(i + convert_SL(shift_LAB)).addr_valid	:= '0';
+						LAB_temp(i + convert_SL(not(shift_LAB))).addr_valid	:= '0';
 					else
-						LAB_temp(i + convert_SL(shift_LAB)).addr_valid	:= '1';
+						LAB_temp(i + convert_SL(not(shift_LAB))).addr_valid	:= '1';
 					end if;
-					
+					exit;
 				else
 					LAB_temp(i) := LAB_temp(i + convert_SL(shift_LAB));
 				end if;

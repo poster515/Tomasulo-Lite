@@ -17,6 +17,8 @@ entity ID is
 		MEM_stall_in			: in std_logic;
 		EX_stall_in				: in std_logic;
 		mem_addr_in				: in std_logic_vector(15 downto 0);
+		ALU_fwd_reg_1_in		: in std_logic;		--input to tell EX stage to forward MEM_out data in to ALU_in_1
+		ALU_fwd_reg_2_in		: in std_logic;		--input to tell EX stage to forward MEM_out data in to ALU_in_2
 		
 		--Control							
 		RF_out_1_mux	: out std_logic_vector(4 downto 0);	--controls first output mux
@@ -28,7 +30,9 @@ entity ID is
 		stall_out		: out std_logic;
 		immediate_val	: out	std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
 		mem_addr_out	: out std_logic_vector(15 downto 0);  --
-		reset_out		: out std_logic
+		reset_out		: out std_logic;
+		ALU_fwd_reg_1_out	: out std_logic;
+		ALU_fwd_reg_2_out	: out std_logic
 	);
 end ID;
 
@@ -54,14 +58,20 @@ begin
 			mem_addr_reg <= "0000000000000000";
 			immediate_val_reg <= "0000000000000000";
 			reset_reg <= '0';
+			stall_out <= '0';
+			ALU_fwd_reg_1_out <= '0';	
+			ALU_fwd_reg_2_out <= '0';
 			
 		elsif rising_edge(sys_clock) then
 		
 			reset_reg <= '1';
-		
+			
 			if stall_in = '0' then
 			
 				stall_out <= '0';
+				
+				ALU_fwd_reg_1_out <= ALU_fwd_reg_1_in;	--just forward these inputs
+				ALU_fwd_reg_2_out <= ALU_fwd_reg_2_in;	
 				
 				RF_out_1_mux_reg <= IW_in(11 downto 7);	--assert reg1 address if there's no stall
 				RF_out_2_mux_reg <= IW_in(6 downto 2);		--assert reg2 address if there's no stall

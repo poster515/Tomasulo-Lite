@@ -19,7 +19,7 @@ entity control_unit is
 		--Input data and clock
 		reset_n, sys_clock				: in std_logic;	
 		PM_data_in							: in std_logic_vector(15 downto 0);
-		PC										: out std_logic_vector(10 downto 0);
+		PC_CU_out							: out std_logic_vector(10 downto 0);
 		RF_in_3, RF_in_4					: in std_logic_vector(15 downto 0);
 		RF_in_3_valid, RF_in_4_valid	: in std_logic;
 		ALU_SR_in							: in std_logic_vector(3 downto 0);
@@ -32,18 +32,18 @@ entity control_unit is
 		ID_RF_out_2_mux					: out std_logic_vector(4 downto 0);	--controls second output mux
 		ID_RF_out_3_mux					: out std_logic_vector(4 downto 0);	--controls third output mux
 		ID_RF_out_4_mux					: out std_logic_vector(4 downto 0);	--controls fourth output mux
-		ID_RF_out1_en, ID_RF_out2_en	: out std_logic; --enables RF_out_X on B and C bus
-		ID_RF_out3_en, ID_RF_out4_en	: out std_logic; --enables RF_out_X on B and C bus
+		ID_RF_out1_en, ID_RF_out2_en	: out std_logic; --enables RF_out_X 
+		ID_RF_out3_en, ID_RF_out4_en	: out std_logic; --enables RF_out_X 
 		
 		--(EX) ALU control Signals
-		ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
-		ALU_d1_in_sel, ALU_d2_in_sel	: out std_logic_vector(1 downto 0); --(ALU_top) 1 = select from a bus, 0 = don't.
+		ALU_out1_en, ALU_out2_en		: out std_logic; 
+		ALU_d1_in_sel, ALU_d2_in_sel	: out std_logic_vector(1 downto 0); 
 		ALU_fwd_data_out_en				: out std_logic; -- (ALU_top) ALU forwarding register out enable
 		
 		ALU_op								: out std_logic_vector(3 downto 0);
 		ALU_inst_sel						: out std_logic_vector(1 downto 0);
 		ALU_mem_addr_out					: out std_logic_vector(15 downto 0); -- memory address directly to ALU
-		ALU_immediate_val					: out	std_logic_vector(15 downto 0);	 --represents various immediate values from various OpCodes
+		ALU_immediate_val					: out	std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
 		
 		--(MEM) MEM control Signals
 		MEM_MEM_out_mux_sel				: out std_logic_vector(1 downto 0); --
@@ -67,13 +67,15 @@ end control_unit;
 architecture behavioral of control_unit is
 
 	signal LAB_stall				: std_logic; --signal to logically or all other CU stall signals
-	
+	signal LAB_IW_dest, ID_IW_dest, EX_IW_dest	: std_logic_vector(4 downto 0);
 	--LAB <-> ID Signals
 	signal LAB_ID_IW				: std_logic_vector(15 downto 0);
 	signal LAB_mem_addr_out		: std_logic_vector(15 downto 0);
 	signal LAB_reset_out			: std_logic;
 	signal LAB_stall_out			: std_logic;
 	signal ID_stall_out			: std_logic;
+	signal LAB_ID_fwd_reg1		: std_logic;
+	signal LAB_ID_fwd_reg2		: std_logic;
 	
 	--ID <-> EX Signals
 	signal ID_EX_IW				: std_logic_vector(15 downto 0); --goes to EX control unit
@@ -81,6 +83,8 @@ architecture behavioral of control_unit is
 	signal ID_EX_mem_address	: std_logic_vector(15 downto 0);
 	signal ID_EX_immediate_val	: std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
 	signal ID_reset_out			: std_logic;
+	signal ID_EX_fwd_reg1		: std_logic;
+	signal ID_EX_fwd_reg2		: std_logic;
  
 	--EX <-> MEM Signals
 	signal EX_MEM_IW				: std_logic_vector(15 downto 0); -- forwarding to MEM control unit
@@ -103,9 +107,9 @@ architecture behavioral of control_unit is
 		port (
 			reset_n, sys_clock  	: in std_logic;
 			stall_pipeline			: in std_logic; --needed when waiting for certain commands, should be formulated in top level CU module
-			ID_dest_reg				: in std_logic_vector(4 downto 0); --source registers for instruction in ID stage (results available)
-			EX_dest_reg				: in std_logic_vector(4 downto 0); --source registers for instruction in EX stage (results available)
-			MEM_dest_reg			: in std_logic_vector(4 downto 0); --source registers for instruction in MEM stage (results available)
+			ID_IW						: in std_logic_vector(15 downto 0); --source registers for instruction in ID stage (results available)
+			EX_IW						: in std_logic_vector(15 downto 0); --source registers for instruction in EX stage (results available)
+			MEM_IW					: in std_logic_vector(15 downto 0); --source registers for instruction in MEM stage (results available)
 			ID_reset, EX_reset, MEM_reset	: in std_logic;
 			PM_data_in				: in std_logic_vector(15 downto 0);
 			RF_in_3, RF_in_4		: in std_logic_vector(15 downto 0);
@@ -124,7 +128,9 @@ architecture behavioral of control_unit is
 			RF_out_3_en				: out std_logic;
 			RF_out_4_en				: out std_logic;
 			condition_met			: inout std_logic;	--signal to WB for ROB. as soon as "results_available" goes high, need to evaluate all instructions after first branch
-			results_available		: inout std_logic		--signal to WB for ROB. as soon as it goes high, need to evaluate all instructions after first branch
+			results_available		: inout std_logic;		--signal to WB for ROB. as soon as it goes high, need to evaluate all instructions after first branch
+			ALU_fwd_reg_1 			: out std_logic;		--output to ID stage to tell EX stage to forward MEM_out data in to ALU_in_1
+			ALU_fwd_reg_2 			: out std_logic
 		);
 	end component;
 
@@ -138,6 +144,8 @@ architecture behavioral of control_unit is
 			MEM_stall_in					: in std_logic;
 			EX_stall_in						: in std_logic;
 			mem_addr_in						: in std_logic_vector(15 downto 0);
+			ALU_fwd_reg_1_in				: in std_logic;		--input to tell EX stage to forward MEM_out data in to ALU_in_1
+			ALU_fwd_reg_2_in				: in std_logic;		--input to tell EX stage to forward MEM_out data in to ALU_in_2
 			
 			--Control
 			RF_out_1_mux					: out std_logic_vector(4 downto 0);	--controls first output mux
@@ -149,7 +157,9 @@ architecture behavioral of control_unit is
 			stall_out						: out std_logic;
 			immediate_val					: out	std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
 			mem_addr_out					: out std_logic_vector(15 downto 0);
-			reset_out						: out std_logic		--
+			reset_out						: out std_logic;
+			ALU_fwd_reg_1_out				: out std_logic;
+			ALU_fwd_reg_2_out				: out std_logic
 		);
 	end component;
 	
@@ -163,6 +173,8 @@ architecture behavioral of control_unit is
 			MEM_stall_in				: in std_logic;
 			mem_addr_in					: in std_logic_vector(15 downto 0); --memory address from ID stage
 			immediate_val_in			: in std_logic_vector(15 downto 0); --immediate value from ID stage
+			ALU_fwd_reg_1_in			: in std_logic;
+			ALU_fwd_reg_2_in			: in std_logic;
 			
 			--Control
 			ALU_out1_en, ALU_out2_en		: out std_logic; --(EX) enables ALU_outX on A, B, or C bus
@@ -235,7 +247,7 @@ architecture behavioral of control_unit is
 begin
 
 	LAB_stall <= ID_stall_out or EX_stall_out or MEM_stall_out or WB_stall_out;
-	
+
 	--currently using the LAB, ID, and EX feedback signals for data hazard checks, vice ID, EX, and MEM
 	LAB	: LAB_test
 		port map(
@@ -243,9 +255,9 @@ begin
 		reset_n			=> reset_n, 
 		sys_clock		=> sys_clock,
 		stall_pipeline	=> LAB_stall,
-		ID_dest_reg		=> LAB_ID_IW(11 downto 7),	
-		EX_dest_reg		=> ID_EX_IW(11 downto 7),
-		MEM_dest_reg	=> EX_MEM_IW(11 downto 7),
+		ID_IW				=> LAB_ID_IW,	
+		EX_IW				=> ID_EX_IW,
+		MEM_IW			=> EX_MEM_IW,
 		ID_reset			=> LAB_reset_out,
 		EX_reset			=> ID_reset_out, 
 		MEM_reset		=> EX_reset_out,
@@ -256,7 +268,7 @@ begin
 		RF_in_4_valid	=> RF_in_4_valid,
 		ROB_in			=>	ROB_in,
 		ALU_SR_in		=> ALU_SR_in,
-		PC					=> PC,
+		PC					=> PC_CU_out,
 		IW					=> LAB_ID_IW,
 		MEM				=> LAB_mem_addr_out,
 		LAB_reset_out 	=> LAB_reset_out,
@@ -266,9 +278,11 @@ begin
 		RF_out_3_en		=> ID_RF_out3_en,
 		RF_out_4_en		=> ID_RF_out4_en,
 		condition_met	=> condition_met,
-		results_available	=> results_available
+		results_available	=> results_available,
+		ALU_fwd_reg_1 	=> LAB_ID_fwd_reg1,
+		ALU_fwd_reg_2 	=> LAB_ID_fwd_reg2
 	);
-
+	
 	ID_actual	: ID
 	port map ( 
 		--Input data and clock
@@ -280,6 +294,8 @@ begin
 		MEM_stall_in	=> MEM_stall_out,			
 		EX_stall_in		=> EX_stall_out,	
 		mem_addr_in		=> LAB_mem_addr_out,
+		ALU_fwd_reg_1_in	=> LAB_ID_fwd_reg1,
+		ALU_fwd_reg_2_in	=> LAB_ID_fwd_reg2,
 		
 		--Control	
 		RF_out_1_mux	=> ID_RF_out_1_mux,
@@ -306,6 +322,8 @@ begin
 		MEM_stall_in			=> MEM_stall_out,
 		mem_addr_in				=> ID_EX_mem_address,
 		immediate_val_in		=> ID_EX_immediate_val,
+		ALU_fwd_reg_1_in		=> ID_EX_fwd_reg1,
+		ALU_fwd_reg_2_in		=> ID_EX_fwd_reg2,
 		
 		--Control
 		ALU_out1_en				=> ALU_out1_en, 

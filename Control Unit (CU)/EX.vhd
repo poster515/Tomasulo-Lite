@@ -19,6 +19,8 @@ entity EX is
 		MEM_stall_in			: in std_logic;
 		mem_addr_in				: in std_logic_vector(15 downto 0); --memory address from ID stage
 		immediate_val_in		: in std_logic_vector(15 downto 0); --immediate value from ID stage
+		ALU_fwd_reg_1_in		: in std_logic;
+		ALU_fwd_reg_2_in		: in std_logic;
 		
 		--Control
 		ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
@@ -95,18 +97,26 @@ begin
 				--report "opcode_translator index is: " & integer'image(to_integer(unsigned(IW_in(15 downto 12)))) & " and translated opcode is: " & integer'image(to_integer(unsigned(opcode_translator(to_integer(unsigned(IW_in(15 downto 12)))))));
 				
 				ALU_inst_sel_reg 	<= IW_in(1 downto 0);
-	
-				ALU_d1_in_sel(0) <= not(IW_in(15)) or (IW_in(15) and not(IW_in(12)) and (IW_in(14) xor IW_in(13))) or
-												(IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12)));
+				
+				if ALU_fwd_reg_1_in = '0' then
+				
+					ALU_d1_in_sel(0) <= not(IW_in(15)) or (IW_in(15) and not(IW_in(12)) and (IW_in(14) xor IW_in(13))) or
+													(IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12)));
+													
+					ALU_d1_in_sel(1) <= IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12));
+				else
+					ALU_d1_in_sel <= "11";
+				end if;
+				
+				if ALU_fwd_reg_2_in = '0' then
+					ALU_d2_in_sel(0) <= (not(IW_in(15)) and ((IW_in(14) and (not(IW_in(13)) or not(IW_in(1)))) or (not(IW_in(1)) and not(IW_in(0))))) or
+												(not(IW_in(15)) and IW_in(14) and not(IW_in(13)) and not(IW_in(12)) and not(IW_in(1)) and IW_in(0));
 												
-				ALU_d1_in_sel(1) <= IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12));
-				
-				ALU_d2_in_sel(0) <= (not(IW_in(15)) and ((IW_in(14) and (not(IW_in(13)) or not(IW_in(1)))) or (not(IW_in(1)) and not(IW_in(0))))) or
-											(not(IW_in(15)) and IW_in(14) and not(IW_in(13)) and not(IW_in(12)) and not(IW_in(1)) and IW_in(0));
-											
-				ALU_d2_in_sel(1) <= (IW_in(15) and not(IW_in(13)) and not(IW_in(12))) or (not(IW_in(15)) and not(IW_in(14)) and IW_in(0)) or
-											(IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12)));
-				
+					ALU_d2_in_sel(1) <= (IW_in(15) and not(IW_in(13)) and not(IW_in(12))) or (not(IW_in(15)) and not(IW_in(14)) and IW_in(0)) or
+												(IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12)));
+				else
+					ALU_d2_in_sel <= "11";
+				end if;
 				
 				ALU_out1_en <= not(IW_in(15)) or (not(IW_in(13)) and not(IW_in(12)));
 				ALU_out2_en <= (not(IW_in(15)) and not(IW_in(14)) and IW_in(13)) or 

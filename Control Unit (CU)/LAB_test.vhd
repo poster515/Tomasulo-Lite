@@ -13,9 +13,9 @@ entity LAB_test is
 	port (
 		reset_n, sys_clock  	: in std_logic;
 		stall_pipeline			: in std_logic; --needed when waiting for certain commands, should be formulated in top level CU module
-		ID_dest_reg				: in std_logic_vector(4 downto 0); --source registers for instruction in ID stage (results available)
-		EX_dest_reg				: in std_logic_vector(4 downto 0); --source registers for instruction in EX stage (results available)
-		MEM_dest_reg			: in std_logic_vector(4 downto 0); --source registers for instruction in MEM stage (results available)
+		ID_IW						: in std_logic_vector(15 downto 0); --source registers for instruction in ID stage (results available)
+		EX_IW						: in std_logic_vector(15 downto 0); --source registers for instruction in EX stage (results available)
+		MEM_IW					: in std_logic_vector(15 downto 0); --source registers for instruction in MEM stage (results available)
 		ID_reset, EX_reset, MEM_reset	: in std_logic;
 		PM_data_in				: in std_logic_vector(15 downto 0);
 		RF_in_3, RF_in_4		: in std_logic_vector(15 downto 0);
@@ -34,7 +34,9 @@ entity LAB_test is
 		RF_out_3_en				: out std_logic;
 		RF_out_4_en				: out std_logic;
 		condition_met			: inout std_logic;	--signal to WB for ROB. as soon as "results_available" goes high, need to evaluate all instructions after first branch
-		results_available		: inout std_logic		--signal to WB for ROB. as soon as it goes high, need to evaluate all instructions after first branch
+		results_available		: inout std_logic;		--signal to WB for ROB. as soon as it goes high, need to evaluate all instructions after first branch
+		ALU_fwd_reg_1 			: out std_logic;		--output to ID stage to tell EX stage to forward MEM_out data in to ALU_in_1
+		ALU_fwd_reg_2 			: out std_logic		--output to ID stage to tell EX stage to forward MEM_out data in to ALU_in_2
 	);
 end entity LAB_test;
 
@@ -98,6 +100,12 @@ architecture arch of LAB_test is
 	--signals for intra-ROB branch status determination, set in "ROB_branch" process
 	signal branch_exists, is_unresolved, bne_from_ROB, bnez_from_ROB	: std_logic;
 	
+	--signal which goes to '1' when PM_data_in is an instruction requiring use of an actual Reg2, vice an immediate value
+	signal reg2_used		: std_logic;
+	
+	--signals storing information that the PM_data_in, if issued, will require data forwarded from MEM_out stage
+	signal ALU_fwd_reg_1_reg, ALU_fwd_reg_2_reg	: std_logic;
+	
 	--TODO: figure out what to do with I2C_error signal from MEM block, which goes high when there are three mistries to 
 		--read/write from I2C slave
 		
@@ -113,6 +121,11 @@ begin
 			branches				<= init_branches(branches, LAB_MAX);
 			IW_reg 				<= "1111111111111111";
 			LAB_reset_out 		<= '0';
+			results_available <= '0';
+			condition_met 		<= '0';
+			LAB_full 			<= '0';
+			ALU_fwd_reg_1 		<= '0';
+			ALU_fwd_reg_2		<= '0';
 			
 		elsif rising_edge(sys_clock) then
 			LAB_reset_out		<= '1';
@@ -161,30 +174,46 @@ begin
 						
 						--have data conflict with ID, EX, or MEM stage 
 						--buffer into LAB(0)
-						LAB(0).inst 		<= PM_data_in;
+						LAB(0).inst 			<= PM_data_in;
 						LAB(0).inst_valid 	<= '1';
 						LAB(0).addr_valid 	<= not(branch or ld_st);
-						IW_reg 				<= "1111111111111111"; --issue no-op
+						IW_reg 					<= "1111111111111111"; --issue no-op
 					
 					else
-						--just issue PM_data_in
+						--just issue PM_data_in and issue forwarding data commands
+						ALU_fwd_reg_1 	<= '0';
+						ALU_fwd_reg_2	<= '0';
 						IW_reg <= PM_data_in;
 					end if;
 				
 				else
+					--report "Have at least one valid instruction in LAB";
 					--have at least one valid instruction waiting in LAB
 					--use loop to check for hazards against stages of the pipeline
 					for i in 0 to LAB_MAX - 1 loop
 						
-						if (((ID_dest_reg /= LAB(i).inst(11 downto 7)) and (ID_dest_reg /= LAB(i).inst(6 downto 2))) and ID_reset = '1') and 
-							(((EX_dest_reg /= LAB(i).inst(11 downto 7)) and (EX_dest_reg /= LAB(i).inst(6 downto 2))) and EX_reset = '1') and
-							(((MEM_dest_reg /= LAB(i).inst(11 downto 7)) and (MEM_dest_reg /= LAB(i).inst(6 downto 2))) and MEM_reset = '1') and
-							(LAB(i).inst_valid = '1') then --we don't have any conflict in pipeline and LAB instruction is valid
+						if ((ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and ID_reset = '1' and
+							EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and EX_reset = '1' and
+							MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and MEM_reset = '1') or
+							
+							((ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) or ID_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and ID_reset = '1' and ID_IW(15 downto 12) = "1111" and
+								EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and EX_reset = '1' and
+								MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and MEM_reset = '1') or
+								
+							((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_reset = '1' and EX_IW(15 downto 12) = "1111" and
+								ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and ID_reset = '1' and
+								MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and MEM_reset = '1') or
+							
+							((MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) or MEM_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and MEM_reset = '1' and MEM_IW(15 downto 12) = "1111" and
+								ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and ID_reset = '1' and  
+								EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and EX_reset = '1')) and  
+								
+							LAB(i).inst_valid = '1' then --we don't have any conflict in pipeline and LAB instruction is valid
 							
 							--check if there are any hazards within the LAB for the ith entry (for memory instructions)
 							if datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) = "1000" and LAB(i).addr_valid = '1' then
 							
-								report "Issuing memory instruction.";
+								report "Issuing memory instruction and buffering PM_data_in";
 								--if so, we can issue the ith instruction
 								IW_reg 		<= LAB(i).inst;
 								MEM_reg 		<= LAB(i).addr;
@@ -198,7 +227,7 @@ begin
 							--check if there are any hazards within the LAB now for the ith entry (for non-memory instructions)
 							elsif datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) /= "1000" then
 								
-								report "Issuing non-memory instruction.";
+								report "Issuing non-memory instruction and buffering PM_data_in";
 								--if not, we can issue the ith instruction
 								IW_reg 	<= LAB(i).inst;
 								
@@ -208,28 +237,42 @@ begin
 								--exit here, we're done
 								exit;
 								
-							else
-								--can't do anything if there's a data hazard for this LAB instruction, keep moving on, buffer PM but DON'T SHIFT LAB
-								--just issue no-op by default
-								LAB 			<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '0');
-								IW_reg 		<= "1111111111111111";
-								MEM_reg 		<= "0000000000000000";
+--							else
+--								--can't do anything if there's a data hazard for this LAB instruction, keep moving on, buffer PM but DON'T SHIFT LAB
+--								--just issue no-op by default
+--								report "can't issue any LAB instruction or PM_data_in, buffering PM_data_in";
+--								LAB 			<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '0');
+--								IW_reg 		<= "1111111111111111";
+--								MEM_reg 		<= "0000000000000000";
 							end if; --datahaz_status
 							
-						elsif i = LAB_MAX - 1 and datahaz_status(i) = '1' then --LAB is full and the last instruction has a conflict
+						elsif i = LAB_MAX - 1 then 
 						
 							if PM_datahaz_status = '0' then
-								IW_reg 		<= PM_data_in;
-								LAB_full 	<= '0';
-							else --can't do anything, keep PC where it is
+								report "issuing PM_data_in to pipeline instead of buffering to LAB.";
+								IW_reg 			<= PM_data_in;
+								LAB_full 		<= '0';
+								ALU_fwd_reg_1 	<= ALU_fwd_reg_1_reg;
+								ALU_fwd_reg_2	<= ALU_fwd_reg_2_reg;
+								exit;
+							elsif datahaz_status(i) = '1' then --can't do anything, keep PC where it is
+								report "LAB full, can't buffer PM_data_in, can't issue any instruction.";
 								LAB_full 	<= '1';
 								IW_reg 		<= "1111111111111111";
 								MEM_reg 		<= "0000000000000000";
+								ALU_fwd_reg_1 	<= '0';
+								ALU_fwd_reg_2	<= '0';
+								exit;
+							else
+								--default to just issuing a no-op
+								report "hit 'else' statement, just buffer PM data in and issue no-op.";
+								IW_reg 		<= "1111111111111111";
+								MEM_reg 		<= "0000000000000000";
+								LAB 			<= shiftLAB_and_bufferPM(LAB, PM_data_in, 0, LAB_MAX, '0');
+								ALU_fwd_reg_1 	<= '0';
+								ALU_fwd_reg_2	<= '0';
+								exit;
 							end if;
-						else
-							--default to just issuing a no-op
-							IW_reg 		<= "1111111111111111";
-							MEM_reg 		<= "0000000000000000";
 
 						end if; --various tags
 					end loop; --for i
@@ -353,6 +396,10 @@ begin
 	bne				<= not(PM_data_in(1)) and not(PM_data_in(0)) and PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
 	bnez				<= not(PM_data_in(1)) and PM_data_in(0) and PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
 	
+	reg2_used 		<= (not(PM_data_in(15)) and not(PM_data_in(1)) and not(PM_data_in(0))) or 
+							(not(PM_data_in(15)) and PM_data_in(14)) or
+							(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and not(PM_data_in(12)) and not(PM_data_in(0)));
+	
 	--process to generate clocked registers for branch and data memory instructions
 	process(reset_n, sys_clock, PM_data_in) 
 	begin
@@ -375,37 +422,60 @@ begin
 						
 	end process;
 	
-	
 	--this process determines whether the PM_data_in poses a data hazard from any instruction below it or in pipeline
-	PM_data_hazard_status	: process(reset_n, PM_data_in, ID_dest_reg, EX_dest_reg, MEM_dest_reg, LAB)
+	PM_data_hazard_status	: process(reset_n, PM_data_in, ID_IW, EX_IW, MEM_IW, ID_reset, EX_reset, MEM_reset, reg2_used, LAB)
 		variable dh_ptr_outer 	: integer range 0 to LAB_MAX - 1;
 		--variable last_dh			: integer range 0 to LAB_MAX - 1 + 3; --adding three to account for pipeline instructions
 	begin	
 		if reset_n = '0' then
 		
 			PM_datahaz_status <= '0';
+			ALU_fwd_reg_1_reg	<= '0';
+			ALU_fwd_reg_2_reg	<= '0';
 			--last_dh <= 0;
 		else
 	
-			if ((ID_dest_reg /= PM_data_in(11 downto 7)) and (ID_dest_reg /= PM_data_in(6 downto 2))) and 
-				((EX_dest_reg /= PM_data_in(11 downto 7)) and (EX_dest_reg /= PM_data_in(6 downto 2))) and
-				((MEM_dest_reg /= PM_data_in(11 downto 7)) and (MEM_dest_reg /= PM_data_in(6 downto 2))) then
+			if (((ID_IW(11 downto 7) = PM_data_in(11 downto 7)) or (ID_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and ID_reset = '1' and ID_IW(15 downto 12) /= "1111") or
+					(((MEM_IW(11 downto 7) = PM_data_in(11 downto 7)) or (MEM_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and MEM_reset = '1' and MEM_IW(15 downto 12) /= "1111")  then
 				
-				PM_datahaz_status <= '0';
+				report "setting PM_data_hazard because of pipeline hazards.";
+				PM_datahaz_status 	<= '1';
+		
+			elsif (EX_IW(11 downto 7) = PM_data_in(11 downto 7) and EX_reset = '1' and EX_IW(15 downto 12) /= "1111") then
+				--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_1
+				PM_datahaz_status 	<= '0';
+				ALU_fwd_reg_1_reg 	<= '1';
 				
+				if (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111") then 
+					--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
+					ALU_fwd_reg_2_reg 	<= '1';
+					report "PM_data_in reg1 and reg2 match ID stage output IW, enabling data forwarding from MEM stage.";
+				else
+					ALU_fwd_reg_2_reg 	<= '0';
+					report "PM_data_in reg1 matches ID stage output IW, enabling data forwarding from MEM stage.";
+				end if;
+				
+			elsif (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111") then 
+				--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
+				PM_datahaz_status 	<= '0';
+				ALU_fwd_reg_2_reg 	<= '1';
+				report "PM_data_in reg2 matches ID stage output IW, enabling data forwarding from MEM stage.";
+
 			else
-				PM_datahaz_status <= '1';
-				
+				PM_datahaz_status 	<= '0';
+				ALU_fwd_reg_1_reg 	<= '0';
+				ALU_fwd_reg_2_reg		<= '0';
 			end if;	
 			
 			--start this loop at 0 because we want to check PM_data_in against entire LAB
 			for dh_ptr_outer in 0 to LAB_MAX - 1 loop
 			
-				if ((LAB(dh_ptr_outer).inst(11 downto 7) = PM_data_in(11 downto 7)) and LAB(dh_ptr_outer).inst_valid  = '1') or 
-					((LAB(dh_ptr_outer).inst(11 downto 7) = PM_data_in(6 downto 2)) and LAB(dh_ptr_outer).inst_valid  = '1') then
+				if (LAB(dh_ptr_outer).inst(11 downto 7) = PM_data_in(11 downto 7) and LAB(dh_ptr_outer).inst_valid  = '1') or 
+					(LAB(dh_ptr_outer).inst(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1' and LAB(dh_ptr_outer).inst_valid  = '1') then
 					
 					--just say that we have a hazard and exit for now
 					--TODO: can this be optimized to only search the LAB based on the proximity to a known hazard in the pipeline?
+					report "setting PM_data_hazard because of LAB hazards on loop i = " & integer'image(dh_ptr_outer);
 					PM_datahaz_status <= '1';
 					exit;
 					
@@ -431,15 +501,15 @@ begin
 			
 				for dh_ptr_inner in 0 to dh_ptr_outer - 1 loop
 			
-					if (LAB(dh_ptr_inner).inst(11 downto 7) /= LAB(dh_ptr_outer).inst(11 downto 7)) and 
-						(LAB(dh_ptr_inner).inst(11 downto 7) /= LAB(dh_ptr_outer).inst(6 downto 2)) then
+					if (LAB(dh_ptr_inner).inst(11 downto 7) = LAB(dh_ptr_outer).inst(11 downto 7) and LAB(dh_ptr_outer).inst_valid = '1') or 
+						(LAB(dh_ptr_inner).inst(11 downto 7) = LAB(dh_ptr_outer).inst(6 downto 2) and LAB(dh_ptr_outer).inst_valid = '1') then
 						
-						datahaz_status(dh_ptr_outer) <= '0';
-						
+						datahaz_status(dh_ptr_outer) <= '1';
+						exit; --exit inner loop, there's a hazard at this dh_ptr_outer location
 					else
 					
-						datahaz_status(dh_ptr_outer) <= '1';
-						
+						datahaz_status(dh_ptr_outer) <= '0';
+						--don't exit here, need to evaluate all dh_ptr_inner locations
 					end if;
 				end loop; --dh_ptr_inner 
 			end loop; --dh_ptr_outer 
