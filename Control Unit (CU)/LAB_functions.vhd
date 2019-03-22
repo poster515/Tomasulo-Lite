@@ -77,7 +77,7 @@ package body LAB_functions is
 	variable branches_temp	: branch_addrs := branches;
 	
 	begin
-		for i in 0 to 9 loop
+		for i in 0 to LAB_MAX - 1 loop
 			branches_temp(i).addr_met		:= "0000000000000000";
 			branches_temp(i).addr_unmet	:= "0000000000000000";
 			branches_temp(i).addr_valid  	:= '0';
@@ -165,7 +165,7 @@ package body LAB_functions is
 				
 			if i >= issued_inst then
 				if (LAB_temp(i).inst_valid = '1') and (LAB_temp(i + 1).inst_valid = '0') then
-					report "At LAB spot " & integer'image(i) & " we can buffer PM_data_in";
+					--report "At LAB spot " & integer'image(i) & " we can buffer PM_data_in";
 					LAB_temp(i + convert_SL(not(shift_LAB))).inst 			:= PM_data_in;
 					LAB_temp(i + convert_SL(not(shift_LAB))).inst_valid 	:= '1';
 					LAB_temp(i + convert_SL(not(shift_LAB))).addr			:= (others => '0');
@@ -177,7 +177,7 @@ package body LAB_functions is
 					end if;
 					exit;
 				elsif i = LAB_MAX - 2 and LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '1' then
-					report "at end of LAB, buffering PM_data_in at last LAB spot.";
+					--report "at end of LAB, buffering PM_data_in at last LAB spot.";
 					LAB_temp(i + convert_SL(not(shift_LAB))).inst 			:= PM_data_in;
 					LAB_temp(i + convert_SL(not(shift_LAB))).inst_valid 	:= '1';
 					LAB_temp(i + convert_SL(not(shift_LAB))).addr			:= (others => '0');

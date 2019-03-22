@@ -96,11 +96,16 @@ begin
 		else
 			zero_inst_match <= '0';
 		end if;
+		
 	end process;
 
 	process(reset_n, sys_clock, stall)
 	begin
 		if reset_n = '0' then
+		
+			ROB_actual 			<= initialize_ROB(ROB_actual, ROB_DEPTH);
+			speculate_results <= '0';
+			next_IW_is_addr 	<= '0';
 			stall_out 			<= '0';
 			RF_in_demux 		<= "00000";
 			RF_wr_en 			<= '0';
@@ -114,73 +119,164 @@ begin
 		elsif rising_edge(sys_clock) then
 			
 			if stall = '0' then
-			
-				--have to ensure that new PM_data_in is buffered, if its not EOP
-				if PM_data_in(15 downto 0) /= "1111111111111111" then
-					PM_data_in_reg 	<= PM_data_in;
-					PM_data_valid	<= '1';	--enables buffering PM_data_in into ROB
-				end if; 
-				
+
+--				--have to ensure that new PM_data_in is buffered, if its not EOP or a stall
+--				if PM_data_in(15 downto 0) /= "1111111111111111" then
+--					PM_data_in_reg 	<= PM_data_in;
+--					PM_data_valid		<= '1';	--enables buffering PM_data_in into ROB
+--				end if; 
+--				
 				stall_out <= '0';
-				--TODO: how to shift down ROB without issuing commit signals to RF, if the instruction is a branch?
-				if zero_inst_match = '1' and (ROB_actual(0).specul = '0' or (results_available = '1' and condition_met = '0')) then --have a non-speculative match to zeroth ROB inst and therefore re-issue result
+				
+				if PM_data_in(15 downto 0) /= "1111111111111111" and reset_MEM = '1' then
+				
+					if next_IW_is_addr = '1' then
+						next_IW_is_addr <= '0';
+						
+					else 
+						--if the instruction is a jump, branch, or ld/st, then the next IW will be a memory address vice another instruction
+						if PM_data_in(15 downto 12) = "1000" or PM_data_in(15 downto 12) = "1001"  or PM_data_in(15 downto 12) = "1010" then
+							next_IW_is_addr <= '1';
+						end if;
+					end if; --next_IW_is_addr
 					
-					--if reset_MEM = '1', then we know incoming data and IW_in are valid, and can choose to do something with them
-					if reset_MEM = '1' then
+					if PM_data_in(15 downto 12) = "1010" then
+						speculate_results 	<= '1';
+						
+					elsif results_available = '1' and condition_met = '1' then
+						speculate_results 	<= '0';
 					
-						IW_update_en		<= '0'; 						--enables updating an ROB instruction with the applicable results
-						RF_in_demux 		<= IW_in(11 downto 7);			--use IW to find destination register for the aforementioned instructions
+					end if;
+					
+					--<= update_ROB(	ROB_actual, PM_data_in, PM_data_valid, IW_to_update, WB_data, IW_update_en, clear_zero_inst, 
+					--						results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+				
+					if zero_inst_match = '1' and (ROB_actual(0).specul = '0' or (results_available = '1' and condition_met = '0')) then 
+						report "1. writing back ROB(0) results to RF";
+						--incoming MEM IW matches zeroth ROB entry which should be committed in specul = '0'
+						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(next_IW_is_addr), IW_in, WB_data, '0', '1', 
+															results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+
+						RF_in_demux 		<= IW_in(11 downto 7);	--use IW to find destination register for the aforementioned instructions
 						
 						--only if zeroth instruction is non-speculative can we write back results to RF
 						clear_zero_inst 	<= '1'; 	--enable clearing the zeroth instruction since zero_inst_match = '1'
 						
 						--commit results if its not a branch or jump 
 						if ROB_actual(0).inst(15 downto 12)	/= "1010" and ROB_actual(0).inst(15 downto 12) /= "1001" then
-							RF_wr_en 			<= '1';	--enable writing back into RF
+							RF_wr_en 		<= '1';	--enable writing back into RF
 						end if;
+						
+					elsif zero_inst_match = '1' and ROB_actual(0).specul = '1' then 
+						report "2. can't write speculative ROB(0) results to RF";
+						--incoming MEM IW matches zeroth ROB entry which can't be committed since specul = '1'
+						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(next_IW_is_addr), IW_in, WB_data, '1', '0', 
+															results_available, condition_met, '1', frst_branch_index, scnd_branch_index, ROB_DEPTH);
+						clear_zero_inst 	<= '0'; 
+						
+					elsif zero_inst_match = '0' then 
+						report "3. can't write ROB(0) results to RF";
+						--incoming MEM IW does not match zeroth ROB entry so just update ROB entry for IW_in
+						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(next_IW_is_addr), IW_in, WB_data, '1', '0', 
+															results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+						
+						clear_zero_inst 	<= '0'; 
+																	
+					elsif ROB_actual(1).complete = '1' and clear_zero_inst = '1' and ROB_actual(1).specul = '0' and ROB_actual(0).specul = '0' then		
+						report "4. can write complete, non-speculative ROB(1) results to RF";
+						--previous clock cycle had a non-speculative zero_inst_match, and it happened again this clock cycle
+						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(next_IW_is_addr), IW_to_update, WB_data, IW_update_en, clear_zero_inst, 
+															results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+						clear_zero_inst 	<= '0'; 	
+						
+						--only if first instruction is non-speculative can we write back results to RF
+						if ROB_actual(1).inst(15 downto 12)	/= "1010" and ROB_actual(1).inst(15 downto 12) /= "1001" then
+							RF_wr_en 		<= not(ROB_actual(1).specul);
+						end if;
+						
+						clear_zero_inst 	<= not(ROB_actual(1).specul);	--enable clearing zeroth instruction if its complete
+						RF_in_demux 		<= ROB_actual(1).inst(11 downto 7);	--
 						
 					else
-						RF_wr_en 			<= '0'; --disable writing back into RF
-						clear_zero_inst 	<= '0'; --disable clearing the zeroth instruction since zero_inst_match = '1'
-					
-					end if; --reset_MEM	
-					
-				else --IW_in does not match zeroth instruction, or instruction result is speculative, therefore need to buffer results in ROB
-
-					--if reset_MEM = '1', then we know incoming data and IW_in are valid, and can choose to do something with them
-					if reset_MEM = '1' then
-					
-						IW_to_update			<= IW_in;
-						
-						if IW_in(15 downto 0) /= "1111111111111111" then
-							IW_update_en		<= '1';
-						else
-							IW_update_en		<= '0';
-						end if;
-						--condition covers the case when the previous clock cycle we had a match for the zeroth instruction, and we another match
-						--and the result is valid
-						if ROB_actual(1).complete = '1' and clear_zero_inst = '1' and ROB_actual(1).specul = '0' and ROB_actual(0).specul = '0' then
-							--only if first instruction is non-speculative can we write back results to RF
-							if ROB_actual(1).inst(15 downto 12)	/= "1010" and ROB_actual(1).inst(15 downto 12) /= "1001" then
-								RF_wr_en 			<= not(ROB_actual(1).specul);
-							end if;
-							clear_zero_inst 	<= not(ROB_actual(1).specul);	--enable clearing zeroth instruction if its complete
-							RF_in_demux 		<= ROB_actual(1).inst(11 downto 7);	--
-
-						else 
-							RF_wr_en 			<= '0';
-							clear_zero_inst 	<= '0'; --disable clearing the zeroth instruction for the next instruction in ROB
-							
-						end if;
-						
-					else
-						--don't buffer IW_in results since reset_MEM = '0'
-						IW_update_en		<= '0';
-						RF_wr_en 			<= '0';
-						
+						report "5. not sure. buffering PM_data_in and updating ROB with results.";
+						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(next_IW_is_addr), IW_to_update, WB_data, '1', clear_zero_inst, 
+															results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+						clear_zero_inst 	<= '0'; 				
 					end if;
 					
-				end if; --zero_inst_match
+				elsif reset_MEM = '0' then
+					report "6. CPU not stalled, have a no-op, and MEM_reset is '0'.";
+					
+					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, '1', IW_to_update, WB_data, '0', clear_zero_inst, 
+														results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+					clear_zero_inst 	<= '0'; 	
+					
+				else
+					report "7. reached else statement.";
+					
+					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, '0', IW_to_update, WB_data, '0', clear_zero_inst, 
+														results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+					clear_zero_inst 	<= '0'; 	
+					
+				end if; --PM_data_in
+				
+--				if zero_inst_match = '1' and (ROB_actual(0).specul = '0' or (results_available = '1' and condition_met = '0')) then --have a non-speculative match to zeroth ROB inst and therefore re-issue result
+--					
+--					if reset_MEM = '1' then
+--						report "Incoming IW from MEM matches zeroth instruction in ROB.";
+--						IW_update_en		<= '0'; 						--don't want to update ROB since we just want to update RF
+--						RF_in_demux 		<= IW_in(11 downto 7);	--use IW to find destination register for the aforementioned instructions
+--						
+--						--only if zeroth instruction is non-speculative can we write back results to RF
+--						clear_zero_inst 	<= '1'; 	--enable clearing the zeroth instruction since zero_inst_match = '1'
+--						
+--						--commit results if its not a branch or jump 
+--						if ROB_actual(0).inst(15 downto 12)	/= "1010" and ROB_actual(0).inst(15 downto 12) /= "1001" then
+--							RF_wr_en 		<= '1';	--enable writing back into RF
+--						end if;
+--						
+--					else
+--						RF_wr_en 			<= '0'; --disable writing back into RF
+--						clear_zero_inst 	<= '0'; --disable clearing the zeroth instruction since zero_inst_match = '1'
+--
+--					end if; --reset_MEM	
+--					
+--				else --IW_in does not match zeroth instruction, or instruction result is speculative, therefore need to buffer results in ROB
+--
+--					--if reset_MEM = '1', then we know incoming data and IW_in are valid, and can choose to do something with them
+--					if reset_MEM = '1' then
+--					
+--						IW_to_update	<= IW_in;
+--						
+--						if IW_in(15 downto 0) /= "1111111111111111" then
+--							IW_update_en		<= '1';
+--						else
+--							IW_update_en		<= '0';
+--						end if;
+--						--condition covers the case when the previous clock cycle we had a match for the zeroth instruction, and we another match
+--						--and the result is valid
+--						if ROB_actual(1).complete = '1' and clear_zero_inst = '1' and ROB_actual(1).specul = '0' and ROB_actual(0).specul = '0' then
+--							--only if first instruction is non-speculative can we write back results to RF
+--							if ROB_actual(1).inst(15 downto 12)	/= "1010" and ROB_actual(1).inst(15 downto 12) /= "1001" then
+--								RF_wr_en 		<= not(ROB_actual(1).specul);
+--							end if;
+--							clear_zero_inst 	<= not(ROB_actual(1).specul);	--enable clearing zeroth instruction if its complete
+--							RF_in_demux 		<= ROB_actual(1).inst(11 downto 7);	--
+--
+--						else 
+--							RF_wr_en 			<= '0';
+--							clear_zero_inst 	<= '0'; --disable clearing the zeroth instruction for the next instruction in ROB
+--							
+--						end if;
+--						
+--					else
+--						--don't buffer IW_in results since reset_MEM = '0'
+--						IW_update_en		<= '0';
+--						RF_wr_en 			<= '0';
+--						
+--					end if;
+--					
+--				end if; --zero_inst_match
 				
 				--this if..else series assigns the correct data input corresponding to IW_in
 				if (ROB_actual(0).complete = '1') or (ROB_actual(1).complete = '1' and clear_zero_inst = '1') then
@@ -215,9 +311,14 @@ begin
 		end if; --reset_n
 	end process;
 	
-	process(reset_n, ROB_actual)
+	process(reset_n, sys_clock, ROB_actual)
 	begin
-		if reset_n = '1' then
+		if reset_n = '0' then
+			frst_branch_index <= ROB_DEPTH;
+			scnd_branch_index <= ROB_DEPTH;
+			
+		elsif rising_edge(sys_clock) then
+		
 			for i in 0 to ROB_DEPTH - 1 loop
 				if ROB_actual(i).inst(15 downto 12) = "1010" and ROB_actual(i).specul = '1' then
 					frst_branch_index <= i;
@@ -239,60 +340,62 @@ begin
 		end if; --reset_n
 	end process;
 	
-	ROB_process : process(reset_n, sys_clock, ROB_actual)
-	begin
-		if reset_n = '0' then
-		
-			--reset ROB
-			ROB_actual <= initialize_ROB(ROB_actual, ROB_DEPTH);
-			
-		elsif sys_clock'event and sys_clock = '1' then
-			--update_ROB parameters:
-			
---			ROB_in 				: in ROB;
---			PM_data_in			: in std_logic_vector(15 downto 0);
---			PM_buffer_en		: in std_logic;
---			IW_in					: in std_logic_vector(15 downto 0);
---			IW_result			: in std_logic_vector(15 downto 0);
---			IW_result_en		: in std_logic;
---			clear_zero			: in std_logic;			--this remains '0' if the ROB(0).specul = '1'
---			results_avail		: in std_logic;
---			condition_met		: in std_logic;
---			speculate_res		: in std_logic;			--ONLY FOR PM_data_in (this is set upon receiving a branch, to let ROB know that subsequent instructions are speculative)
---			frst_branch_idx	: in integer;
---			scnd_branch_idx	: in integer;
---			ROB_DEPTH			: in integer
-			
-			if next_IW_is_addr = '1' then
-				next_IW_is_addr <= '0';
-			else 
-				--if the instruction is a jump, branch, or ld/st, then the next IW will be a memory address vice another instruction
-				if PM_data_in(15 downto 12) = "1000" or PM_data_in(15 downto 12) = "1001"  or PM_data_in(15 downto 12) = "1010" then
-					next_IW_is_addr <= '0';
-				end if;
-				
-				--don't buffer jumps because they are unconditional
-				if PM_data_in(15 downto 12) /= "1001" and next_IW_is_addr = '0' then
-				
-					if PM_data_in(15 downto 12) = "1010" then
-						speculate_results 	<= '1';
-						ROB_actual 				<= update_ROB(	ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data, IW_update_en, clear_zero_inst, 
-																		results_available, condition_met, '1', frst_branch_index, scnd_branch_index, ROB_DEPTH);
-					elsif results_available = '1' and condition_met = '1' then
-						speculate_results 	<= '0';
-						ROB_actual 				<= update_ROB(	ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data, IW_update_en, clear_zero_inst, 
-																		results_available, condition_met, '0', frst_branch_index, scnd_branch_index, ROB_DEPTH);
-					else 
-						ROB_actual 				<= update_ROB(	ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data, IW_update_en, clear_zero_inst, 
-																		results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
-					end if;
-					
-				end if;
-				
-			end if;
-			
-		end if; --reset_n
-	end process;
+--	ROB_process : process(reset_n, sys_clock, ROB_actual)
+--	begin
+--		if reset_n = '0' then
+--		
+--			--reset ROB
+--			ROB_actual 			<= initialize_ROB(ROB_actual, ROB_DEPTH);
+--			speculate_results <= '0';
+--			next_IW_is_addr 	<= '0';
+--			
+--		elsif sys_clock'event and sys_clock = '1' then
+--			--update_ROB parameters:
+--			
+----			ROB_in 				: in ROB;
+----			PM_data_in			: in std_logic_vector(15 downto 0);
+----			PM_buffer_en		: in std_logic;
+----			IW_in					: in std_logic_vector(15 downto 0);
+----			IW_result			: in std_logic_vector(15 downto 0);
+----			IW_result_en		: in std_logic;
+----			clear_zero			: in std_logic;			--this remains '0' if the ROB(0).specul = '1'
+----			results_avail		: in std_logic;
+----			condition_met		: in std_logic;
+----			speculate_res		: in std_logic;			--ONLY FOR PM_data_in (this is set upon receiving a branch, to let ROB know that subsequent instructions are speculative)
+----			frst_branch_idx	: in integer;
+----			scnd_branch_idx	: in integer;
+----			ROB_DEPTH			: in integer
+--			
+--			if next_IW_is_addr = '1' then
+--				next_IW_is_addr <= '0';
+--			else 
+--				--if the instruction is a jump, branch, or ld/st, then the next IW will be a memory address vice another instruction
+--				if PM_data_in(15 downto 12) = "1000" or PM_data_in(15 downto 12) = "1001"  or PM_data_in(15 downto 12) = "1010" then
+--					next_IW_is_addr <= '1';
+--				end if;
+--				
+--				--don't buffer jumps because they are unconditional
+--				if PM_data_in(15 downto 12) /= "1001" and next_IW_is_addr = '0' then
+--				
+--					if PM_data_in(15 downto 12) = "1010" then
+--						speculate_results 	<= '1';
+--						ROB_actual 				<= update_ROB(	ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data, IW_update_en, clear_zero_inst, 
+--																		results_available, condition_met, '1', frst_branch_index, scnd_branch_index, ROB_DEPTH);
+--					elsif results_available = '1' and condition_met = '1' then
+--						speculate_results 	<= '0';
+--						ROB_actual 				<= update_ROB(	ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data, IW_update_en, clear_zero_inst, 
+--																		results_available, condition_met, '0', frst_branch_index, scnd_branch_index, ROB_DEPTH);
+--					else 
+--						ROB_actual 				<= update_ROB(	ROB_actual, PM_data_in_reg, PM_data_valid, IW_to_update, WB_data, IW_update_en, clear_zero_inst, 
+--																		results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+--					end if;
+--					
+--				end if;
+--				
+--			end if;
+--			
+--		end if; --reset_n
+--	end process;
 	
 	ROB_out 		<= ROB_actual;
 	WB_data_out	<= WB_data;
