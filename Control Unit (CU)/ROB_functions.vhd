@@ -158,13 +158,14 @@ package body ROB_functions is
 					end if;
 				end if;
 				
-			elsif results_avail = '0'then
+			elsif results_avail = '0' then
 
 				--condition covers when we get to a location in the ROB that isn't valid, i.e., we can buffer PM_data_in there
 				if ROB_temp(i).valid = '0' then
-				
+					
 					if PM_buffer_en = '1' then
 						--just insert here 
+						report "a. just buffer PM_data_in in ROB.";
 						ROB_temp(i).inst 		:= PM_data_in;
 						ROB_temp(i).valid 	:= '1';
 						ROB_temp(i).specul	:= speculate_res;
@@ -176,10 +177,15 @@ package body ROB_functions is
 					
 					if PM_buffer_en = '1' then
 						--n_clear_zero automatically shifts ROB entries
+						report "b. just buffer PM_data_in in ROB and shift ROB down."; 
 						ROB_temp(i + n_clear_zero).inst 		:= PM_data_in;
 						ROB_temp(i + n_clear_zero).valid 	:= '1';
 						ROB_temp(i + n_clear_zero).specul	:= speculate_res;
 						exit;
+					else
+						report "f. can't do anything, just shift ROB down.";
+						--n_clear_zero automatically shifts ROB entries
+						ROB_temp(i + n_clear_zero) 			:= ROB_temp(i + 1);
 					end if;
 
 				--condition for when the next instruction is valid and matches IW_in, so we can shift ROB down and update IW_in result
@@ -187,6 +193,7 @@ package body ROB_functions is
 					
 					--if we can update IW_in entry, and we haven't updated any result yet, in case of identical instructions
 					if IW_result_en = '1' and IW_updated = '0' then
+						report "c. just update IW in ROB and shift ROB down.";
 						--n_clear_zero automatically shifts ROB entries
 						ROB_temp(i + n_clear_zero).result 		:= IW_result;
 						ROB_temp(i + n_clear_zero).inst 			:= ROB_temp(i + 1).inst;
@@ -197,6 +204,7 @@ package body ROB_functions is
 						IW_updated := '1';
 						
 					else 
+						report "d. can't do anything, just shift ROB down.";
 						--n_clear_zero automatically shifts ROB entries
 						ROB_temp(i) := ROB_temp(i + convert_CZ(clear_zero));
 					
@@ -207,7 +215,7 @@ package body ROB_functions is
 					
 					if PM_buffer_en = '1' then
 						
-						ROB_temp(ROB_DEPTH - 1).inst 	:= PM_data_in;
+						ROB_temp(ROB_DEPTH - 1).inst 		:= PM_data_in;
 						ROB_temp(ROB_DEPTH - 1).valid 	:= '1';
 						--"condition_met" isn't ready until next clock cycle
 						if PM_data_in(15 downto 12) = "1010" then
@@ -219,6 +227,7 @@ package body ROB_functions is
 					end if;
 				
 				else
+					report "e. can't do anything, just shift ROB down.";
 					--clear_zero automatically shifts ROB entries
 					ROB_temp(i)	:= ROB_temp(i + convert_CZ(clear_zero));
 					

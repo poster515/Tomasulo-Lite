@@ -31,7 +31,7 @@ entity ID is
 		immediate_val	: out	std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
 		mem_addr_out	: out std_logic_vector(15 downto 0);  --
 		reset_out		: out std_logic;
-		ALU_fwd_reg_1_out	: out std_logic;
+		ALU_fwd_reg_1_out	: out std_logic;	--inputs to EX block to enable forwarding results from ALU back into ALU
 		ALU_fwd_reg_2_out	: out std_logic
 	);
 end ID;

@@ -65,7 +65,8 @@ architecture arch of LAB_test is
 	signal LAB	: LAB_actual := (others => ((others => '0'), '0', (others => '0'), '1'));	
 
 	--array with addresses for all branch instructions
-	signal branches	: branch_addrs := (others => ((others => '0'), (others => '0'), '0'));
+	--signal branches	: branch_addrs := (others => ((others => '0'), (others => '0'), '0'));
+	signal branches	: branch_addrs;
 	
 	--Program counter (PC) register
 	signal PC_reg		: std_logic_vector(10 downto 0);
@@ -118,7 +119,7 @@ begin
 		if(reset_n = '0') then
 			
 			LAB 					<= init_LAB(LAB, LAB_MAX);
-			branches				<= init_branches(branches, LAB_MAX);
+			branches				<= init_branches(branches, ROB_DEPTH);
 			IW_reg 				<= "1111111111111111";
 			LAB_reset_out 		<= '0';
 			results_available <= '0';
@@ -130,7 +131,7 @@ begin
 		elsif rising_edge(sys_clock) then
 			LAB_reset_out		<= '1';
 			LAB <= LAB;
-			branches <= branches;
+			--branches <= branches;
 			--jumps are easily handled with "program_counter" process below 
 			--branches are constantly being evaluated with the state machine "branch_state" below
 			--ALU instructions are managed and re-ordered strictly between branches in ROB

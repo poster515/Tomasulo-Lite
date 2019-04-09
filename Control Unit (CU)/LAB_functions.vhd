@@ -73,7 +73,7 @@ package body LAB_functions is
 									LAB_MAX	: in integer)
 		return branch_addrs is
 		
-	variable i 					: integer range 0 to 9;
+	variable i 					: integer range 0 to LAB_MAX - 1;
 	variable branches_temp	: branch_addrs := branches;
 	
 	begin
