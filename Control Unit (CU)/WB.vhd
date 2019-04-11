@@ -151,7 +151,7 @@ begin
 					--update_ROB(ROB_in, PM_data_in, PM_buffer_en, IW_in, IW_result, IW_result_en, clear_zero, results_avail, condition_met
 					--				speculate_res, frst_branch_idx, scnd_branch_idx, ROB_DEPTH	)
 				
-					if zero_inst_match = '1' and (ROB_actual(0).specul = '0' or (results_available = '1' and condition_met = '0')) then 
+					if (zero_inst_match = '1' and (ROB_actual(0).specul = '0' or (results_available = '1' and condition_met = '0'))) or ROB_actual(0).complete = '1' then 
 						report "1. writing back ROB(0) results to RF";
 						--incoming MEM IW matches zeroth ROB entry which should be committed in specul = '0'
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
@@ -174,14 +174,14 @@ begin
 															results_available, condition_met, '1', frst_branch_index, scnd_branch_index, ROB_DEPTH);
 						clear_zero_inst 	<= '0'; 
 						
-					elsif zero_inst_match = '0' then 
+					elsif zero_inst_match = '0' and ROB_actual(0).complete = '0' then 
 						report "3. can't write ROB(0) results (if applicable) to RF";
 						--incoming MEM IW does not match zeroth ROB entry so just update ROB entry for IW_in
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
 															IW_in, WB_data, '1', '0', results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 						
 						clear_zero_inst 	<= '0'; 
-																	
+												
 					elsif ROB_actual(1).complete = '1' and clear_zero_inst = '1' and ROB_actual(1).specul = '0' and ROB_actual(0).specul = '0' then		
 						report "4. can write complete, non-speculative ROB(1) results to RF";
 						--previous clock cycle had a non-speculative zero_inst_match, and it happened again this clock cycle

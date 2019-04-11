@@ -67,7 +67,7 @@ end control_unit;
 architecture behavioral of control_unit is
 
 	signal LAB_stall				: std_logic; --signal to logically or all other CU stall signals
-	signal LAB_IW_dest, ID_IW_dest, EX_IW_dest	: std_logic_vector(4 downto 0);
+	
 	--LAB <-> ID Signals
 	signal LAB_ID_IW				: std_logic_vector(15 downto 0);
 	signal LAB_mem_addr_out		: std_logic_vector(15 downto 0);
@@ -308,7 +308,9 @@ begin
 		stall_out		=> ID_stall_out,		
 		immediate_val	=> ID_EX_immediate_val,	
 		mem_addr_out 	=> ID_EX_mem_address,
-		reset_out		=> ID_reset_out	
+		reset_out		=> ID_reset_out,
+		ALU_fwd_reg_1_out	=> ID_EX_fwd_reg1,
+		ALU_fwd_reg_2_out	=> ID_EX_fwd_reg2
 	);
 	
 	EX_actual : EX

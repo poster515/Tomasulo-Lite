@@ -162,8 +162,8 @@ package body LAB_functions is
 	begin
 		
 		for i in 0 to LAB_MAX - 2 loop
-				
-			if i >= issued_inst then
+			--need to ensure that we're above last issued instruction, and instruction isn't a jump
+			if i >= issued_inst and PM_data_in(15 downto 12) /= "1001" then
 				if (LAB_temp(i).inst_valid = '1') and (LAB_temp(i + 1).inst_valid = '0') then
 					--report "At LAB spot " & integer'image(i) & " we can buffer PM_data_in";
 					LAB_temp(i + convert_SL(not(shift_LAB))).inst 			:= PM_data_in;
@@ -191,6 +191,9 @@ package body LAB_functions is
 				else
 					LAB_temp(i) := LAB_temp(i + convert_SL(shift_LAB));
 				end if;
+			--need to handle case where we don't want to buffer PM_data_in (e.g., jumps) but still want to shift LAB down and issue LAB(0)
+			else
+				LAB_temp(i + convert_SL(not(shift_LAB)))	:= LAB_temp(i + 1);
 			end if; --i >= issued_inst
 		end loop; --for i
 		
