@@ -175,9 +175,12 @@ begin
 						
 						--have data conflict with ID, EX, or MEM stage 
 						--buffer into LAB(0)
-						LAB(0).inst 			<= PM_data_in;
-						LAB(0).inst_valid 	<= '1';
-						LAB(0).addr_valid 	<= not(branch or ld_st);
+						if PM_data_in(15 downto 12) /= "1001" then
+							LAB(0).inst 			<= PM_data_in;
+							LAB(0).inst_valid 	<= '1';
+							LAB(0).addr_valid 	<= not(branch or ld_st);
+						end if;
+						
 						IW_reg 					<= "1111111111111111"; --issue no-op
 					
 					else
@@ -185,7 +188,10 @@ begin
 						report "4. writing ALU_fwd_reg_1_reg to ALU_fwd_reg_1 and ALU_fwd_reg_2_reg to ALU_fwd_reg_2.";
 						ALU_fwd_reg_1 	<= ALU_fwd_reg_1_reg;
 						ALU_fwd_reg_2	<= ALU_fwd_reg_2_reg;
-						IW_reg <= PM_data_in;
+						
+						if PM_data_in(15 downto 12) /= "1001" then
+							IW_reg <= PM_data_in;
+						end if;
 					end if;
 				
 				else
@@ -194,28 +200,38 @@ begin
 					--use loop to check for hazards against stages of the pipeline
 					for i in 0 to LAB_MAX - 1 loop
 						
-						if ((ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and ID_reset = '1' and
-							EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and EX_reset = '1' and
-							MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and MEM_reset = '1') or
-							
-							((ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) or ID_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and ID_reset = '1' and ID_IW(15 downto 12) = "1111" and
-								EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and EX_reset = '1' and
-								MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and MEM_reset = '1') or
+--						if ((ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and ID_reset = '1' and
+--								EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and EX_reset = '1' and
+--								MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and MEM_reset = '1') or
+--							
+--							((ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) or ID_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and ID_reset = '1' and ID_IW(15 downto 12) = "1111" and
+--								EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and EX_reset = '1' and
+--								MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and MEM_reset = '1') or
+--								
+--							((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_reset = '1' and EX_IW(15 downto 12) = "1111" and
+--								ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and ID_reset = '1' and
+--								MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and MEM_reset = '1') or
+--							
+--							((MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) or MEM_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and MEM_reset = '1' and MEM_IW(15 downto 12) = "1111" and
+--								ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and ID_reset = '1' and  
+--								EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and EX_reset = '1')) 
+--								
 								
-							((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_reset = '1' and EX_IW(15 downto 12) = "1111" and
-								ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and ID_reset = '1' and
-								MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and MEM_reset = '1') or
-							
-							((MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) or MEM_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and MEM_reset = '1' and MEM_IW(15 downto 12) = "1111" and
-								ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and ID_reset = '1' and  
-								EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2) and EX_reset = '1')) and  
+						if	(((ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
+							 ((ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) or ID_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and ID_IW(15 downto 12) = "1111")) and ID_reset = '1') and
+							 
+							(((EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
+							 ((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_IW(15 downto 12) = "1111")) and EX_reset = '1') and
+							 
+							(((MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
+							 ((MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) or MEM_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and MEM_IW(15 downto 12) = "1111")) and MEM_reset = '1') and
 								
 							LAB(i).inst_valid = '1' then --we don't have any conflict in pipeline and LAB instruction is valid
 							
 							--check if there are any hazards within the LAB for the ith entry (for memory instructions)
 							if datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) = "1000" and LAB(i).addr_valid = '1' then
 							
-								--report "Issuing memory instruction and buffering PM_data_in";
+								report "Issuing memory instruction and buffering PM_data_in";
 								--if so, we can issue the ith instruction
 								IW_reg 		<= LAB(i).inst;
 								MEM_reg 		<= LAB(i).addr;
@@ -229,7 +245,7 @@ begin
 							--check if there are any hazards within the LAB now for the ith entry (for non-memory instructions)
 							elsif datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) /= "1000" then
 								
-								--report "Issuing non-memory instruction and buffering PM_data_in";
+								report "Issuing non-memory instruction and buffering PM_data_in";
 								--if not, we can issue the ith instruction
 								IW_reg 	<= LAB(i).inst;
 								
@@ -239,10 +255,10 @@ begin
 								--exit here, we're done
 								exit;
 								
---							else
+							else
 --								--can't do anything if there's a data hazard for this LAB instruction, keep moving on, buffer PM but DON'T SHIFT LAB
 --								--just issue no-op by default
---								report "can't issue any LAB instruction or PM_data_in, buffering PM_data_in";
+								report "Can't issue LAB instruction at slot: " & Integer'image(i);
 --								LAB 			<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '0');
 --								IW_reg 		<= "1111111111111111";
 --								MEM_reg 		<= "0000000000000000";
@@ -250,7 +266,7 @@ begin
 							
 						elsif i = LAB_MAX - 1 then 
 						
-							if PM_datahaz_status = '0' then
+							if PM_datahaz_status = '0' and PM_data_in(15 downto 12) /= "1001" then
 								--report "issuing PM_data_in to pipeline instead of buffering to LAB.";
 								IW_reg 			<= PM_data_in;
 								LAB_full 		<= '0';
@@ -278,6 +294,9 @@ begin
 								ALU_fwd_reg_2	<= '0';
 								exit;
 							end if;
+						else
+							--we're somewhere in the middle of the LAB and have a hazard with the current LAB instruction
+							report "At LAB slot " & Integer'image(i) & " and can't issue this instruction.";
 
 						end if; --various tags
 					end loop; --for i
@@ -438,17 +457,20 @@ begin
 			ALU_fwd_reg_1_reg	<= '0';
 			ALU_fwd_reg_2_reg	<= '0';
 			--last_dh <= 0;
+			
 		else
 	
 			if (((ID_IW(11 downto 7) = PM_data_in(11 downto 7)) or (ID_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and ID_reset = '1' and ID_IW(15 downto 12) /= "1111") or
-					(((MEM_IW(11 downto 7) = PM_data_in(11 downto 7)) or (MEM_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and MEM_reset = '1' and MEM_IW(15 downto 12) /= "1111")  then
+				(((MEM_IW(11 downto 7) = PM_data_in(11 downto 7)) or (MEM_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and MEM_reset = '1' and MEM_IW(15 downto 12) /= "1111")  then
 				
 				--report "setting PM_data_hazard because of pipeline hazards.";
 				PM_datahaz_status 	<= '1';
+				ALU_fwd_reg_1_reg 	<= '0';
+				ALU_fwd_reg_2_reg		<= '0';
 		
 			elsif (EX_IW(11 downto 7) = PM_data_in(11 downto 7) and EX_reset = '1' and EX_IW(15 downto 12) /= "1111") then
 				--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_1
-				PM_datahaz_status 	<= '0';
+				PM_datahaz_status 	<= '1';
 				ALU_fwd_reg_1_reg 	<= '1';
 				
 				if (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111") then 
@@ -462,8 +484,10 @@ begin
 				
 			elsif (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111") then 
 				--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
-				PM_datahaz_status 	<= '0';
+				PM_datahaz_status 	<= '1';
 				ALU_fwd_reg_2_reg 	<= '1';
+				ALU_fwd_reg_1_reg 	<= '0';
+				
 				report "PM_data_in reg2 matches ID stage output IW, setting ALU_fwd_reg_2_reg.";
 
 			else
@@ -487,7 +511,7 @@ begin
 				end if;
 				
 			end loop; --dh_ptr_outer 
-			
+
 		end if; --reset_n
 	end process;
 	
