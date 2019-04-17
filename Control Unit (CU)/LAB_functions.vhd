@@ -229,7 +229,7 @@ package body LAB_functions is
 									RF_in_3			: in std_logic_vector(15 downto 0);
 									RF_in_4			: in std_logic_vector(15 downto 0);
 									ROB_in			: in ROB) 
-		return std_logic_vector is --std_logic_vector([[condition met]], [[results ready]])
+		return std_logic_vector is --std_logic_vector([[results ready]], [[condition met]])
 								
 		variable i, j 				: integer 	:= 0;	
 		variable reg1_resolved	: std_logic := '0';
@@ -243,11 +243,13 @@ package body LAB_functions is
 			
 			--have a BNEZ, need Reg1, which is in the RF 
 			if RF_in_3 /= "0000000000000000" then
-				--write PM_data_in, which will now just be a memory address to jump to, to PC_reg somehow
+				report "LAB_func: have bnez condition, which is met";
+				
 				condition_met	:= '1';
 			else
 				--write PC_reg + 1 to PC_reg, branch condition not met
-				condition_met	:= '1';
+				report "LAB_func: have bnez condition, which is not met";
+				condition_met	:= '0';
 			end if;
 			
 		elsif RF_in_3_valid = '1' and RF_in_4_valid = '1' and bne = '1' then

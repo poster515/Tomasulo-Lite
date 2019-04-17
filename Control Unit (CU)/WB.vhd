@@ -81,8 +81,11 @@ begin
 	
 	stall <= LAB_stall_in;
 	
+	--set branch indicator ("1010") and associated control signals 
+	speculate_results <= PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(next_IW_is_addr);
+	
 	--update whether ROB zeroth instruction matches the new IW_in, does not depend on ROB(0).inst itself since it won't change
-	process(IW_in, ROB_actual, results_available, condition_met)
+	process(IW_in, ROB_actual, results_available, condition_met, zero_inst_match)
 	begin
 		if ROB_actual(0).inst = IW_in and ROB_actual(0).valid = '1' and zero_inst_match = '0' then
 			zero_inst_match <= '1';
@@ -104,7 +107,7 @@ begin
 		if reset_n = '0' then
 		
 			ROB_actual 			<= initialize_ROB(ROB_actual, ROB_DEPTH);
-			speculate_results <= '0';
+			--speculate_results <= '0';
 			next_IW_is_addr 	<= '0';
 			stall_out 			<= '0';
 			RF_in_demux 		<= "00000";
@@ -121,7 +124,8 @@ begin
 
 				stall_out <= '0';
 				
-				if PM_data_in(15 downto 0) /= "1111111111111111" and reset_MEM = '1' then
+				--if PM_data_in(15 downto 0) /= "1111111111111111" and reset_MEM = '1' then
+				if PM_data_in(15 downto 0) /= "1111111111111111" then
 				
 					if next_IW_is_addr = '1' then
 						next_IW_is_addr <= '0';
@@ -133,13 +137,14 @@ begin
 						end if;
 					end if; --next_IW_is_addr
 					
-					if PM_data_in(15 downto 12) = "1010" then
-						speculate_results 	<= '1';
-						
-					elsif results_available = '1' and condition_met = '1' then
-						speculate_results 	<= '0';
-					
-					end if;
+--					if PM_data_in(15 downto 12) = "1010" then
+--						report "WB: PM_data_in is a branch.";
+--						speculate_results 	<= '1';
+--						
+--					elsif results_available = '1' and condition_met = '1' then
+--						report "WB: results_avail = 1 and cond_met = 1";
+--						speculate_results 	<= '0';
+--					end if;
 					
 					--update_ROB(ROB_in, PM_data_in, PM_buffer_en, IW_in, IW_result, IW_result_en, clear_zero, results_avail, condition_met
 					--				speculate_res, frst_branch_idx, scnd_branch_idx, ROB_DEPTH	)
@@ -172,7 +177,7 @@ begin
 						
 					elsif zero_inst_match = '0' and ROB_actual(0).complete = '0' then 
 						report "WB: 3. can't write ROB(0) results (if applicable) to RF";
-						--incoming MEM IW does not match zeroth ROB entry so just update ROB entry for IW_in
+						--incoming MEM IW does not match zeroth ROB entry so just update ROB entry for IW_in and buffer PM_data_in, if not a jump
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
 															IW_in, WB_data, '1', '0', results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 						
@@ -206,14 +211,16 @@ begin
 					
 				--update_ROB(ROB_in, PM_data_in, PM_buffer_en, IW_in, IW_result, IW_result_en, clear_zero, 
 				--				results_avail, condition_met, speculate_res, frst_branch_idx, scnd_branch_idx, ROB_DEPTH	)
+				--BELOW COMMENTED CODE CORRESPONDS WITH FIRST COMMENTED IF CONDITION IN THIS CODE	
+--				elsif reset_MEM = '0' then
+--					report "WB: 6. CPU not stalled and MEM_reset is '0'.";
+--					
+--					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, '1', IW_to_update, WB_data, '0', clear_zero_inst, 
+--														results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+--					clear_zero_inst 	<= '0'; 	
+--					RF_wr_en 			<= '0';
 					
-				elsif reset_MEM = '0' then
-					report "WB: 6. CPU not stalled and MEM_reset is '0'.";
 					
-					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, '1', IW_to_update, WB_data, '0', clear_zero_inst, 
-														results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
-					clear_zero_inst 	<= '0'; 	
-					RF_wr_en 			<= '0';
 					
 				else
 					report "WB: 7. reached else statement.";
@@ -268,6 +275,7 @@ begin
 		
 			for i in 0 to ROB_DEPTH - 1 loop
 				if ROB_actual(i).inst(15 downto 12) = "1010" and ROB_actual(i).specul = '1' then
+					report "WB: Found a branch instruction in ROB.";
 					frst_branch_index <= i;
 					for j in 0 to ROB_DEPTH - 1 loop
 						--this statement sets the index of the first, speculative branch that hasn't been resolved yet in the ROB_actual
@@ -279,9 +287,13 @@ begin
 							exit;
 						end if;
 					end loop;
+					exit;
 				elsif i = ROB_DEPTH - 1 then 
+					report "WB: At end of ROB, haven't found a branch instruction yet.";
 					frst_branch_index <= ROB_DEPTH;
 					exit;
+				else
+					report "WB: i= " & Integer'image(i) & " and still looking for branches in ROB."; 
 				end if;
 			end loop;
 		end if; --reset_n

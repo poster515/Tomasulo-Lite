@@ -100,35 +100,54 @@ package body ROB_functions is
 		n_clear_zero 	:= convert_CZ(not(clear_zero));
 		
 		for i in 0 to ROB_DEPTH - 2 loop
-		
-			if i < frst_branch_idx and results_avail = '1' and condition_met = '1' then 
-				--by definition, there are no valid spots in this area to buffer PM_data_in
+			--frst_branch_idx and scnd_branch_idx default to 10 if there are no branches in ROB. 
+			
+--			update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
+--							IW_in, WB_data, '1', '0', results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+--		
+			if i < frst_branch_idx then 
 				
 				if ROB_temp(i + 1).valid = '1' and ROB_temp(i + 1).inst = IW_in then
 					if IW_result_en = '1' and IW_updated = '0' then
-						report "ROB_func: can't buffer PM_data. shift down [frst_br > inst]";
+						report "ROB_func: update ROB entry result, shift entry down as applicable [frst_br > inst]";
 						--n_clear_zero automatically shifts ROB entries
 						ROB_temp(i + n_clear_zero).result 	:= IW_result;
 						ROB_temp(i + n_clear_zero).inst 		:= ROB_temp(i + 1).inst;
 						IW_updated := '1';
 					end if;
+					
+				elsif PM_buffer_en = '1' and ROB_temp(i).valid = '0' then
+					report "ROB_func: buffer PM_data_in, shift down [frst_br > inst]";
+					ROB_temp(i).inst 		:= PM_data_in;
+					ROB_temp(i).valid 	:= '1';
+					ROB_temp(i).specul	:= speculate_res;
+					exit;
+					
 				else
+					report "ROB_func: just shift ROB entry down.";
 					ROB_temp(i) := ROB_temp(i + convert_CZ(clear_zero));
 				end if;
-			
-			--elsif i < frst_branch_idx and results_avail = '1' and condition_met = '0' then 
 				
+			elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '0' and i < scnd_branch_idx then
+				--shift all instructions down, and buffer PM_data_in or update ROB results as applicable
+				--report "i<frst_branch_idx and results_avail='1', condition_met='0', i=" & Integer'image(i);
+				--clear all speculative results from first_branch_index to second_branch_index, and clear first branch from ROB
+
 			elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '1' and i < scnd_branch_idx then
 				--shift all instructions down, and buffer PM_data_in or update ROB results as applicable
+				--report "i>=frst_branch_idx and results_avail='1', condition_met='1', i=" & Integer'image(i);
+				--mark all speculative results as non-speculative, from first_branch_index to second_branch_index, and clear first branch from ROB
+				
 				if ROB_temp(i + 1).valid = '0' then 
 					--we can buffer PM_data_in right here, and shift down this range of instructions since the branch condition was met
 					if PM_buffer_en = '1' then
 						report "ROB_func: buffer PM_data_in, shift down [frst_br < insts < scnd_br]";
 						ROB_temp(i + n_clear_zero).inst 		:= PM_data_in;
 						ROB_temp(i + n_clear_zero).valid 	:= '1';
-						--ROB_temp(i + n_clear_zero).specul	:= '1';
-						ROB_temp(i + n_clear_zero).specul	:= '0';
+						ROB_temp(i + n_clear_zero).specul	:= speculate_res;
 						exit;
+					else
+						
 					end if;
 				elsif IW_in = ROB_temp(i + 1).inst and ROB_temp(i + 1).valid = '1' then 
 					--we can shift the matching instruction down a slot
@@ -138,6 +157,8 @@ package body ROB_functions is
 						ROB_temp(i + n_clear_zero).result 	:= IW_result;
 						ROB_temp(i + n_clear_zero).inst 		:= ROB_temp(i + 1).inst;
 						IW_updated := '1';
+					else
+						
 					end if;
 				end if;
 			
@@ -152,6 +173,8 @@ package body ROB_functions is
 						ROB_temp(i + n_clear_zero).specul	:= '1';
 						IW_updated := '1';
 						exit;
+					else
+						
 					end if;--PM_buffer_en
 				elsif IW_in = ROB_temp(i + 1).inst and ROB_temp(i + 1).valid = '1' then 
 					--we can shift the matching instruction down a slot
@@ -161,6 +184,7 @@ package body ROB_functions is
 						ROB_temp(i + n_clear_zero).result 	:= IW_result;
 						ROB_temp(i + n_clear_zero).inst 		:= ROB_temp(i + 1).inst;
 						IW_updated := '1';
+					else
 						
 					end if;
 				end if;
