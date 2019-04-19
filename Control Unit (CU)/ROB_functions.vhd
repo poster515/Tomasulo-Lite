@@ -132,6 +132,13 @@ package body ROB_functions is
 				--shift all instructions down, and buffer PM_data_in or update ROB results as applicable
 				--report "i<frst_branch_idx and results_avail='1', condition_met='0', i=" & Integer'image(i);
 				--clear all speculative results from first_branch_index to second_branch_index, and clear first branch from ROB
+				if scnd_branch_idx = ROB_DEPTH then
+					--then there is no other branch in ROB, which means that all instructions can be cleared
+					ROB_temp(i)	:= ((others => '0'), '0', '0', (others => '0'), '0');
+				else
+					--then there is another branch in ROB, just shift each entry down to 'i'
+					ROB_temp(i)	:= ROB_temp(i + scnd_branch_idx);
+				end if;
 
 			elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '1' and i < scnd_branch_idx then
 				--shift all instructions down, and buffer PM_data_in or update ROB results as applicable
