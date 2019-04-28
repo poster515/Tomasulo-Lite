@@ -21,7 +21,7 @@ component CPU
 end component;
 
 --time delta for waiting between test inputs
-constant TIME_DELTA : time := 10 ns;
+constant TIME_DELTA : time := 10 ps;
 
   --TEST INPUTS ONLY, REMOVE AFTER LAB INSTANTIATED (signal goes to LAB for arbitration)
 	signal	I2C_error_out						 : std_logic := '0';

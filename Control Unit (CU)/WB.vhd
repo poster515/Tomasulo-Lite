@@ -114,7 +114,7 @@ begin
 		end if;
 	end process;
 
-	process(reset_n, sys_clock, stall)
+	process(reset_n, sys_clock)
 	begin
 		if reset_n = '0' then
 		
@@ -142,19 +142,19 @@ begin
 						--if the instruction is a branch or ld/st, then the next IW will be a memory address vice another instruction
 						if PM_data_in(15 downto 12) = "1000" or PM_data_in(15 downto 12) = "1010" then
 							next_IW_is_addr <= '1';
+						else
+							next_IW_is_addr <= '0';
 						end if;
 					end if; --next_IW_is_addr
 					
 					--update_ROB(ROB_in, PM_data_in, PM_buffer_en, IW_in, IW_result, IW_result_en, clear_zero, results_avail, condition_met
 					--				speculate_res, frst_branch_idx, scnd_branch_idx, ROB_DEPTH	)
 					
-					--TODO: since the reset_MEM isn't checked yet, we should do that first. check reset_MEM, and just buffer valid PM_data as applicable.
 					if reset_MEM = '0' then
 						report "WB: 6. CPU not stalled and MEM_reset is '0'.";
 					
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
-															"1111111111111111", "0000000000000000", '0', clear_zero_inst, results_available, condition_met, 
-															speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+															"1111111111111111", "0000000000000000", '0', '0', '0', '0', speculate_results, 10, 10, ROB_DEPTH);
 						clear_zero_inst 	<= '0'; 	
 						RF_wr_en 			<= '0';
 
@@ -261,7 +261,7 @@ begin
 		end if; --reset_n
 	end process;
 	
-	process(reset_n, sys_clock, ROB_actual)
+	process(reset_n, sys_clock)
 	begin
 		if reset_n = '0' then
 			frst_branch_index <= ROB_DEPTH;
@@ -276,7 +276,7 @@ begin
 					for j in 0 to ROB_DEPTH - 1 loop
 						--this statement sets the index of the first, speculative branch that hasn't been resolved yet in the ROB_actual
 						if ROB_actual(j).inst(15 downto 12) = "1010" and ROB_actual(j).specul = '1' and j > i then
-							scnd_branch_index <= i;
+							scnd_branch_index <= j;
 							exit;
 						elsif j = ROB_DEPTH - 1 then 
 							scnd_branch_index <= ROB_DEPTH;
@@ -287,7 +287,8 @@ begin
 				elsif i = ROB_DEPTH - 1 then 
 					report "WB: At end of ROB, haven't found a branch instruction yet.";
 					frst_branch_index <= ROB_DEPTH;
-					exit;
+					scnd_branch_index <= ROB_DEPTH;
+					--exit;
 				else
 					report "WB: i= " & Integer'image(i) & " and still looking for branches in ROB."; 
 				end if;

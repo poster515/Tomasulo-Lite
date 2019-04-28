@@ -2,7 +2,7 @@ library ieee;
 use ieee.std_logic_1164.all; 
 use ieee.numeric_std.all; 
 use work.control_unit_types.all;
-use work.ROB_functions.all;
+--use work.ROB_functions.all;
  
 package LAB_functions is 
 
@@ -96,11 +96,11 @@ package body LAB_functions is
 													ROB_DEPTH			: in integer)
 		return branch_addrs is
 		
-		variable branches_temp	: branch_addrs;
+		variable branches_temp	: branch_addrs	:= branches;
 		variable i 					: integer range 0 to 9;
 		variable n_clear_zero	: integer range 0 to 1;
 	begin
-		n_clear_zero	:= convert_CZ(not(results_available));
+		n_clear_zero	:= convert_SL(not(results_available));
 	
 		for i in 0 to ROB_DEPTH - 2 loop
 			--condition covers when we get to a location in "branches" that isn't valid, i.e., we can buffer branch addresses there
@@ -110,6 +110,8 @@ package body LAB_functions is
 					branches_temp(i).addr_met 		:= addr_met;
 					branches_temp(i).addr_unmet 	:= "00000" & addr_unmet;
 					branches_temp(i).addr_valid 	:= '1';
+					exit;
+				else
 					exit;
 				end if;
 				
@@ -123,22 +125,22 @@ package body LAB_functions is
 					branches_temp(i + n_clear_zero).addr_valid 	:= '1';
 					
 					exit;
+				else
+					--results_available automatically shifts ROB entries
+					branches_temp(i) := branches_temp(i + convert_SL(results_available));
+					exit;
 				end if;
 
 			--condition for when the "branches" is full, we want to buffer incoming PM_data_in, and can clear the zeroth instruction (i.e., make room)
 			elsif i = ROB_DEPTH - 2 and results_available = '1' and addr_valid = '1' then
-				
-				if addr_valid = '1' then
-					
+
 					branches_temp(ROB_DEPTH - 1).addr_met 		:= addr_met;
 					branches_temp(ROB_DEPTH - 1).addr_unmet 	:= "00000" & addr_unmet;
 					branches_temp(ROB_DEPTH - 1).addr_valid 	:= '1';
-					
-				end if;
-			
+
 			else
-				--clear_zero automatically shifts ROB entries
-				branches_temp(i) := branches_temp(i + convert_CZ(results_available));
+				--results_available automatically shifts ROB entries
+				branches_temp(i) := branches_temp(i + convert_SL(results_available));
 				
 			end if; --ROB_temp(i).valid
 		end loop;
@@ -158,8 +160,11 @@ package body LAB_functions is
 								
 		variable i 			: integer 		:= issued_inst;	
 		variable LAB_temp	: LAB_actual	:= LAB_in;
+		variable not_SL	: integer;
 		
 	begin
+		
+		not_SL := convert_SL(not(shift_LAB));
 		
 		for i in 0 to LAB_MAX - 2 loop
 			--need to ensure that we're above last issued instruction, and instruction isn't a jump
@@ -167,29 +172,29 @@ package body LAB_functions is
 			
 				if (LAB_temp(i).inst_valid = '1') and (LAB_temp(i + 1).inst_valid = '0') then
 				
-					report "At LAB spot " & integer'image(i) & " we can buffer PM_data_in";
-					LAB_temp(i + convert_SL(not(shift_LAB))).inst 			:= PM_data_in;
-					LAB_temp(i + convert_SL(not(shift_LAB))).inst_valid 	:= '1';
-					LAB_temp(i + convert_SL(not(shift_LAB))).addr			:= (others => '0');
+					report "At LAB spot " & integer'image(i + convert_SL(not(shift_LAB))) & " we can buffer PM_data_in";
+					LAB_temp(i + not_SL).inst 			:= PM_data_in;
+					LAB_temp(i + not_SL).inst_valid 	:= '1';
+					LAB_temp(i + not_SL).addr			:= (others => '0');
 					
 					if PM_data_in(15 downto 14) = "10" and ((PM_data_in(1) nand PM_data_in(0)) = '1') then
-						LAB_temp(i + convert_SL(not(shift_LAB))).addr_valid	:= '0';
+						LAB_temp(i + not_SL).addr_valid	:= '0';
 					else
-						LAB_temp(i + convert_SL(not(shift_LAB))).addr_valid	:= '1';
+						LAB_temp(i + not_SL).addr_valid	:= '1';
 					end if;
 					exit;
 					
 				elsif i = LAB_MAX - 2 and LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '1' then
 				
 					report "at end of LAB, buffering PM_data_in at last LAB spot.";
-					LAB_temp(i + convert_SL(not(shift_LAB))).inst 			:= PM_data_in;
-					LAB_temp(i + convert_SL(not(shift_LAB))).inst_valid 	:= '1';
-					LAB_temp(i + convert_SL(not(shift_LAB))).addr			:= (others => '0');
+					LAB_temp(i + not_SL).inst 			:= PM_data_in;
+					LAB_temp(i + not_SL).inst_valid 	:= '1';
+					LAB_temp(i + not_SL).addr			:= (others => '0');
 						
 					if PM_data_in(15 downto 14) = "10" and ((PM_data_in(1) nand PM_data_in(0)) = '1') then
-						LAB_temp(i + convert_SL(not(shift_LAB))).addr_valid	:= '0';
+						LAB_temp(i + not_SL).addr_valid	:= '0';
 					else
-						LAB_temp(i + convert_SL(not(shift_LAB))).addr_valid	:= '1';
+						LAB_temp(i + not_SL).addr_valid	:= '1';
 					end if;
 					exit;
 					
@@ -199,7 +204,7 @@ package body LAB_functions is
 				end if;
 			--need to handle case where we don't want to buffer PM_data_in (e.g., jumps) but still want to shift LAB down and issue LAB(0)
 			else
-				LAB_temp(i + convert_SL(not(shift_LAB)))	:= LAB_temp(i + 1);
+				LAB_temp(i + not_SL)	:= LAB_temp(i + 1);
 			end if; --i >= issued_inst
 		end loop; --for i
 		
@@ -209,7 +214,7 @@ package body LAB_functions is
 	--function to type convert std_logic to integer
 	function convert_SL ( shift_LAB : in std_logic )
 	
-	return integer is
+		return integer is
 
 	begin
 	
