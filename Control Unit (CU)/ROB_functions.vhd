@@ -113,6 +113,7 @@ package body ROB_functions is
 						--n_clear_zero automatically shifts ROB entries
 						ROB_temp(i + n_clear_zero).result 	:= IW_result;
 						ROB_temp(i + n_clear_zero).inst 		:= ROB_temp(i + 1).inst;
+						ROB_temp(i + n_clear_zero).complete	:= '1';
 						IW_updated := '1';
 					end if;
 					
@@ -129,16 +130,9 @@ package body ROB_functions is
 				end if;
 				
 			elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '0' and i < scnd_branch_idx then
-				--shift all instructions down, and buffer PM_data_in or update ROB results as applicable
-				--report "i<frst_branch_idx and results_avail='1', condition_met='0', i=" & Integer'image(i);
-				--clear all speculative results from first_branch_index to second_branch_index, and clear first branch from ROB
-				if scnd_branch_idx = ROB_DEPTH then
-					--then there is no other branch in ROB, which means that all instructions can be cleared
-					ROB_temp(i)	:= ((others => '0'), '0', '0', (others => '0'), '0');
-				else
-					--then there is another branch in ROB, just shift each entry down to 'i'
-					ROB_temp(i)	:= ROB_temp(i + scnd_branch_idx);
-				end if;
+				--if the first ROB branch condition is not met, then we've wasted time buffering a bunch of invalid instructions
+				--need to purge the ROB after frst_branch_idx entirely
+				ROB_temp(i) 	:= ((others => '0'), '0', '0', (others => '0'), '0');
 
 			elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '1' and i < scnd_branch_idx then
 				--shift all instructions down, and buffer PM_data_in or update ROB results as applicable
@@ -195,7 +189,7 @@ package body ROB_functions is
 						
 					end if;
 				end if;
-				
+
 			elsif results_avail = '0' then
 
 				--condition covers when we get to a location in the ROB that isn't valid, i.e., we can buffer PM_data_in there

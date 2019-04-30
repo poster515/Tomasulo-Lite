@@ -80,7 +80,7 @@ begin
 	stall <= LAB_stall_in;
 
 	--update whether ROB zeroth instruction matches the new IW_in, does not depend on ROB(0).inst itself since it won't change
-	process(IW_in, ROB_actual, results_available, condition_met, zero_inst_match)
+	process(IW_in, ROB_actual, results_available, condition_met)
 	begin
 		if ROB_actual(0).inst = IW_in and ROB_actual(0).valid = '1' and zero_inst_match = '0' then
 			zero_inst_match <= '1';
@@ -154,7 +154,8 @@ begin
 						report "WB: 6. CPU not stalled and MEM_reset is '0'.";
 					
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
-															"1111111111111111", "0000000000000000", '0', '0', '0', '0', speculate_results, 10, 10, ROB_DEPTH);
+															"1111111111111111", "0000000000000000", '0', '0', results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+--															"1111111111111111", "0000000000000000", '0', '0', '0', '0', speculate_results, 10, 10, ROB_DEPTH);
 						clear_zero_inst 	<= '0'; 	
 						RF_wr_en 			<= '0';
 
