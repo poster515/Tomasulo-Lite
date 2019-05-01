@@ -451,7 +451,13 @@ begin
 					is_unresolved 	<= '1';
 					bne_from_ROB 	<= not(ROB_in(i).inst(1)) and ROB_in(i).inst(0);
 					bnez_from_ROB 	<= not(ROB_in(i).inst(1)) and not(ROB_in(i).inst(0));
+					RF_out_3_mux 	<= ROB_in(i).inst(11 downto 7);
+					RF_out_4_mux 	<= ROB_in(i).inst(6 downto 2);
 					exit;
+					
+				elsif i = 9 then
+					RF_out_3_mux 	<= PM_data_in(11 downto 7);
+					RF_out_4_mux 	<= PM_data_in(6 downto 2);
 				else 
 					branch_exists 	<= '0';
 					is_unresolved 	<= '0';
@@ -461,6 +467,15 @@ begin
 				
 			end loop; --i 
 		end if; --reset_n
+	end process;
+	
+	process(reset_n, branch, 
+	
+		if branch = '1'
+			RF_out_3_mux 	<= PM_data_in(11 downto 7);
+			RF_out_4_mux 	<= PM_data_in(6 downto 2);
+		elsif 
+	
 	end process;
 	
 	--set load/store indicator ("1000")

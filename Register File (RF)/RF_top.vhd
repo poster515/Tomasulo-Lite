@@ -37,7 +37,8 @@ architecture behavioral of RF_top is
 begin
 
 	--process to write back results to RF
-	process(reset_n, clk, wr_en, RF_in_demux, RF_out_1_en, RF_out_2_en, RF_out_3_en, RF_out_4_en, RF_out_1_mux, RF_out_2_mux, RF_out_3_mux, RF_out_4_mux)
+	--process(reset_n, clk, wr_en, RF_in_demux, RF_out_1_en, RF_out_2_en, RF_out_3_en, RF_out_4_en, RF_out_1_mux, RF_out_2_mux, RF_out_3_mux, RF_out_4_mux)
+	process(reset_n, clk)
 	begin
 	
 		--type conversion for RF index
@@ -47,28 +48,35 @@ begin
 			RF 			<= (others => (others => '0'));
 			RF_valid 	<= (others => '1');
 			
-		elsif clk'event and clk = '1' and wr_en = '1' then
+		elsif rising_edge(clk) then
 		
-			--have a write back event from WB block
-			RF(in_index) 	<= WB_data_in;
+			if wr_en = '1' then
+				--have a write back event from WB block
+				RF(in_index) 	<= WB_data_in;
+			end if;
 			
 			for i in 0 to 31 loop
 				--only declare a register "valid" if it is written back and no instruction is requesting that register concurrently
 				
 				if RF_out_1_en = '1' and to_integer(unsigned(RF_out_1_mux)) = i then
 					RF_valid(i) 	<= '0';
+					report "RF: setting RF(" & Integer'image(i) & ").valid to '0'";
 
 				elsif RF_out_2_en = '1' and to_integer(unsigned(RF_out_2_mux)) = i then
 					RF_valid(i) 	<= '0';
-					
-				elsif RF_out_3_en = '1' and to_integer(unsigned(RF_out_3_mux)) = i then
-					RF_valid(i) 	<= '0';
+					report "RF: setting RF(" & Integer'image(i) & ").valid to '0'";
 
-				elsif RF_out_4_en = '1' and to_integer(unsigned(RF_out_4_mux)) = i then
-					RF_valid(i) 	<= '0';
- 
-				elsif wr_en = '1' and to_integer(unsigned(RF_in_demux)) = i then
-					RF_valid(i) 	<= '1';
+				elsif wr_en = '1' then
+					if to_integer(unsigned(RF_in_demux)) = i and to_integer(unsigned(RF_out_1_mux)) = i then
+						RF_valid(i) 	<= '0';
+						report "RF: setting RF(" & Integer'image(i) & ").valid to '0'";
+					elsif to_integer(unsigned(RF_in_demux)) = i and to_integer(unsigned(RF_out_2_mux)) = i then
+						RF_valid(i) 	<= '0';
+						report "RF: setting RF(" & Integer'image(i) & ").valid to '0'";
+					else
+						RF_valid(i) 	<= '1';
+						report "RF: setting RF(" & Integer'image(i) & ").valid to '1'";
+					end if;
 				end if;
 			end loop;
 			
@@ -87,8 +95,12 @@ begin
 		if reset_n = '0' then
 			RF_out_3 <= "0000000000000000";
 			RF_out_4 <= "0000000000000000";
+			RF_out_3_valid 	<= '1';
+			RF_out_4_valid 	<= '1';
 			
-		else
+		--TEST CONDITION
+		elsif rising_edge(clk) then
+		--else
 		
 			--latch outputs
 			if RF_in_demux = RF_out_3_mux and wr_en = '1' then
