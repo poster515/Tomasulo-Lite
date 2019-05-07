@@ -236,111 +236,95 @@ package body LAB_functions is
 									ROB_in			: in ROB) 
 		return std_logic_vector is --std_logic_vector([[results ready]], [[condition met]])
 								
-		variable i, j 				: integer 	:= 0;	
-		variable reg1_resolved	: std_logic := '0';
-		variable reg2_resolved	: std_logic := '0';
-		variable condition_met	: std_logic := '0';
-		variable ROB_DEPTH 		: integer 	:= 10;
+		variable i, j	 					: integer 	:= 0;	
+		variable reg1_slot, reg2_slot	: integer 	:= 0;	
+		variable reg1_resolved			: std_logic := '0';
+		variable reg2_resolved			: std_logic := '0';
+		variable condition_met			: std_logic := '0';
+		
 	begin
-		if RF_in_3_valid = '1' and bnez = '1' then
-		
-			reg1_resolved := '1'; 
+
+	for i in 0 to 9 loop
+	
+		if ROB_in(i).inst(15 downto 12) = "1010" and ROB_in(i).valid = '1' then	--we have the first branch instruction in ROB
 			
-			--have a BNEZ, need Reg1, which is in the RF 
-			if RF_in_3 /= "0000000000000000" then
-				report "LAB_func: have bnez condition, which is met";
+			for j in 9 downto 0 loop	--now loop from the top down to determine the first instruction right before the
+												--branch that matches the branch operand(s)
+				if ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and bnez = '1' and i > j then	--
+					--its a BNEZ, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
+					report "LAB_func: bnez. condition resolved.";
+					reg1_resolved 		:= '1';
+					if ROB_in(j).result /= "0000000000000000" then
+						condition_met	:= '1';
+					else
+						condition_met	:= '0';
+					end if;
+					exit;
 				
-				condition_met	:= '1';
-			else
-				--write PC_reg + 1 to PC_reg, branch condition not met
-				report "LAB_func: have bnez condition, which is not met";
-				condition_met	:= '0';
-			end if;
-			
-		elsif RF_in_3_valid = '1' and RF_in_4_valid = '1' and bne = '1' then
-		
-			reg1_resolved := '1'; 
-			reg2_resolved := '1'; 
-			
-			--have a BNE, need both operands, which are both in the RF 
-			if RF_in_3 /= RF_in_4 then
-				--write PM_data_in, which will now just be a memory address to jump to, to PC_reg somehow
-				condition_met	:= '1';
-			else
-				--write PC_reg + 1 to PC_reg, branch condition not met
-				condition_met	:= '0';
-			end if;
-		else 			--don't have one or both results issued to RF yet. check ROB if results are buffered as "complete" there 
-			for i in 0 to 9 loop
-				if ROB_in(i).inst(15 downto 12) = "1010" and ROB_in(i).valid = '1' then	--we have the first branch instruction in ROB
+				elsif ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '0' and bnez = '1' and i > j then	--
+					report "LAB_func: bnez. not resolved.";
+					reg1_resolved 		:= '0';
+					reg2_resolved 		:= '0';
+					condition_met		:= '0';
+					exit;
 					
-					for j in 9 downto 0 loop	--now loop from the top down to determine the first instruction right before the
-														--branch that matches the branch operand(s)
-						if ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and bnez = '1' and i > j then	--
-							--its a BNEZ, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
-							reg1_resolved 		:= '1';
-							
-							if ROB_in(j).result /= "0000000000000000" then
-								condition_met	:= '1';
-							else
-								condition_met	:= '0';
-							end if;
-							
-						else	--the above "if" handles all BNEZ instructions, this "else" handles all BNE instructions
-							if RF_in_3_valid = '1' and RF_in_4_valid = '0' and bne = '1' then 
-								--we know that the first register condition is resolved
-								reg1_resolved 		:= '1';
-								
-								--we only need to find Reg2 value in ROB
-								if ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(6 downto 2) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and bne = '1' and i > j then	--
-									--if its a BNE, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
-									reg2_resolved 		:= '1';
-									
-									if RF_in_3 /= ROB_in(j).result then
-										--write PM_data_in, which will now just be a memory address to jump to, to PC_reg somehow
-										condition_met	:= '1';
-									else
-										--write PC_reg + 1 to PC_reg, branch condition not met
-										condition_met	:= '0';
-									end if;
-								end if;
-								
-							elsif RF_in_3_valid = '0' and RF_in_4_valid = '1' and bne = '1' then --we need to find RF_in_3 value in ROB
-								--we only need to find Reg1 value in ROB
-								reg2_resolved 		:= '1';
-								
-								if ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and bne = '1' and i > j then	--
-									--if its a BNE, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
-									reg1_resolved 		:= '1';
-									
-									if RF_in_4 /= ROB_in(j).result then
-										--write PM_data_in, which will now just be a memory address to jump to, to PC_reg somehow
-										condition_met	:= '1';
-									else
-										--write PC_reg + 1 to PC_reg, branch condition not met
-										condition_met	:= '0';
-									end if;
-								end if;
-								
-							elsif RF_in_3_valid = '0' and RF_in_4_valid = '0' and bne = '1' then --we need to find RF_in_3 value and RF_in_4 value in ROB
-								
-								if ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and i > j then
-									reg1_resolved := '1';
-
-								elsif ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(6 downto 2) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and i > j then	
-									reg2_resolved := '1';
-
-								end if;
-							end if;	--RF_in_3_valid = '1' and RF_in_4_valid = '0' and bne = '1'
-						end if;	--ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and bnez = '1' and i > j
-					end loop; --j
-				end if; --ROB_in(15 downto 12) = "1010"
-			end loop; --for i
-		end if; --RF_in_3_valid
-		
-		--simple combinational logic for values to return
-		return ((bne and reg1_resolved and reg2_resolved) or (bnez and reg1_resolved)) & condition_met;
-		
+				elsif ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and bne = '1' and i > j then	--
+					reg1_resolved 		:= '1';
+					reg1_slot			:= j;
+					
+				elsif ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(6 downto 2) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and bne = '1' and i > j then	--
+					reg2_resolved 		:= '1';
+					reg2_slot			:= j;
+					
+				elsif i = j and reg1_resolved = '0' and reg2_resolved = '1' then
+					report "LAB_func: bne. condition resolved.";
+					--check if reg1 valid in register file, at last checkable location in ROB for this data
+					if RF_in_3_valid = '1' then	--
+						--if its a BNE, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
+						reg1_resolved 		:= '1';
+						
+						if ROB_in(reg2_slot).result /= RF_in_3 then
+							--write PM_data_in, which will now just be a memory address to jump to, to PC_reg somehow
+							condition_met	:= '1';
+						else
+							--write PC_reg + 1 to PC_reg, branch condition not met
+							condition_met	:= '0';
+						end if;
+					else
+						reg2_resolved 		:= '0';
+						condition_met		:= '0';
+					end if;
+					exit;
+					
+				elsif i = j and reg2_resolved = '0' and reg1_resolved = '1' and bne = '1' then
+					--check if reg2 valid in register file, at last checkable location in ROB for this data
+					if RF_in_4_valid = '1' then	--
+						--if its a BNE, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
+						reg2_resolved 		:= '1';
+						
+						if ROB_in(reg1_slot).result /= RF_in_4 then
+							--write PM_data_in, which will now just be a memory address to jump to, to PC_reg somehow
+							condition_met	:= '1';
+						else
+							--write PC_reg + 1 to PC_reg, branch condition not met
+							condition_met	:= '0';
+						end if;
+					else
+						reg2_resolved 		:= '0';
+						condition_met		:= '0';
+					end if;
+					exit;
+				elsif i < j then
+					--we're done searching valid instructions. just exit.
+					exit;
+				end if;	--ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and bnez = '1' and i > j
+			end loop; --j
+		end if; --ROB_in(15 downto 12) = "1010"
+	end loop; --for i
+	
+	--simple combinational logic for values to return
+	return ((bne and reg1_resolved and reg2_resolved) or (bnez and reg1_resolved)) & condition_met;
+	
 	end function;
 
 

@@ -196,10 +196,9 @@ begin
 						--report "LAB. 4. writing ALU_fwd_reg_1_reg to ALU_fwd_reg_1 and ALU_fwd_reg_2_reg to ALU_fwd_reg_2.";
 
 						if PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" and branch_reg = '0' and ld_st_reg = '0' and PM_datahaz_status = '0' then
+							
 							IW_reg <= PM_data_in;
 							
-							if branch_reg = '0' or ld_st_reg = '0' then  
-	
 								if (((ID_IW(11 downto 7) = PM_data_in(11 downto 7)) or (ID_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and ID_reset = '1' and ID_IW(15 downto 12) /= "1111") or
 									(((MEM_IW(11 downto 7) = PM_data_in(11 downto 7)) or (MEM_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and MEM_reset = '1' and MEM_IW(15 downto 12) /= "1111")  then
 									
@@ -231,11 +230,6 @@ begin
 									ALU_fwd_reg_1 	<= '0';
 									ALU_fwd_reg_2	<= '0';
 								end if;	
-							else
-								ALU_fwd_reg_1 		<= '0';
-								ALU_fwd_reg_2		<= '0';
-								
-							end if; --
 						else
 							ALU_fwd_reg_1 	<= '0';
 							ALU_fwd_reg_2	<= '0';
@@ -432,6 +426,10 @@ begin
 			is_unresolved 	<= '0';
 			bne_from_ROB 	<= '0';
 			bnez_from_ROB 	<= '0';
+			RF_out_3_mux 	<= "00000";
+			RF_out_4_mux 	<= "00000";
+			RF_out_3_en		<= '0';
+			RF_out_4_en		<= '0';
 		else
 			bne_from_ROB 	<= '0';
 			bnez_from_ROB 	<= '0';
@@ -442,8 +440,10 @@ begin
 				
 					branch_exists 	<= '1';
 					is_unresolved 	<= '0';
-					-- bne_from_ROB 	<= not(ROB_in(i).inst(1)) and ROB_in(i).inst(0);
-					-- bnez_from_ROB 	<= not(ROB_in(i).inst(1)) and not(ROB_in(i).inst(0));
+					RF_out_3_mux 	<= PM_data_in(11 downto 7);
+					RF_out_4_mux 	<= PM_data_in(6 downto 2);
+					RF_out_3_en		<= PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
+					RF_out_4_en		<= PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
 					exit;
 				elsif ROB_in(i).inst(15 downto 12) = "1010" and ROB_in(i).specul = '1' then
 				
@@ -453,11 +453,16 @@ begin
 					bnez_from_ROB 	<= not(ROB_in(i).inst(1)) and not(ROB_in(i).inst(0));
 					RF_out_3_mux 	<= ROB_in(i).inst(11 downto 7);
 					RF_out_4_mux 	<= ROB_in(i).inst(6 downto 2);
+					RF_out_3_en		<= ROB_in(i).inst(15) and not(ROB_in(i).inst(14)) and ROB_in(i).inst(13) and not(ROB_in(i).inst(12));
+					RF_out_4_en		<= ROB_in(i).inst(15) and not(ROB_in(i).inst(14)) and ROB_in(i).inst(13) and not(ROB_in(i).inst(12));
 					exit;
 					
 				elsif i = 9 then
 					RF_out_3_mux 	<= PM_data_in(11 downto 7);
 					RF_out_4_mux 	<= PM_data_in(6 downto 2);
+					RF_out_3_en		<= PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
+					RF_out_4_en		<= PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
+					exit;
 				else 
 					branch_exists 	<= '0';
 					is_unresolved 	<= '0';
@@ -469,15 +474,6 @@ begin
 		end if; --reset_n
 	end process;
 	
-	process(reset_n, branch, 
-	
-		if branch = '1'
-			RF_out_3_mux 	<= PM_data_in(11 downto 7);
-			RF_out_4_mux 	<= PM_data_in(6 downto 2);
-		elsif 
-	
-	end process;
-	
 	--set load/store indicator ("1000")
 	ld_st <= PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and not(PM_data_in(12));
 	
@@ -487,11 +483,7 @@ begin
 	--set branch indicator ("1010") and associated control signals 
 	branch <= PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
 	
-	RF_out_3_mux 	<= PM_data_in(11 downto 7);
-	RF_out_4_mux 	<= PM_data_in(6 downto 2);
-	--enable RF outputs 3 and 4 when a branch instruction is received
-	RF_out_3_en		<= PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
-	RF_out_4_en		<= PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
+	
 	--establish the applicable branch type when the branch instruction is received
 	bnez				<= not(PM_data_in(1)) and not(PM_data_in(0)) and PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
 	bne				<= not(PM_data_in(1)) and PM_data_in(0) and PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
@@ -588,7 +580,7 @@ begin
 						datahaz_status(dh_ptr_outer) <= '1';
 						exit; --exit inner loop, there's a hazard at this dh_ptr_outer location
 					else
-						datahaz_status <= (others => '0');
+						datahaz_status(dh_ptr_outer) <= '0';
 						--datahaz_status(dh_ptr_outer) <= '0';
 						--don't exit here, need to evaluate all dh_ptr_inner locations
 					end if;
