@@ -139,13 +139,14 @@ begin
 			--continually check for branch condition on PM_data_in
 			if branch = '1' then
 				--do initial check to see if results are available
+				report "LAB: detected branch in PM_data_in.";
 				results_available 	<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in)(0); --'0' = not available, '1' = available
 				condition_met 			<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in)(1); --'0' = not met, '1' = met
 
 			--this "elsif" handles other branches that currently exist in the ROB that have not been resolved yet. should continually monitor those, as determined by "ROB_branch" process below. 
 			--need this additional if case because the data sent to "results_result" differ from the above if case. 
 			elsif branch_exists = '1' and is_unresolved = '1' then	
-
+				report "LAB: branch exists in ROB.";
 				results_available 	<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in)(0); --'0' = not available, '1' = available
 				condition_met 			<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in)(1); --'0' = not met, '1' = met
 
@@ -385,10 +386,6 @@ begin
 					--if we're stalled, keep PC where its at
 					PC_reg 	<= PC_reg;
 					
-				elsif jump = '1' then
-					--for jumps, grab immediate value and update PC_reg
-					PC_reg 	<= std_logic_vector(unsigned(PM_data_in(11 downto 1)));
-					
 				elsif branch_reg = '1' and results_available = '0' then
 					--speculatively execute the next instruction. the "main" process will handle the rest. 
 					PC_reg 	<= std_logic_vector(unsigned(PC_reg) + 1);
@@ -408,6 +405,10 @@ begin
 				elsif branch_reg = '0' and results_available = '1' and condition_met = '0' then
 					--results are available and we can non-speculatively execute the next instructions. the "main" process will handle the rest. 
 					PC_reg 	<= std_logic_vector(unsigned(branches(0).addr_unmet(10 downto 0)) + 1);
+					
+				elsif jump = '1' then
+					--for jumps, grab immediate value and update PC_reg
+					PC_reg 	<= std_logic_vector(unsigned(PM_data_in(11 downto 1)));
 					
 				else 
 					--otherwise increment PC to get next IW

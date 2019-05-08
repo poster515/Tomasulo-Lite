@@ -148,7 +148,7 @@ package body ROB_functions is
 						ROB_temp(i + n_clear_zero).specul	:= speculate_res;
 						exit;
 					else
-						
+						ROB_temp(i + n_clear_zero)	:= ROB_temp(i + 1);
 					end if;
 				elsif IW_in = ROB_temp(i + 1).inst and ROB_temp(i + 1).valid = '1' then 
 					--we can shift the matching instruction down a slot

@@ -98,10 +98,12 @@ begin
 	end process;
 	
 	--update speculate_results, which informs main process whether to mark each incoming instruction as speculative after a branch inst is received
-	process(PM_data_in, results_available, condition_met, frst_branch_index)
+	process(reset_n, PM_data_in, results_available, condition_met, frst_branch_index)
 	begin
-	
-		if PM_data_in(15 downto 12) = "1010" then
+		if reset_n = '0' then
+			speculate_results <= '0';
+			
+		elsif PM_data_in(15 downto 12) = "1010" then
 			report "WB: PM_data_in is a branch.";
 			speculate_results 	<= '1';
 			
@@ -109,8 +111,8 @@ begin
 			report "WB: results_avail = 1 and cond_met = 1";
 			speculate_results 	<= '0';
 			
-		else
-			speculate_results <= '0';
+--		else
+--			speculate_results <= '0';
 		end if;
 	end process;
 
@@ -178,10 +180,11 @@ begin
 						end if;
 						
 					elsif zero_inst_match = '1' and ROB_actual(0).specul = '1' then 
+					
 						report "WB: 2. can't write speculative ROB(0) results to RF";
 						--incoming MEM IW matches zeroth ROB entry which can't be committed since specul = '1'
-						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(next_IW_is_addr), IW_in, WB_data, '1', '0', 
-															results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
+															IW_in, WB_data, '1', '0', results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 						clear_zero_inst 	<= '0'; 
 						RF_wr_en 			<= '0';
 						

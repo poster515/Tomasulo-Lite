@@ -314,11 +314,27 @@ package body LAB_functions is
 						condition_met		:= '0';
 					end if;
 					exit;
-				elsif i < j then
-					--we're done searching valid instructions. just exit.
+					
+				elsif j = 0 and RF_in_3_valid = '1' and bnez = '1' then
+					report "LAB_func: (bnez) no dep inst in LAB and RF result is valid.";
+					reg1_resolved 		:= '1';
+					condition_met		:= '1';
 					exit;
+				
+				elsif j = 0 and RF_in_3_valid = '1' and RF_in_4_valid = '1' and bne = '1' then
+					report "LAB_func: (bne) no dep insts in LAB and RF results are valid.";
+					reg1_resolved 		:= '1';
+					reg2_resolved 		:= '1';
+					condition_met		:= '1';
+					exit;
+				
+				else
+					reg1_resolved 		:= '1';
+					reg2_resolved 		:= '1';
+					condition_met		:= '1';
 				end if;	--ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and bnez = '1' and i > j
 			end loop; --j
+			exit; --exit the outer "i" loop since we've found the corresponding branch instruction
 		end if; --ROB_in(15 downto 12) = "1010"
 	end loop; --for i
 	
