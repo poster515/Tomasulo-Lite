@@ -35,7 +35,8 @@ entity WB is
 		--Outputs
 		stall_out		: out std_logic;
 		WB_data_out		: out std_logic_vector(15 downto 0);
-		ROB_out			: out ROB
+		ROB_out			: out ROB;
+		WB_IW_out		: out std_logic_vector(15 downto 0)
 	);
 end WB;
 
@@ -184,7 +185,7 @@ begin
 						report "WB: 2. can't write speculative ROB(0) results to RF";
 						--incoming MEM IW matches zeroth ROB entry which can't be committed since specul = '1'
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
-															IW_in, WB_data, '1', '0', results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+															IW_in, WB_data, '1', results_available and condition_met, results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 						clear_zero_inst 	<= '0'; 
 						RF_wr_en 			<= '0';
 						

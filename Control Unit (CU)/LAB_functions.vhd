@@ -11,7 +11,7 @@ package LAB_functions is
 													results_available	: in std_logic;
 													addr_valid			: in std_logic;
 													addr_met				: in std_logic_vector(15 downto 0);
-													addr_unmet			: in std_logic_vector(10 downto 0);
+													PC_reg				: in std_logic_vector(10 downto 0);
 													ROB_DEPTH			: in integer)
 		return branch_addrs;
 	
@@ -42,7 +42,9 @@ package LAB_functions is
 									RF_in_4_valid	: in std_logic;   
 									RF_in_3			: in std_logic_vector(15 downto 0);
 									RF_in_4			: in std_logic_vector(15 downto 0);
-									ROB_in			: in ROB) 
+									ROB_in			: in ROB;
+									WB_IW_out		: in std_logic_vector(15 downto 0);
+									WB_data_out		: in std_logic_vector(15 downto 0)) 
 		return std_logic_vector; --std_logic_vector([[condition met]], [[results ready]])
 		
 end LAB_functions; 
@@ -92,13 +94,14 @@ package body LAB_functions is
 													results_available	: in std_logic;		--if this is '1', clear zeroth instruction because we know the result
 													addr_valid			: in std_logic;
 													addr_met				: in std_logic_vector(15 downto 0);
-													addr_unmet			: in std_logic_vector(10 downto 0);
+													PC_reg				: in std_logic_vector(10 downto 0);
 													ROB_DEPTH			: in integer)
 		return branch_addrs is
 		
 		variable branches_temp	: branch_addrs	:= branches;
 		variable i 					: integer range 0 to 9;
 		variable n_clear_zero	: integer range 0 to 1;
+		variable addr_unmet		: std_logic_vector(10 downto 0) := std_logic_vector(unsigned(PC_reg) + 1);
 	begin
 		n_clear_zero	:= convert_SL(not(results_available));
 	
@@ -233,14 +236,18 @@ package body LAB_functions is
 									RF_in_4_valid	: in std_logic;  --valid marker from RF for Reg2 field of branch IW
 									RF_in_3			: in std_logic_vector(15 downto 0);
 									RF_in_4			: in std_logic_vector(15 downto 0);
-									ROB_in			: in ROB) 
+									ROB_in			: in ROB;
+									WB_IW_out		: in std_logic_vector(15 downto 0);
+									WB_data_out		: in std_logic_vector(15 downto 0)) 
+									
 		return std_logic_vector is --std_logic_vector([[results ready]], [[condition met]])
 								
 		variable i, j	 					: integer 	:= 0;	
-		variable reg1_slot, reg2_slot	: integer 	:= 0;	
+		variable reg1_slot, reg2_slot	: integer 	:= 10;	
 		variable reg1_resolved			: std_logic := '0';
 		variable reg2_resolved			: std_logic := '0';
 		variable condition_met			: std_logic := '0';
+		variable WB_IW_resolves_br		: std_logic	:= '1';	--starts high and only goes low if an incomplete instruction in ROB matches MEM_WB_IW
 		
 	begin
 
@@ -250,6 +257,7 @@ package body LAB_functions is
 			
 			for j in 9 downto 0 loop	--now loop from the top down to determine the first instruction right before the
 												--branch that matches the branch operand(s)
+												
 				if ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and bnez = '1' and i > j then	--
 					--its a BNEZ, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
 					report "LAB_func: bnez. condition resolved.";
@@ -260,8 +268,45 @@ package body LAB_functions is
 						condition_met	:= '0';
 					end if;
 					exit;
+					
+				elsif WB_IW_out(11 downto 7) = ROB_in(i).inst(11 downto 7) and i > j and WB_IW_resolves_br = '1' then	--
+					
+					report "LAB_func: bnez. WB_IW_out matches branch.";
+					reg1_resolved 			:= reg1_resolved and '1';
+					WB_IW_resolves_br 	:= WB_IW_resolves_br and '1';
+					
+					if WB_data_out /= "0000000000000000" then
+						condition_met		:= '1';
+					else
+						condition_met		:= '0';
+					end if;
+					
+				elsif WB_IW_out(11 downto 7) = ROB_in(i).inst(6 downto 2) and bne = '1' and i > j and WB_IW_resolves_br = '1' then	--
+					
+					report "LAB_func: bne. WB_IW_out matches branch.";
+					reg2_resolved 			:= reg2_resolved and '1';
+					WB_IW_resolves_br 	:= WB_IW_resolves_br and '1';
+					
+					if WB_data_out /= "0000000000000000" then
+						condition_met		:= '1';
+					else
+						condition_met		:= '0';
+					end if;	
+					
+				elsif WB_IW_out(11 downto 7) = ROB_in(i).inst(11 downto 7) and i > j and WB_IW_resolves_br = '0' then	--
+					
+					condition_met			:= '0';
+					reg1_resolved 			:= '0';
+					WB_IW_resolves_br 	:= '0'; --this ensures that additional instructions in ROB also matching WB_IW_out and that write back to register needed by branch can't resolve condition
 				
+				elsif WB_IW_out(11 downto 7) = ROB_in(i).inst(6 downto 2) and bne = '1' and i > j and WB_IW_resolves_br = '0' then	--
+					
+					condition_met			:= '0';
+					reg2_resolved 			:= '0';
+					WB_IW_resolves_br 	:= '0'; 
+					
 				elsif ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '0' and bnez = '1' and i > j then	--
+						
 					report "LAB_func: bnez. not resolved.";
 					reg1_resolved 		:= '0';
 					reg2_resolved 		:= '0';
@@ -276,35 +321,43 @@ package body LAB_functions is
 					reg2_resolved 		:= '1';
 					reg2_slot			:= j;
 					
-				elsif i = j and reg1_resolved = '0' and reg2_resolved = '1' then
-					report "LAB_func: bne. condition resolved.";
+				elsif j = 0 and reg1_resolved = '0' and reg2_resolved = '1' then
+					
 					--check if reg1 valid in register file, at last checkable location in ROB for this data
 					if RF_in_3_valid = '1' then	--
 						--if its a BNE, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
 						reg1_resolved 		:= '1';
 						
-						if ROB_in(reg2_slot).result /= RF_in_3 then
+						if reg2_slot < 10 and ROB_in(reg2_slot).result /= RF_in_3 then
 							--write PM_data_in, which will now just be a memory address to jump to, to PC_reg somehow
 							condition_met	:= '1';
+							
+						elsif reg2_slot = 10 and WB_data_out /= RF_in_3 and WB_IW_resolves_br = '1' then
+							condition_met	:= '1';
+							
 						else
 							--write PC_reg + 1 to PC_reg, branch condition not met
 							condition_met	:= '0';
 						end if;
 					else
-						reg2_resolved 		:= '0';
+						reg1_resolved 		:= '0';
 						condition_met		:= '0';
 					end if;
 					exit;
 					
-				elsif i = j and reg2_resolved = '0' and reg1_resolved = '1' and bne = '1' then
+				elsif j = 0 and reg2_resolved = '0' and reg1_resolved = '1' and bne = '1' then
 					--check if reg2 valid in register file, at last checkable location in ROB for this data
 					if RF_in_4_valid = '1' then	--
 						--if its a BNE, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
 						reg2_resolved 		:= '1';
 						
-						if ROB_in(reg1_slot).result /= RF_in_4 then
+						if reg1_slot < 10 and ROB_in(reg1_slot).result /= RF_in_4 then
 							--write PM_data_in, which will now just be a memory address to jump to, to PC_reg somehow
 							condition_met	:= '1';
+						
+						elsif reg1_slot = 10 and WB_data_out /= RF_in_4 and WB_IW_resolves_br = '1' then
+							condition_met	:= '1'; 
+							
 						else
 							--write PC_reg + 1 to PC_reg, branch condition not met
 							condition_met	:= '0';

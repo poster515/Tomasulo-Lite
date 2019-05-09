@@ -100,6 +100,7 @@ architecture behavioral of control_unit is
 	signal condition_met			: std_logic;
 	signal results_available	: std_logic;
 	signal ROB_in					: ROB;
+	signal WB_IW_out				: std_logic_vector(15 downto 0);
 	
 	component LAB_test is
 		generic ( 	LAB_MAX		: integer	:= 5;
@@ -113,6 +114,8 @@ architecture behavioral of control_unit is
 			ID_reset, EX_reset, MEM_reset	: in std_logic;
 			PM_data_in				: in std_logic_vector(15 downto 0);
 			RF_in_3, RF_in_4		: in std_logic_vector(15 downto 0);
+			WB_IW_out				: in std_logic_vector(15 downto 0);
+			WB_data_out				: in std_logic_vector(15 downto 0);
 			RF_in_3_valid			: in std_logic;
 			RF_in_4_valid			: in std_logic;
 			ROB_in					: in ROB;
@@ -240,7 +243,8 @@ architecture behavioral of control_unit is
 			--Outputs
 			stall_out		: out std_logic;
 			WB_data_out		: out std_logic_vector(15 downto 0);
-			ROB_out			: out ROB
+			ROB_out			: out ROB;
+			WB_IW_out		: out std_logic_vector(15 downto 0)
 		);
 	end component;
 	
@@ -264,6 +268,8 @@ begin
 		PM_data_in		=> PM_data_in,
 		RF_in_3			=> RF_in_3,
 		RF_in_4			=> RF_in_4,
+		WB_IW_out		=> WB_IW_out,
+		WB_data_out		=> WB_data_out,
 		RF_in_3_valid	=> RF_in_3_valid,
 		RF_in_4_valid	=> RF_in_4_valid,
 		ROB_in			=>	ROB_in,
@@ -395,7 +401,8 @@ begin
 		--Outputs
 		stall_out					=> WB_stall_out,
 		WB_data_out					=> WB_data_out,
-		ROB_out						=> ROB_in
+		ROB_out						=> ROB_in,
+		WB_IW_out					=> WB_IW_out
 	);
 		
 		

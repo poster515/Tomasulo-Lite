@@ -19,6 +19,8 @@ entity LAB_test is
 		ID_reset, EX_reset, MEM_reset	: in std_logic;
 		PM_data_in				: in std_logic_vector(15 downto 0);
 		RF_in_3, RF_in_4		: in std_logic_vector(15 downto 0);
+		WB_IW_out				: in std_logic_vector(15 downto 0);
+		WB_data_out				: in std_logic_vector(15 downto 0);
 		RF_in_3_valid			: in std_logic;
 		RF_in_4_valid			: in std_logic;
 		ROB_in					: in ROB;
@@ -140,15 +142,15 @@ begin
 			if branch = '1' then
 				--do initial check to see if results are available
 				report "LAB: detected branch in PM_data_in.";
-				results_available 	<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in)(0); --'0' = not available, '1' = available
-				condition_met 			<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in)(1); --'0' = not met, '1' = met
+				results_available 	<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out)(0); --'0' = not available, '1' = available
+				condition_met 			<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out)(1); --'0' = not met, '1' = met
 
 			--this "elsif" handles other branches that currently exist in the ROB that have not been resolved yet. should continually monitor those, as determined by "ROB_branch" process below. 
 			--need this additional if case because the data sent to "results_result" differ from the above if case. 
 			elsif branch_exists = '1' and is_unresolved = '1' then	
 				report "LAB: branch exists in ROB.";
-				results_available 	<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in)(0); --'0' = not available, '1' = available
-				condition_met 			<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in)(1); --'0' = not met, '1' = met
+				results_available 	<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out)(0); --'0' = not available, '1' = available
+				condition_met 			<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out)(1); --'0' = not met, '1' = met
 
 			else
 			
@@ -398,7 +400,7 @@ begin
 					--results are available and we can non-speculatively execute the next instructions. the "main" process will handle the rest. 
 					PC_reg 	<= std_logic_vector(unsigned(PC_reg) + 1);
 					
-				elsif branch_reg = '0' and results_available = '1' and condition_met = '1' then
+				elsif branch_reg = '0' and results_available = '1' and condition_met = '1' and branch_exists = '1' then
 					--results are available and we can non-speculatively execute the branched instructions. the "main" process will handle the rest. 
 					PC_reg 	<= branches(0).addr_met(10 downto 0);
 					
