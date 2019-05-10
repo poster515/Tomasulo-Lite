@@ -124,9 +124,28 @@ package body ROB_functions is
 					ROB_temp(i).specul	:= speculate_res;
 					exit;
 					
+				elsif ROB_temp(i + 1).valid = '0' and PM_buffer_en = '1' then
+					report "ROB_func: buffer PM_data_in, shift down [frst_br > inst]";
+					ROB_temp(i + n_clear_zero).inst 		:= PM_data_in;
+					ROB_temp(i + n_clear_zero).valid 	:= '1';
+					ROB_temp(i + n_clear_zero).specul	:= speculate_res;
+					exit;
+				
 				else
-					report "ROB_func: just shift ROB entry down.";
+--					report "ROB_func: just shift ROB entry down.";
 					ROB_temp(i) := ROB_temp(i + convert_CZ(clear_zero));
+					
+					if ROB_temp(i + convert_CZ(clear_zero)).inst(15 downto 12) = "1010" then
+						if results_avail = '1' and condition_met = '1' then
+							report "ROB_func: just shift ROB entry down, and mark branch as complete.";
+							ROB_temp(i).complete := '1';
+							ROB_temp(i).specul	:= '0';
+						elsif results_avail = '1' and condition_met = '0' then
+							report "ROB_func: just shift ROB entry down and clear branch.";
+							ROB_temp(i) 			:= ((others => '0'), '0', '0', (others => '0'), '0');
+						end if;
+					end if;
+						
 				end if;
 				
 			elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '0' and i < scnd_branch_idx then

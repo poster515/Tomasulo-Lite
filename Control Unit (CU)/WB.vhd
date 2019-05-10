@@ -105,11 +105,11 @@ begin
 			speculate_results <= '0';
 			
 		elsif PM_data_in(15 downto 12) = "1010" then
-			report "WB: PM_data_in is a branch.";
+			--report "WB: PM_data_in is a branch.";
 			speculate_results 	<= '1';
 			
 		elsif results_available = '1' and condition_met = '1' and frst_branch_index < ROB_DEPTH then
-			report "WB: results_avail = 1 and cond_met = 1";
+			--report "WB: results_avail = 1 and cond_met = 1";
 			speculate_results 	<= '0';
 			
 --		else
@@ -154,7 +154,7 @@ begin
 					--				speculate_res, frst_branch_idx, scnd_branch_idx, ROB_DEPTH	)
 					
 					if reset_MEM = '0' then
-						report "WB: 6. CPU not stalled and MEM_reset is '0'.";
+						--report "WB: 6. CPU not stalled and MEM_reset is '0'.";
 					
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
 															"1111111111111111", "0000000000000000", '0', '0', results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
@@ -163,7 +163,7 @@ begin
 						RF_wr_en 			<= '0';
 
 					elsif (zero_inst_match = '1' and (ROB_actual(0).specul = '0' or (results_available = '1' and condition_met = '0'))) or ROB_actual(0).complete = '1' then 
-						report "WB: 1. writing back ROB(0) results to RF";
+						--report "WB: 1. writing back ROB(0) results to RF";
 						--incoming MEM IW matches zeroth ROB entry which should be committed in specul = '0'
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
 															IW_in, WB_data, '0', '1', results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
@@ -182,7 +182,7 @@ begin
 						
 					elsif zero_inst_match = '1' and ROB_actual(0).specul = '1' then 
 					
-						report "WB: 2. can't write speculative ROB(0) results to RF";
+						--report "WB: 2. can't write speculative ROB(0) results to RF";
 						--incoming MEM IW matches zeroth ROB entry which can't be committed since specul = '1'
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
 															IW_in, WB_data, '1', results_available and condition_met, results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
@@ -190,7 +190,7 @@ begin
 						RF_wr_en 			<= '0';
 						
 					elsif zero_inst_match = '0' and ROB_actual(0).complete = '0' then 
-						report "WB: 3. can't write ROB(0) results (if applicable) to RF";
+						--report "WB: 3. can't write ROB(0) results (if applicable) to RF";
 						--incoming MEM IW does not match zeroth ROB entry so just update ROB entry for IW_in and buffer PM_data_in, if not a jump
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
 															IW_in, WB_data, '1', '0', results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
@@ -199,7 +199,7 @@ begin
 						RF_wr_en 			<= '0';
 												
 					elsif ROB_actual(1).complete = '1' and clear_zero_inst = '1' and ROB_actual(1).specul = '0' and ROB_actual(0).specul = '0' then		
-						report "WB: 4. can write complete, non-speculative ROB(1) results to RF";
+						--report "WB: 4. can write complete, non-speculative ROB(1) results to RF";
 						--previous clock cycle had a non-speculative zero_inst_match, and it happened again this clock cycle
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
 															IW_in, WB_data, '1', clear_zero_inst, results_available, condition_met, speculate_results, 
@@ -217,7 +217,7 @@ begin
 						RF_in_demux 		<= ROB_actual(1).inst(11 downto 7);	--
 						
 					else
-						report "WB: 5. not sure. buffering PM_data_in and updating ROB with results.";
+						--report "WB: 5. not sure. buffering PM_data_in and updating ROB with results.";
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(next_IW_is_addr), IW_in, WB_data, '1', clear_zero_inst, 
 															results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 						clear_zero_inst 	<= '0'; 	
@@ -225,7 +225,7 @@ begin
 					end if;
 					
 				else
-					report "WB: 7. reached else statement.";
+					--report "WB: 7. reached else statement.";
 					
 					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, '0', IW_in, WB_data, '0', clear_zero_inst, 
 														results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
@@ -276,7 +276,7 @@ begin
 		
 			for i in 0 to ROB_DEPTH - 1 loop
 				if ROB_actual(i).inst(15 downto 12) = "1010" and ROB_actual(i).specul = '1' then
-					report "WB: Found a branch instruction in ROB.";
+					--report "WB: Found a branch instruction in ROB.";
 					frst_branch_index <= i;
 					for j in 0 to ROB_DEPTH - 1 loop
 						--this statement sets the index of the first, speculative branch that hasn't been resolved yet in the ROB_actual
@@ -290,12 +290,12 @@ begin
 					end loop;
 					exit;
 				elsif i = ROB_DEPTH - 1 then 
-					report "WB: At end of ROB, haven't found a branch instruction yet.";
+					--report "WB: At end of ROB, haven't found a branch instruction yet.";
 					frst_branch_index <= ROB_DEPTH;
 					scnd_branch_index <= ROB_DEPTH;
 					--exit;
 				else
-					report "WB: i= " & Integer'image(i) & " and still looking for branches in ROB."; 
+					--report "WB: i= " & Integer'image(i) & " and still looking for branches in ROB."; 
 				end if;
 			end loop;
 		end if; --reset_n

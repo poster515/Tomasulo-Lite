@@ -60,22 +60,25 @@ begin
 				
 				if RF_out_1_en = '1' and to_integer(unsigned(RF_out_1_mux)) = i then
 					RF_valid(i) 	<= '0';
-					report "RF: setting RF(" & Integer'image(i) & ").valid to '0'";
+					--report "RF: setting RF(" & Integer'image(i) & ").valid to '0'";
 
 				elsif RF_out_2_en = '1' and to_integer(unsigned(RF_out_2_mux)) = i then
 					RF_valid(i) 	<= '0';
-					report "RF: setting RF(" & Integer'image(i) & ").valid to '0'";
+					--report "RF: setting RF(" & Integer'image(i) & ").valid to '0'";
 
 				elsif wr_en = '1' then
-					if to_integer(unsigned(RF_in_demux)) = i and to_integer(unsigned(RF_out_1_mux)) = i then
+					if to_integer(unsigned(RF_in_demux)) = i and to_integer(unsigned(RF_out_1_mux)) = i and RF_out_1_en = '1' then
 						RF_valid(i) 	<= '0';
-						report "RF: setting RF(" & Integer'image(i) & ").valid to '0'";
-					elsif to_integer(unsigned(RF_in_demux)) = i and to_integer(unsigned(RF_out_2_mux)) = i then
+						--report "RF: setting RF(" & Integer'image(i) & ").valid to '0'";
+					elsif to_integer(unsigned(RF_in_demux)) = i and to_integer(unsigned(RF_out_2_mux)) = i  and RF_out_2_en = '1' then
 						RF_valid(i) 	<= '0';
-						report "RF: setting RF(" & Integer'image(i) & ").valid to '0'";
-					else
+						--report "RF: setting RF(" & Integer'image(i) & ").valid to '0'";
+					elsif to_integer(unsigned(RF_in_demux)) = i then 
+						--report "RF: setting RF(" & Integer'image(i) & ").valid to '1'";
 						RF_valid(i) 	<= '1';
-						report "RF: setting RF(" & Integer'image(i) & ").valid to '1'";
+					else
+						RF_valid(i)		<= RF_valid(i);
+						--report "RF: setting RF(" & Integer'image(i) & ").valid to RF(" & Integer'image(i) & ").valid";
 					end if;
 				end if;
 			end loop;

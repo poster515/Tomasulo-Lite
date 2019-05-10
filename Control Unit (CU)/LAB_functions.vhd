@@ -171,7 +171,7 @@ package body LAB_functions is
 		
 		for i in 0 to LAB_MAX - 2 loop
 			--need to ensure that we're above last issued instruction, and instruction isn't a jump
-			if i >= issued_inst and PM_data_in(15 downto 12) /= "1001" then
+			if i >= issued_inst and PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" then
 			
 				if (LAB_temp(i).inst_valid = '1') and (LAB_temp(i + 1).inst_valid = '0') then
 				
@@ -205,7 +205,7 @@ package body LAB_functions is
 					LAB_temp(i) := LAB_temp(i + convert_SL(shift_LAB));
 					
 				end if;
-			--need to handle case where we don't want to buffer PM_data_in (e.g., jumps) but still want to shift LAB down and issue LAB(0)
+			--need to handle case where we don't want to buffer PM_data_in (i.e., jumps and branches) but still want to shift LAB down and issue LAB(0)
 			else
 				LAB_temp(i + not_SL)	:= LAB_temp(i + 1);
 			end if; --i >= issued_inst
@@ -269,7 +269,7 @@ package body LAB_functions is
 					end if;
 					exit;
 					
-				elsif WB_IW_out(11 downto 7) = ROB_in(i).inst(11 downto 7) and i > j and WB_IW_resolves_br = '1' then	--
+				elsif WB_IW_out(11 downto 7) = ROB_in(i).inst(11 downto 7) and i > j then	--
 					
 					report "LAB_func: bnez. WB_IW_out matches branch.";
 					reg1_resolved 			:= reg1_resolved and '1';
@@ -281,7 +281,7 @@ package body LAB_functions is
 						condition_met		:= '0';
 					end if;
 					
-				elsif WB_IW_out(11 downto 7) = ROB_in(i).inst(6 downto 2) and bne = '1' and i > j and WB_IW_resolves_br = '1' then	--
+				elsif WB_IW_out(11 downto 7) = ROB_in(i).inst(6 downto 2) and bne = '1' and i > j then	--
 					
 					report "LAB_func: bne. WB_IW_out matches branch.";
 					reg2_resolved 			:= reg2_resolved and '1';
@@ -305,7 +305,7 @@ package body LAB_functions is
 					reg2_resolved 			:= '0';
 					WB_IW_resolves_br 	:= '0'; 
 					
-				elsif ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '0' and bnez = '1' and i > j then	--
+				elsif ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '0' and i > j then	--
 						
 					report "LAB_func: bnez. not resolved.";
 					reg1_resolved 		:= '0';
@@ -375,6 +375,7 @@ package body LAB_functions is
 					exit;
 				
 				elsif j = 0 and RF_in_3_valid = '1' and RF_in_4_valid = '1' and bne = '1' then
+					--clearly there aren't any incomplete instructions for either reg1 or reg2 in ROB, or none exist, and RF 
 					report "LAB_func: (bne) no dep insts in LAB and RF results are valid.";
 					reg1_resolved 		:= '1';
 					reg2_resolved 		:= '1';

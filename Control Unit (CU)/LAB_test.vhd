@@ -147,6 +147,11 @@ begin
 
 			--this "elsif" handles other branches that currently exist in the ROB that have not been resolved yet. should continually monitor those, as determined by "ROB_branch" process below. 
 			--need this additional if case because the data sent to "results_result" differ from the above if case. 
+			
+			elsif results_available = '1' then
+				results_available <= '0';
+				condition_met		<= '0';
+				
 			elsif branch_exists = '1' and is_unresolved = '1' then	
 				report "LAB: branch exists in ROB.";
 				results_available 	<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out)(0); --'0' = not available, '1' = available
@@ -404,7 +409,7 @@ begin
 					--results are available and we can non-speculatively execute the branched instructions. the "main" process will handle the rest. 
 					PC_reg 	<= branches(0).addr_met(10 downto 0);
 					
-				elsif branch_reg = '0' and results_available = '1' and condition_met = '0' then
+				elsif branch_reg = '0' and results_available = '1' and condition_met = '0' and branch_exists = '1' then
 					--results are available and we can non-speculatively execute the next instructions. the "main" process will handle the rest. 
 					PC_reg 	<= std_logic_vector(unsigned(branches(0).addr_unmet(10 downto 0)) + 1);
 					
