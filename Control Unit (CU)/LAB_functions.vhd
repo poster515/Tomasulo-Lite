@@ -28,7 +28,8 @@ package LAB_functions is
 												PM_data_in	: in std_logic_vector(15 downto 0);
 												issued_inst	: in integer;
 												LAB_MAX		: in integer;
-												shift_LAB	: in std_logic			)
+												shift_LAB	: in std_logic;
+												ld_st_reg	: in std_logic	)
 		return LAB_actual;
 		
 	--function to type convert std_logic to integer
@@ -158,7 +159,8 @@ package body LAB_functions is
 												PM_data_in	: in std_logic_vector(15 downto 0);
 												issued_inst	: in integer; --location of instruction that was issued, start shift here
 												LAB_MAX		: in integer;
-												shift_LAB	: in std_logic	)
+												shift_LAB	: in std_logic;
+												ld_st_reg	: in std_logic	)
 		return LAB_actual is
 								
 		variable i 			: integer 		:= issued_inst;	
@@ -175,7 +177,7 @@ package body LAB_functions is
 			
 				if (LAB_temp(i).inst_valid = '1') and (LAB_temp(i + 1).inst_valid = '0') then
 				
-					report "At LAB spot " & integer'image(i + convert_SL(not(shift_LAB))) & " we can buffer PM_data_in";
+					report "LAB_func: At LAB spot " & integer'image(i + convert_SL(not(shift_LAB))) & " we can buffer PM_data_in";
 					LAB_temp(i + not_SL).inst 			:= PM_data_in;
 					LAB_temp(i + not_SL).inst_valid 	:= '1';
 					LAB_temp(i + not_SL).addr			:= (others => '0');
@@ -189,7 +191,7 @@ package body LAB_functions is
 					
 				elsif i = LAB_MAX - 2 and LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '1' then
 				
-					report "at end of LAB, buffering PM_data_in at last LAB spot.";
+					report "LAB_func: at end of LAB, buffer PM_data_in at last LAB spot.";
 					LAB_temp(i + not_SL).inst 			:= PM_data_in;
 					LAB_temp(i + not_SL).inst_valid 	:= '1';
 					LAB_temp(i + not_SL).addr			:= (others => '0');
@@ -200,13 +202,23 @@ package body LAB_functions is
 						LAB_temp(i + not_SL).addr_valid	:= '1';
 					end if;
 					exit;
-					
+				
 				else
+					report "LAB_func: at " & Integer'image(i) & " shift entry from " & Integer'image(i + convert_SL(shift_LAB));
 					LAB_temp(i) := LAB_temp(i + convert_SL(shift_LAB));
 					
 				end if;
+			
+			elsif ld_st_reg = '1' and ((LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '0') or i = LAB_MAX - 1) then
+				report "LAB_func: At spot " & integer'image(i + convert_SL(not(shift_LAB))) & " buffer mem address";
+				LAB_temp(i).inst 			:= LAB_temp(i + convert_SL(shift_LAB)).inst;
+				LAB_temp(i).inst_valid 	:= LAB_temp(i + convert_SL(shift_LAB)).inst_valid;
+				LAB_temp(i).addr 			:= PM_data_in;
+				LAB_temp(i).addr_valid 	:= '1';
+				exit;
 			--need to handle case where we don't want to buffer PM_data_in (i.e., jumps and branches) but still want to shift LAB down and issue LAB(0)
 			else
+				report "LAB_func: at " & Integer'image(i + not_SL) & " shift entry from " & Integer'image(i + 1);
 				LAB_temp(i + not_SL)	:= LAB_temp(i + 1);
 			end if; --i >= issued_inst
 		end loop; --for i

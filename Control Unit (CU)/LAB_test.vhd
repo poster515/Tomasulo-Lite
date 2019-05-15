@@ -271,7 +271,7 @@ begin
 								MEM_reg 		<= LAB(i).addr;
 								
 								--shift LAB down and buffer PM_data_in
-								LAB 			<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1');
+								LAB 			<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg);
 								
 								--exit, we're done here
 								exit;
@@ -284,7 +284,7 @@ begin
 								IW_reg 	<= LAB(i).inst;
 								
 								--shift LAB down and buffer PM_data_in
-								LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1');
+								LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg);
 								
 								--exit here, we're done
 								exit;
@@ -300,7 +300,7 @@ begin
 							--just buffer PM_data_in
 							report "LAB: Can't issue any valid LAB inst or PM_data, buffer PM_data";
 							IW_reg 	<= "1111111111111111";
-							LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i - 1, LAB_MAX, '0');
+							LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i - 1, LAB_MAX, '0', ld_st_reg);
 							exit;
 							
 						elsif i = LAB_MAX - 1 then 
@@ -349,8 +349,10 @@ begin
 							
 							else
 								--can't issue any instruction in LAB and can't issue PM_data_in
+								--TODO: fix this function to accommodate for the fact that the incoming PM_data_in may be an address for a load/store
+								--add next_IW_is_addr to function call?
 								report "LAB: 2. can't issue any LAB inst/PM_data, so buffer PM_data.";
-								LAB 				<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '0');
+								LAB 				<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '0', ld_st_reg);
 								IW_reg 			<= "1111111111111111";
 								LAB_full 		<= LAB(LAB_MAX - 1).inst_valid;
 								ALU_fwd_reg_1 	<= '0';

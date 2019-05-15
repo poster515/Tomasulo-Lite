@@ -75,35 +75,39 @@ begin
 				
 				RF_out_1_mux_reg <= IW_in(11 downto 7);	--assert reg1 address if there's no stall
 				RF_out_2_mux_reg <= IW_in(6 downto 2);		--assert reg2 address if there's no stall
-				
-				--for all rotates (0101), shifts (0110, 0111), jumps (1001), loads (1000...01), and GPIO/I2C reads (1011..X0) don't need any RF output
-				if IW_in(15 downto 12) = "1001" or 
-					(IW_in(15 downto 12) = "1000" and IW_in(1 downto 0) = "01") or
-					(IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "X0") or 
-					IW_in(15 downto 12) = "0101" or IW_in(15 downto 12) = "0110" or 
-						IW_in(15 downto 12) = "0111" then 
+				if IW_in(15 downto 12) /= "1111" then
+					--for all rotates (0101), shifts (0110, 0111), jumps (1001), loads (1000...01), and GPIO/I2C reads (1011..X0) don't need any RF output
+					if IW_in(15 downto 12) = "1001" or 
+						(IW_in(15 downto 12) = "1000" and IW_in(1 downto 0) = "01") or
+						(IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "X0") or 
+						IW_in(15 downto 12) = "0101" or IW_in(15 downto 12) = "0110" or 
+							IW_in(15 downto 12) = "0111" then 
+						
+						RF_out1_en <= '0'; 
+						RF_out2_en <= '0';
 					
+					--for BNEZ (1010...00), loads (1000...00), stores (1000...11), GPIO/I2C writes (1011..X1), LOGI (1100) only need 1 RF output
+					elsif (IW_in(15 downto 12) = "1010" and IW_in(1 downto 0) = "00") or
+							(IW_in(15 downto 12) = "1000" and (IW_in(1 downto 0) = "00" or IW_in(1 downto 0) = "11")) or
+							(IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "X1") or IW_in(15 downto 12) = "1100" then
+						RF_out1_en <= '1'; 
+						RF_out2_en <= '0';
+						
+					--for all other instructions, need both RF outputs
+					else
+						RF_out1_en <= '1'; 
+						RF_out2_en <= '1';
+						
+					end if;
+				else
 					RF_out1_en <= '0'; 
 					RF_out2_en <= '0';
-				
-				--for BNEZ (1010...00), loads (1000...00), stores (1000...11), GPIO/I2C writes (1011..X1), LOGI (1100) only need 1 RF output
-				elsif (IW_in(15 downto 12) = "1010" and IW_in(1 downto 0) = "00") or
-						(IW_in(15 downto 12) = "1000" and (IW_in(1 downto 0) = "00" or IW_in(1 downto 0) = "11")) or
-						(IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "X1") or IW_in(15 downto 12) = "1100" then
-					RF_out1_en <= '1'; 
-					RF_out2_en <= '0';
-					
-				--for all other instructions, need both RF outputs
-				else
-					RF_out1_en <= '1'; 
-					RF_out2_en <= '1';
-					
 				end if;
 				
 				--calculate immediate value, based on IW(15 downto 12), only for LD/ST (1000), JMP (1001)
 				--not sure need to use inst_sel since calculating this immediate value doesn't impact anything else
 				--LD/ST
-				if IW_in(15 downto 12) = "1000" and IW_in(0) = '1' then
+				if IW_in(15 downto 12) = "1000" then
 					immediate_val_reg <= "00000000000" & IW_in(6 downto 2);
 					mem_addr_reg 		<= mem_addr_in;
 					
