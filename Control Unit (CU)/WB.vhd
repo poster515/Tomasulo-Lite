@@ -173,10 +173,12 @@ begin
 						--only if zeroth instruction is non-speculative can we write back results to RF
 						clear_zero_inst 	<= '1'; 	--enable clearing the zeroth instruction since zero_inst_match = '1'
 						
-						--commit results if its not a branch or jump 
-						if ROB_actual(0).inst(15 downto 12)	/= "1010" and ROB_actual(0).inst(15 downto 12) /= "1001" then
+						--commit results if its not a branch or jump or store
+						if (ROB_actual(0).inst(15) = '0') or (ROB_actual(0).inst(15 downto 12) = "1000" and ROB_actual(0).inst(1) = '0') or 
+								(ROB_actual(0).inst(15 downto 12) = "1011" and ROB_actual(0).inst(0) = '0') or ROB_actual(0).inst(15 downto 12) = "1100" then
 							RF_wr_en 		<= '1';	--enable writing back into RF
-						else
+						
+						else 
 							RF_wr_en 		<= '0';
 						end if;
 						
@@ -207,9 +209,11 @@ begin
 						clear_zero_inst 	<= '0'; 	
 						
 						--only if first instruction is non-speculative can we write back results to RF
-						if ROB_actual(1).inst(15 downto 12)	/= "1010" and ROB_actual(1).inst(15 downto 12) /= "1001" then
-							RF_wr_en 		<= not(ROB_actual(1).specul);
-						else
+						if (ROB_actual(1).inst(15) = '0') or (ROB_actual(1).inst(15 downto 12) = "1000" and ROB_actual(1).inst(1) = '0') or 
+								(ROB_actual(1).inst(15 downto 12) = "1011" and ROB_actual(1).inst(0) = '0') or ROB_actual(1).inst(15 downto 12) = "1100" then
+							RF_wr_en 		<= not(ROB_actual(1).specul);	--enable writing back into RF
+						
+						else 
 							RF_wr_en 		<= '0';
 						end if;
 						

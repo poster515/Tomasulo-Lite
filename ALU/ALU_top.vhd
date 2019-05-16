@@ -7,8 +7,8 @@ entity ALU_top is
 		--Input data and clock
 		sys_clock, reset_n	: in std_logic;
 		RF_in_1, RF_in_2		: in std_logic_vector(15 downto 0);
-		MEM_in, WB_in			: in std_logic_vector(15 downto 0); --
-		MEM_address				: in std_logic_vector(15 downto 0); --memory address forwarded directly from LAB
+		MEM_in					: in std_logic_vector(15 downto 0); --data forwarded from data memory output
+		MEM_address				: in std_logic_vector(15 downto 0); --memory address forwarded directly from LAB via ID stage
 		value_immediate		: in std_logic_vector(15 downto 0); --Reg2 data field from IW directly from EX
 																				--used to forward shift/rotate distance and immediate value for addi & subi
 
@@ -75,10 +75,7 @@ architecture behavioral of ALU_top is
 	signal ALU_SR_reg								: std_logic_vector(3 downto 0); --
 	signal ALU_data_in_1, ALU_data_in_2		: std_logic_vector(15 downto 0); --signal between data_in_2_mux and data_in_2 input of ALU
 	signal ALU_status								: std_logic_vector(3 downto 0);	--ALU temporary status register
---	signal ALU_fwd_data_reg, ALU_fwd_data_in	: std_logic_vector(15 downto 0); --stores forwarding data (e.g., DM stores)
-	--signal ALU_inst_sel_reg						: std_logic_vector(1 downto 0);
-	--signal ALU_op_reg								: std_logic_vector(3 downto 0);
-	
+
 begin
 	
 	ALU_inst	: ALU
@@ -103,7 +100,7 @@ begin
 		data0x	=> "0000000000000000",
 		data1x  	=> RF_in_1, 		--input from RF_out_1
 		data2x	=> MEM_address,
-		data3x	=> WB_in,
+		data3x	=> MEM_in,
 		sel 		=> ALU_d1_in_sel,
 		result  	=> ALU_data_in_1
 	);
