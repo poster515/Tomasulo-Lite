@@ -254,6 +254,13 @@ begin
 						if	(((ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
 							 ((ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) or ID_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and ID_IW(15 downto 12) = "1111")) and ID_reset = '1') and
 							 
+							(((ID_IW(6 downto 2) /= LAB(i).inst(6 downto 2) and ID_IW(15 downto 12) /= "1000" and ID_IW(1 downto 0) /= "10" and LAB(i).inst(15 downto 12) /= "1000" and 
+							 LAB(i).inst(1 downto 0) /= "00") or
+							 
+							 (ID_IW(6 downto 2) = LAB(i).inst(6 downto 2) and LAB(i).inst(15 downto 12) = "1000" and ID_IW(15 downto 12) = "1111"))
+--			
+							 and ID_reset = '1') and
+							
 							(((EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
 							 ((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_IW(15 downto 12) = "1111")) and EX_reset = '1') and
 							 
@@ -583,10 +590,12 @@ begin
 		
 			for dh_ptr_outer in 1 to LAB_MAX - 1 loop
 			
-				for dh_ptr_inner in 0 to dh_ptr_outer - 1 loop
+				for dh_ptr_inner in 0 to LAB_MAX - 1 loop
 			
-					if (LAB(dh_ptr_inner).inst(11 downto 7) = LAB(dh_ptr_outer).inst(11 downto 7) and LAB(dh_ptr_outer).inst_valid = '1') or 
-						(LAB(dh_ptr_inner).inst(11 downto 7) = LAB(dh_ptr_outer).inst(6 downto 2) and LAB(dh_ptr_outer).inst_valid = '1') then
+					if ((LAB(dh_ptr_inner).inst(11 downto 7) = LAB(dh_ptr_outer).inst(11 downto 7) and LAB(dh_ptr_outer).inst_valid = '1') or 
+						(LAB(dh_ptr_inner).inst(11 downto 7) = LAB(dh_ptr_outer).inst(6 downto 2) and LAB(dh_ptr_outer).inst_valid = '1')) and
+						dh_ptr_inner < dh_ptr_outer then
+						
 						datahaz_status(dh_ptr_outer) <= '1';
 						exit; --exit inner loop, there's a hazard at this dh_ptr_outer location
 					else
