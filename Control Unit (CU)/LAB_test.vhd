@@ -252,20 +252,29 @@ begin
 					for i in 0 to LAB_MAX - 1 loop
 						
 						if	(((ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
-							 ((ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) or ID_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and ID_IW(15 downto 12) = "1111")) and ID_reset = '1') and
+							--accounts for data hazards due to no-ops
+							 ((ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) or ID_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and ID_IW(15 downto 12) = "1111") or
+							--allows a GPIO/W to be issued, immediately followed by a GPIO/R to the same register
+							 (ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00")) and
 							 
-							(((ID_IW(6 downto 2) /= LAB(i).inst(6 downto 2) and ID_IW(15 downto 12) /= "1000" and ID_IW(1 downto 0) /= "10" and LAB(i).inst(15 downto 12) /= "1000" and 
-							 LAB(i).inst(1 downto 0) /= "00") or
-							 
-							 (ID_IW(6 downto 2) = LAB(i).inst(6 downto 2) and LAB(i).inst(15 downto 12) = "1000" and ID_IW(15 downto 12) = "1111"))
---			
-							 and ID_reset = '1') and
+							 ((ID_IW(6 downto 2) = LAB(i).inst(6 downto 2) and LAB(i).inst(15 downto 12) = "1000" and ID_IW(15 downto 12) = "1111") or
+							
+							not(ID_IW(6 downto 2) = LAB(i).inst(6 downto 2) and ID_IW(15 downto 12) = "1000" and ID_IW(1 downto 0) = "10" and LAB(i).inst(15 downto 12) = "1000" and LAB(i).inst(1 downto 0) = "00"))	
+							
+							and ID_reset = '1') and
 							
 							(((EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
-							 ((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_IW(15 downto 12) = "1111")) and EX_reset = '1') and
+							 ((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_IW(15 downto 12) = "1111") or
+							 --allows a GPIO/W to be issued, followed by a GPIO/R to the same register
+							 ((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) and EX_IW(15 downto 12) = "1011" and EX_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00"))) 
+							 
+							 and EX_reset = '1') and
 							 
 							(((MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
-							 ((MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) or MEM_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and MEM_IW(15 downto 12) = "1111")) and MEM_reset = '1') and
+							 ((MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) or MEM_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and MEM_IW(15 downto 12) = "1111") or
+							 (MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) and MEM_IW(15 downto 12) = "1011" and MEM_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00")) 
+							 
+							 and MEM_reset = '1') and
 								
 							LAB(i).inst_valid = '1' then --we don't have any conflict in pipeline and LAB instruction is valid
 							
@@ -592,9 +601,18 @@ begin
 			
 				for dh_ptr_inner in 0 to LAB_MAX - 1 loop
 			
-					if ((LAB(dh_ptr_inner).inst(11 downto 7) = LAB(dh_ptr_outer).inst(11 downto 7) and LAB(dh_ptr_outer).inst_valid = '1') or 
-						(LAB(dh_ptr_inner).inst(11 downto 7) = LAB(dh_ptr_outer).inst(6 downto 2) and LAB(dh_ptr_outer).inst_valid = '1')) and
-						dh_ptr_inner < dh_ptr_outer then
+					if (
+							(LAB(dh_ptr_inner).inst(11 downto 7) 	= LAB(dh_ptr_outer).inst(11 downto 7) and 
+							 LAB(dh_ptr_outer).inst_valid 			= '1') or 
+							 
+							(LAB(dh_ptr_inner).inst(11 downto 7) 	= LAB(dh_ptr_outer).inst(6 downto 2) and 
+							 LAB(dh_ptr_outer).inst_valid 			= '1') or 
+							
+							(LAB(dh_ptr_inner).inst(6 downto 2) = LAB(dh_ptr_inner).inst(6 downto 2) and 
+							 LAB(dh_ptr_inner).inst(15 downto 12) 	= "1000" and 
+							 LAB(dh_ptr_outer).inst(15 downto 12) 	= "1000")
+							 
+						) and dh_ptr_inner < dh_ptr_outer then
 						
 						datahaz_status(dh_ptr_outer) <= '1';
 						exit; --exit inner loop, there's a hazard at this dh_ptr_outer location

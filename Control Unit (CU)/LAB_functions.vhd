@@ -166,6 +166,7 @@ package body LAB_functions is
 		variable i 			: integer 		:= issued_inst;	
 		variable LAB_temp	: LAB_actual	:= LAB_in;
 		variable not_SL	: integer;
+		variable address_updated : std_logic := '0';
 		
 	begin
 		
@@ -175,19 +176,34 @@ package body LAB_functions is
 			--need to ensure that we're above last issued instruction, and instruction isn't a jump
 			if i >= issued_inst and PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" then
 			
-				if (LAB_temp(i).inst_valid = '1') and (LAB_temp(i + 1).inst_valid = '0') then
-				
-					report "LAB_func: At LAB spot " & integer'image(i + convert_SL(not(shift_LAB))) & " we can buffer PM_data_in";
-					LAB_temp(i + not_SL).inst 			:= PM_data_in;
-					LAB_temp(i + not_SL).inst_valid 	:= '1';
-					LAB_temp(i + not_SL).addr			:= (others => '0');
+				if ld_st_reg = '1' and LAB_temp(i + 1).inst(15 downto 12) = "1000" and LAB_temp(i + 1).addr_valid = '0' and LAB_temp(i + 1).inst_valid = '1' then
+					LAB_temp(i + not_SL).inst 			:= LAB_temp(i + 1).inst;
+					LAB_temp(i + not_SL).inst_valid 	:= LAB_temp(i + 1).inst_valid;
+					LAB_temp(i + not_SL).addr			:= PM_data_in;
+					LAB_temp(i + not_SL).addr_valid 	:= '1';
+					address_updated		:= '1';
 					
-					if PM_data_in(15 downto 14) = "10" and ((PM_data_in(1) nand PM_data_in(0)) = '1') then
-						LAB_temp(i + not_SL).addr_valid	:= '0';
+				elsif LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '0' then
+				
+					if address_updated = '0' then
+					
+						report "LAB_func: At LAB spot " & integer'image(i + convert_SL(not(shift_LAB))) & " we can buffer PM_data_in";
+						LAB_temp(i + not_SL).inst 			:= PM_data_in;
+						LAB_temp(i + not_SL).inst_valid 	:= '1';
+						LAB_temp(i + not_SL).addr			:= (others => '0');
+						
+						if PM_data_in(15 downto 12) = "1000" then
+							LAB_temp(i + not_SL).addr_valid	:= '0';
+						else
+							LAB_temp(i + not_SL).addr_valid	:= '1';
+						end if;
+						exit;
 					else
-						LAB_temp(i + not_SL).addr_valid	:= '1';
+						report "LAB_func: 6. at " & Integer'image(i) & " shift entry from " & Integer'image(i + convert_SL(shift_LAB));
+						LAB_temp(i) := LAB_temp(i + convert_SL(shift_LAB));
+						exit;
+						
 					end if;
-					exit;
 					
 				elsif i = LAB_MAX - 2 and LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '1' then
 				
@@ -204,9 +220,8 @@ package body LAB_functions is
 					exit;
 				
 				else
-					report "LAB_func: at " & Integer'image(i) & " shift entry from " & Integer'image(i + convert_SL(shift_LAB));
+					report "LAB_func: 4. at " & Integer'image(i) & " shift entry from " & Integer'image(i + convert_SL(shift_LAB));
 					LAB_temp(i) := LAB_temp(i + convert_SL(shift_LAB));
-					
 				end if;
 			
 			elsif ld_st_reg = '1' and ((LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '0') or i = LAB_MAX - 1) then
@@ -218,8 +233,13 @@ package body LAB_functions is
 				exit;
 			--need to handle case where we don't want to buffer PM_data_in (i.e., jumps and branches) but still want to shift LAB down and issue LAB(0)
 			else
-				report "LAB_func: at " & Integer'image(i + not_SL) & " shift entry from " & Integer'image(i + 1);
-				LAB_temp(i + not_SL)	:= LAB_temp(i + 1);
+				if i >= issued_inst then
+					report "LAB_func: 2. at " & Integer'image(i + not_SL) & " shift entry from " & Integer'image(i + 1);
+					LAB_temp(i + not_SL)	:= LAB_temp(i + 1);
+				else
+					report "LAB_func: 3. at " & Integer'image(i + not_SL) & " shift entry from " & Integer'image(i + 1);
+					LAB_temp(i)	:= LAB_temp(i);
+				end if;
 			end if; --i >= issued_inst
 		end loop; --for i
 		
