@@ -83,7 +83,8 @@ begin
 	--update whether ROB zeroth instruction matches the new IW_in, does not depend on ROB(0).inst itself since it won't change
 	process(IW_in, ROB_actual, results_available, condition_met)
 	begin
-		if ROB_actual(0).inst = IW_in and ROB_actual(0).valid = '1' and zero_inst_match = '0' then
+		--if ROB_actual(0).inst = IW_in and ROB_actual(0).valid = '1' and zero_inst_match = '0' then
+		if ROB_actual(0).inst = IW_in and ROB_actual(0).valid = '1' then
 			zero_inst_match <= '1';
 		
 		elsif ROB_actual(1).inst = IW_in and ROB_actual(1).valid = '1' and zero_inst_match = '1' then
