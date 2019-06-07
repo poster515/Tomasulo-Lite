@@ -174,216 +174,215 @@ begin
 
 			--if pipeline isn't stalled, just dispatch instruction
 			if stall_pipeline = '0' then 
-			
-				--this first "if" handles the processor startup until we have a data hazard with incoming PM_data_in
-				if LAB(0).inst_valid = '0' then
-				
---				if PM_data_in matches any pipeline stage instruction (and the associated reset_n is high), then issue next
---				valid, non-conflicting instruction or if none available, just buffer PM_data_in in LAB and issue a no-op command
---				(i.e., "1111111111111111")
-	
-					--if there's a conflict and its not a jump and its not a memory address
-					if PM_datahaz_status = '1' then 
-						
-						--have data conflict with ID, EX, or MEM stage 
-						--buffer into LAB(0)
-						if PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" and branch_reg = '0' and ld_st_reg = '0' then
-							LAB(0).inst 			<= PM_data_in;
-							LAB(0).inst_valid 	<= '1';
-							LAB(0).addr_valid 	<= not(branch or ld_st);
-						end if;
-						
-						--TODO: shouldn't I be buffering the branch and load/stores addresses in this case too?
-						report "LAB: 5. LAB(0) is invalid, but can't issue PM_data_in.";
-						IW_reg 					<= "1111111111111111"; --issue no-op
+
+					--this first "if" handles the processor startup until we have a data hazard with incoming PM_data_in
+					if LAB(0).inst_valid = '0' then
 					
-					else
-						--just issue PM_data_in and issue forwarding data commands
+	--				if PM_data_in matches any pipeline stage instruction (and the associated reset_n is high), then issue next
+	--				valid, non-conflicting instruction or if none available, just buffer PM_data_in in LAB and issue a no-op command
+	--				(i.e., "1111111111111111")
+		
+						--if there's a conflict and its not a jump and its not a memory address
+						if PM_datahaz_status = '1' then 
+							
+							--have data conflict with ID, EX, or MEM stage 
+							--buffer into LAB(0)
+							if PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" and branch_reg = '0' and ld_st_reg = '0' then
+								LAB(0).inst 			<= PM_data_in;
+								LAB(0).inst_valid 	<= '1';
+								LAB(0).addr_valid 	<= not(branch or ld_st);
+							end if;
+							
+							--TODO: shouldn't I be buffering the branch and load/stores addresses in this case too?
+							report "LAB: 5. LAB(0) is invalid, but can't issue PM_data_in.";
+							IW_reg 					<= "1111111111111111"; --issue no-op
 						
-						--TODO: shouldn't I be waiting if this is a branch/load/store instruction?
-						--report "LAB. 4. writing ALU_fwd_reg_1_reg to ALU_fwd_reg_1 and ALU_fwd_reg_2_reg to ALU_fwd_reg_2.";
-
-						if PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" and branch_reg = '0' and ld_st_reg = '0' and PM_datahaz_status = '0' then
-							
-							IW_reg <= PM_data_in;
-							
-								if (((ID_IW(11 downto 7) = PM_data_in(11 downto 7)) or (ID_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and ID_reset = '1' and ID_IW(15 downto 12) /= "1111") or
-									(((MEM_IW(11 downto 7) = PM_data_in(11 downto 7)) or (MEM_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and MEM_reset = '1' and MEM_IW(15 downto 12) /= "1111")  then
-									
-									--report "setting PM_data_hazard because of pipeline hazards.";
-									ALU_fwd_reg_1 		<= '0';
-									ALU_fwd_reg_2		<= '0';
-							
-								elsif (EX_IW(11 downto 7) = PM_data_in(11 downto 7) and EX_reset = '1' and EX_IW(15 downto 12) /= "1111" and PM_datahaz_status = '0') then
-									--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_1
-									ALU_fwd_reg_1 		<= '1';
-									
-									if (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111" and PM_datahaz_status = '0') then 
-										--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
-										ALU_fwd_reg_2 	<= '1';
-										report "LAB: PM_data_in reg1 and reg2 match ID stage output IW, setting ALU_fwd_reg_1_reg and ALU_fwd_reg_2_reg.";
-									else
-										ALU_fwd_reg_2 	<= '0';
-										report "LAB: PM_data_in reg1 matches ID stage output IW, setting ALU_fwd_reg_1_reg.";
-									end if;
-									
-								elsif (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111" and PM_datahaz_status = '0') then 
-									--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
-									ALU_fwd_reg_2 	<= '1';
-									ALU_fwd_reg_1 	<= '0';
-									
-									report "LAB: PM_data_in reg2 matches ID stage output IW, setting ALU_fwd_reg_2_reg.";
-
-								else
-									ALU_fwd_reg_1 	<= '0';
-									ALU_fwd_reg_2	<= '0';
-								end if;	
 						else
-							ALU_fwd_reg_1 	<= '0';
-							ALU_fwd_reg_2	<= '0';
-							IW_reg <= "1111111111111111";
-						end if;
-					end if;
-				
-				else
-					--report "Have at least one valid instruction in LAB";
-					--have at least one valid instruction waiting in LAB
-					--use loop to check for hazards against stages of the pipeline
-					for i in 0 to LAB_MAX - 1 loop
-						
-						if	(((ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
-							--accounts for data hazards due to no-ops
-							 ((ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) or ID_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and ID_IW(15 downto 12) = "1111") or
-							--allows a GPIO/W to be issued, immediately followed by a GPIO/R to the same register
-							 (ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00")) and
-							 
-							 ((ID_IW(6 downto 2) = LAB(i).inst(6 downto 2) and LAB(i).inst(15 downto 12) = "1000" and ID_IW(15 downto 12) = "1111") or
+							--just issue PM_data_in and issue forwarding data commands
 							
-							not(ID_IW(6 downto 2) = LAB(i).inst(6 downto 2) and ID_IW(15 downto 12) = "1000" and ID_IW(1 downto 0) = "10" and LAB(i).inst(15 downto 12) = "1000" and LAB(i).inst(1 downto 0) = "00"))	
-							
-							and ID_reset = '1') and
-							
-							(((EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
-							 ((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_IW(15 downto 12) = "1111") or
-							 --allows a GPIO/W to be issued, followed by a GPIO/R to the same register
-							 ((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) and EX_IW(15 downto 12) = "1011" and EX_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00"))) 
-							 
-							 and EX_reset = '1') and
-							 
-							(((MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
-							 ((MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) or MEM_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and MEM_IW(15 downto 12) = "1111") or
-							 (MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) and MEM_IW(15 downto 12) = "1011" and MEM_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00")) 
-							 
-							 and MEM_reset = '1') and
-								
-							LAB(i).inst_valid = '1' then --we don't have any conflict in pipeline and LAB instruction is valid
-							
-							--check if there are any hazards within the LAB for the ith entry (for memory instructions)
-							if datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) = "1000" and LAB(i).addr_valid = '1' then
-							
-								report "LAB: Issuing memory instruction and buffering PM_data_in";
-								--if so, we can issue the ith instruction
-								IW_reg 		<= LAB(i).inst;
-								MEM_reg 		<= LAB(i).addr;
-								
-								--shift LAB down and buffer PM_data_in
-								LAB 			<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg);
-								
-								--exit, we're done here
-								exit;
-							
-							--check if there are any hazards within the LAB now for the ith entry (for non-memory instructions)
-							elsif datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) /= "1000" then
-								
-								report "LAB: Issuing non-memory instruction and buffering PM_data_in";
-								--if not, we can issue the ith instruction
-								IW_reg 	<= LAB(i).inst;
-								
-								--shift LAB down and buffer PM_data_in
-								LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg);
-								
-								--exit here, we're done
-								exit;
-								
-							else
---								--can't do anything if there's a data hazard for this LAB instruction, keep moving on, buffer PM but DON'T SHIFT LAB
---								--just issue no-op by default
-								report "LAB: Can't issue LAB instruction at slot: " & Integer'image(i);
-							end if; --datahaz_status
-							
-						elsif LAB(i).inst_valid = '0' and PM_datahaz_status = '1' and PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" and branch_reg = '0' and ld_st_reg = '0' then
-							--now we're at the first spot we can buffer PM_data_in, since there's no valid instruction here and the PM_data_in has a hazard
-							--just buffer PM_data_in
-							report "LAB: Can't issue any valid LAB inst or PM_data, buffer PM_data";
-							IW_reg 	<= "1111111111111111";
-							LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i - 1, LAB_MAX, '0', ld_st_reg);
-							exit;
-							
-						elsif i = LAB_MAX - 1 then 
-							--no other LAB instruction could be issued - check if we can issue PM_data_in
-							--check for branches and jumps first
+							--TODO: shouldn't I be waiting if this is a branch/load/store instruction?
+							--report "LAB. 4. writing ALU_fwd_reg_1_reg to ALU_fwd_reg_1 and ALU_fwd_reg_2_reg to ALU_fwd_reg_2.";
+
 							if PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" and branch_reg = '0' and ld_st_reg = '0' and PM_datahaz_status = '0' then
-								--report "issuing PM_data_in to pipeline instead of buffering to LAB.";
-								IW_reg 			<= PM_data_in;
-								LAB_full 		<= '0';
 								
-								--next check for data forwarding opportunity
-								if (((ID_IW(11 downto 7) = PM_data_in(11 downto 7)) or (ID_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and ID_reset = '1' and ID_IW(15 downto 12) /= "1111") or
-									(((MEM_IW(11 downto 7) = PM_data_in(11 downto 7)) or (MEM_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and MEM_reset = '1' and MEM_IW(15 downto 12) /= "1111")  then
-									
-									report "LAB: can't forward ALU data.";
-									ALU_fwd_reg_1 		<= '0';
-									ALU_fwd_reg_2		<= '0';
-							
-								elsif (EX_IW(11 downto 7) = PM_data_in(11 downto 7) and EX_reset = '1' and EX_IW(15 downto 12) /= "1111" and PM_datahaz_status = '0') then
-									--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_1
-									ALU_fwd_reg_1 		<= '1';
-									
-									if (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111" and PM_datahaz_status = '0') then 
+								IW_reg <= PM_data_in;
+								
+									if (((ID_IW(11 downto 7) = PM_data_in(11 downto 7)) or (ID_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and ID_reset = '1' and ID_IW(15 downto 12) /= "1111") or
+										(((MEM_IW(11 downto 7) = PM_data_in(11 downto 7)) or (MEM_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and MEM_reset = '1' and MEM_IW(15 downto 12) /= "1111")  then
+										
+										--report "setting PM_data_hazard because of pipeline hazards.";
+										ALU_fwd_reg_1 		<= '0';
+										ALU_fwd_reg_2		<= '0';
+								
+									elsif (EX_IW(11 downto 7) = PM_data_in(11 downto 7) and EX_reset = '1' and EX_IW(15 downto 12) /= "1111" and PM_datahaz_status = '0') then
+										--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_1
+										ALU_fwd_reg_1 		<= '1';
+										
+										if (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111" and PM_datahaz_status = '0') then 
+											--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
+											ALU_fwd_reg_2 	<= '1';
+											report "LAB: PM_data_in reg1 and reg2 match ID stage output IW, setting ALU_fwd_reg_1_reg and ALU_fwd_reg_2_reg.";
+										else
+											ALU_fwd_reg_2 	<= '0';
+											report "LAB: PM_data_in reg1 matches ID stage output IW, setting ALU_fwd_reg_1_reg.";
+										end if;
+										
+									elsif (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111" and PM_datahaz_status = '0') then 
 										--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
 										ALU_fwd_reg_2 	<= '1';
-										report "LAB: PM_data_in reg1 and reg2 match ID stage output IW, setting ALU_fwd_reg_1_reg and ALU_fwd_reg_2_reg.";
+										ALU_fwd_reg_1 	<= '0';
+										
+										report "LAB: PM_data_in reg2 matches ID stage output IW, setting ALU_fwd_reg_2_reg.";
+
 									else
-										ALU_fwd_reg_2 	<= '0';
-										report "LAB: PM_data_in reg1 matches ID stage output IW, setting ALU_fwd_reg_1_reg.";
-									end if;
-									
-								elsif (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111" and PM_datahaz_status = '0') then 
-									--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
-									ALU_fwd_reg_2 	<= '1';
-									ALU_fwd_reg_1 	<= '0';
-									
-									report "LAB: PM_data_in reg2 matches ID stage output IW, setting ALU_fwd_reg_2_reg.";
-
-								else
-									report "LAB: Can't forward ALU data.";
-									ALU_fwd_reg_1 	<= '0';
-									ALU_fwd_reg_2	<= '0';
-								end if;	
-
-								exit;
-							
+										ALU_fwd_reg_1 	<= '0';
+										ALU_fwd_reg_2	<= '0';
+									end if;	
 							else
-								--can't issue any instruction in LAB and can't issue PM_data_in
-								--TODO: fix this function to accommodate for the fact that the incoming PM_data_in may be an address for a load/store
-								--add next_IW_is_addr to function call?
-								report "LAB: 2. can't issue any LAB inst/PM_data, so buffer PM_data.";
-								LAB 				<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '0', ld_st_reg);
-								IW_reg 			<= "1111111111111111";
-								LAB_full 		<= LAB(LAB_MAX - 1).inst_valid;
 								ALU_fwd_reg_1 	<= '0';
 								ALU_fwd_reg_2	<= '0';
-								exit;
+								IW_reg <= "1111111111111111";
 							end if;
-						else
-							--we're somewhere in the middle of the LAB and have a hazard with the current LAB instruction
-							report "LAB: At LAB slot " & Integer'image(i) & " and can't issue this instruction.";
+						end if;
+					
+					else
+						--report "Have at least one valid instruction in LAB";
+						--have at least one valid instruction waiting in LAB
+						--use loop to check for hazards against stages of the pipeline
+						for i in 0 to LAB_MAX - 1 loop
+							
+							if	(((ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
+								--accounts for data hazards due to no-ops
+								 ((ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) or ID_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and ID_IW(15 downto 12) = "1111") or
+								--allows a GPIO/W to be issued, immediately followed by a GPIO/R to the same register
+								 (ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00")) and
+								 
+								 ((ID_IW(6 downto 2) = LAB(i).inst(6 downto 2) and LAB(i).inst(15 downto 12) = "1000" and ID_IW(15 downto 12) = "1111") or
+								
+								not(ID_IW(6 downto 2) = LAB(i).inst(6 downto 2) and ID_IW(15 downto 12) = "1000" and ID_IW(1 downto 0) = "10" and LAB(i).inst(15 downto 12) = "1000" and LAB(i).inst(1 downto 0) = "00"))	
+								
+								and ID_reset = '1') and
+								
+								(((EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
+								 ((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_IW(15 downto 12) = "1111") or
+								 --allows a GPIO/W to be issued, followed by a GPIO/R to the same register
+								 ((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) and EX_IW(15 downto 12) = "1011" and EX_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00"))) 
+								 
+								 and EX_reset = '1') and
+								 
+								(((MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
+								 ((MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) or MEM_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and MEM_IW(15 downto 12) = "1111") or
+								 (MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) and MEM_IW(15 downto 12) = "1011" and MEM_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00")) 
+								 
+								 and MEM_reset = '1') and
+									
+								LAB(i).inst_valid = '1' then --we don't have any conflict in pipeline and LAB instruction is valid
+								
+								--check if there are any hazards within the LAB for the ith entry (for memory instructions)
+								if datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) = "1000" and LAB(i).addr_valid = '1' then
+								
+									report "LAB: Issuing memory instruction and buffering PM_data_in";
+									--if so, we can issue the ith instruction
+									IW_reg 		<= LAB(i).inst;
+									MEM_reg 		<= LAB(i).addr;
+									
+									--shift LAB down and buffer PM_data_in
+									LAB 			<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg);
+									
+									--exit, we're done here
+									exit;
+								
+								--check if there are any hazards within the LAB now for the ith entry (for non-memory instructions)
+								elsif datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) /= "1000" then
+									
+									report "LAB: Issuing non-memory instruction and buffering PM_data_in";
+									--if not, we can issue the ith instruction
+									IW_reg 	<= LAB(i).inst;
+									
+									--shift LAB down and buffer PM_data_in
+									LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg);
+									
+									--exit here, we're done
+									exit;
+									
+								else
+	--								--can't do anything if there's a data hazard for this LAB instruction, keep moving on, buffer PM but DON'T SHIFT LAB
+	--								--just issue no-op by default
+									report "LAB: Can't issue LAB instruction at slot: " & Integer'image(i);
+								end if; --datahaz_status
+								
+							elsif LAB(i).inst_valid = '0' and PM_datahaz_status = '1' and PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" and branch_reg = '0' and ld_st_reg = '0' then
+								--now we're at the first spot we can buffer PM_data_in, since there's no valid instruction here and the PM_data_in has a hazard
+								--just buffer PM_data_in
+								report "LAB: Can't issue any valid LAB inst or PM_data, buffer PM_data";
+								IW_reg 	<= "1111111111111111";
+								LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i - 1, LAB_MAX, '0', ld_st_reg);
+								exit;
+								
+							elsif i = LAB_MAX - 1 then 
+								--no other LAB instruction could be issued - check if we can issue PM_data_in
+								--check for branches and jumps first
+								if PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" and branch_reg = '0' and ld_st_reg = '0' and PM_datahaz_status = '0' then
+									--report "issuing PM_data_in to pipeline instead of buffering to LAB.";
+									IW_reg 			<= PM_data_in;
+									LAB_full 		<= '0';
+									
+									--next check for data forwarding opportunity
+									if (((ID_IW(11 downto 7) = PM_data_in(11 downto 7)) or (ID_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and ID_reset = '1' and ID_IW(15 downto 12) /= "1111") or
+										(((MEM_IW(11 downto 7) = PM_data_in(11 downto 7)) or (MEM_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and MEM_reset = '1' and MEM_IW(15 downto 12) /= "1111")  then
+										
+										report "LAB: can't forward ALU data.";
+										ALU_fwd_reg_1 		<= '0';
+										ALU_fwd_reg_2		<= '0';
+								
+									elsif (EX_IW(11 downto 7) = PM_data_in(11 downto 7) and EX_reset = '1' and EX_IW(15 downto 12) /= "1111" and PM_datahaz_status = '0') then
+										--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_1
+										ALU_fwd_reg_1 		<= '1';
+										
+										if (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111" and PM_datahaz_status = '0') then 
+											--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
+											ALU_fwd_reg_2 	<= '1';
+											report "LAB: PM_data_in reg1 and reg2 match ID stage output IW, setting ALU_fwd_reg_1_reg and ALU_fwd_reg_2_reg.";
+										else
+											ALU_fwd_reg_2 	<= '0';
+											report "LAB: PM_data_in reg1 matches ID stage output IW, setting ALU_fwd_reg_1_reg.";
+										end if;
+										
+									elsif (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111" and PM_datahaz_status = '0') then 
+										--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
+										ALU_fwd_reg_2 	<= '1';
+										ALU_fwd_reg_1 	<= '0';
+										
+										report "LAB: PM_data_in reg2 matches ID stage output IW, setting ALU_fwd_reg_2_reg.";
 
-						end if; --various tags
-					end loop; --for i
-				
-				end if; --LAB(0).valid = '0' 
-				
+									else
+										report "LAB: Can't forward ALU data.";
+										ALU_fwd_reg_1 	<= '0';
+										ALU_fwd_reg_2	<= '0';
+									end if;	
+
+									exit;
+								
+								else
+									--can't issue any instruction in LAB and can't issue PM_data_in
+									--TODO: fix this function to accommodate for the fact that the incoming PM_data_in may be an address for a load/store
+									--add next_IW_is_addr to function call?
+									report "LAB: 2. can't issue any LAB inst/PM_data, so buffer PM_data.";
+									LAB 				<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '0', ld_st_reg);
+									IW_reg 			<= "1111111111111111";
+									LAB_full 		<= LAB(LAB_MAX - 1).inst_valid;
+									ALU_fwd_reg_1 	<= '0';
+									ALU_fwd_reg_2	<= '0';
+									exit;
+								end if;
+							else
+								--we're somewhere in the middle of the LAB and have a hazard with the current LAB instruction
+								report "LAB: At LAB slot " & Integer'image(i) & " and can't issue this instruction.";
+
+							end if; --various tags
+						end loop; --for i
+					
+					end if; --LAB(0).valid = '0' 
 			else
 				--if stalled, just issue noop
 				IW_reg <= "1111111111111111";
@@ -429,7 +428,8 @@ begin
 					
 				elsif branch_reg = '0' and results_available = '1' and condition_met = '0' and branch_exists = '1' then
 					--results are available and we can non-speculatively execute the next instructions. the "main" process will handle the rest. 
-					PC_reg 	<= std_logic_vector(unsigned(branches(0).addr_unmet(10 downto 0)) + 1);
+					--PC_reg 	<= std_logic_vector(unsigned(branches(0).addr_unmet(10 downto 0)) + 1);
+					PC_reg 	<= std_logic_vector(unsigned(PC_reg) + 1);
 					
 				elsif jump = '1' then
 					--for jumps, grab immediate value and update PC_reg

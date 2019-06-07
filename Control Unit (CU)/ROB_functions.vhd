@@ -8,6 +8,11 @@ package ROB_functions is
 	function initialize_ROB(ROB_in 		: in ROB;
 									ROB_DEPTH	: in integer)
 		return ROB;
+		
+	function no_ROB_match( 	ROB_in 		: in ROB;
+									IW_in			: in std_logic_vector(15 downto 0);
+									ROB_DEPTH	: in integer)
+		return std_logic;
 
 	function convert_CZ ( clear_zero : in std_logic )
 		return integer;
@@ -53,6 +58,22 @@ package body ROB_functions is
   
 		return ROB_temp;
    end;
+	
+	function no_ROB_match( 	ROB_in 		: in ROB;
+									IW_in			: in std_logic_vector(15 downto 0);
+									ROB_DEPTH	: in integer)
+		return std_logic is
+
+	begin
+	
+		for i in 0 to ROB_DEPTH	- 1 loop
+			if IW_in = ROB_in(i).inst then
+				return '1';
+			end if;
+		end loop;
+		
+		return '0';
+	end;
 	
 	--function to type convert std_logic to integer
 	function convert_CZ ( clear_zero : in std_logic )
@@ -109,7 +130,7 @@ package body ROB_functions is
 				
 				if ROB_temp(i + 1).valid = '1' and ROB_temp(i + 1).inst = IW_in then
 					if IW_result_en = '1' and IW_updated = '0' then
-						report "ROB_func: update ROB entry result, shift entry down as applicable [frst_br > inst]";
+						report "ROB_func: update ROB entry, shift down [frst_br>inst]";
 						--n_clear_zero automatically shifts ROB entries
 						ROB_temp(i + n_clear_zero).result 	:= IW_result;
 						ROB_temp(i + n_clear_zero).inst 		:= ROB_temp(i + 1).inst;
@@ -118,14 +139,14 @@ package body ROB_functions is
 					end if;
 					
 				elsif PM_buffer_en = '1' and ROB_temp(i).valid = '0' then
-					report "ROB_func: buffer PM_data_in, shift down [frst_br > inst]";
+					report "ROB_func: buffer PM_data_in, shift down [frst_br>inst]";
 					ROB_temp(i).inst 		:= PM_data_in;
 					ROB_temp(i).valid 	:= '1';
 					ROB_temp(i).specul	:= speculate_res;
 					exit;
 					
 				elsif ROB_temp(i + 1).valid = '0' and PM_buffer_en = '1' then
-					report "ROB_func: buffer PM_data_in, shift down [frst_br > inst]";
+					report "ROB_func: buffer PM_data_in, shift down [frst_br>inst]";
 					ROB_temp(i + n_clear_zero).inst 		:= PM_data_in;
 					ROB_temp(i + n_clear_zero).valid 	:= '1';
 					ROB_temp(i + n_clear_zero).specul	:= speculate_res;
@@ -136,11 +157,13 @@ package body ROB_functions is
 					ROB_temp(i) := ROB_temp(i + convert_CZ(clear_zero));
 					
 					if ROB_temp(i + convert_CZ(clear_zero)).inst(15 downto 12) = "1010" then
-						if results_avail = '1' and condition_met = '1' then
+						--if results_avail = '1' and condition_met = '1' then
+						if results_avail = '1' and condition_met = '0' then
 							report "ROB_func: just shift ROB entry down, and mark branch as complete.";
 							ROB_temp(i).complete := '1';
 							ROB_temp(i).specul	:= '0';
-						elsif results_avail = '1' and condition_met = '0' then
+						--elsif results_avail = '1' and condition_met = '0' then
+						elsif results_avail = '1' and condition_met = '1' then
 							report "ROB_func: just shift ROB entry down and clear branch.";
 							ROB_temp(i) 			:= ((others => '0'), '0', '0', (others => '0'), '0');
 						end if;
@@ -148,15 +171,20 @@ package body ROB_functions is
 						
 				end if;
 				
-			elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '0' and i < scnd_branch_idx then
+			--elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '0' and i < scnd_branch_idx then
 				--if the first ROB branch condition is not met, then we've wasted time buffering a bunch of invalid instructions
+				--need to purge the ROB after frst_branch_idx entirely
+			elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '1' then
+				--if the first ROB branch condition is met, then we've wasted time buffering a subsequent bunch of invalid instructions
 				--need to purge the ROB after frst_branch_idx entirely
 				ROB_temp(i) 	:= ((others => '0'), '0', '0', (others => '0'), '0');
 
-			elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '1' and i < scnd_branch_idx then
+			--elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '1' and i < scnd_branch_idx then
 				--shift all instructions down, and buffer PM_data_in or update ROB results as applicable
 				--report "i>=frst_branch_idx and results_avail='1', condition_met='1', i=" & Integer'image(i);
 				--mark all speculative results as non-speculative, from first_branch_index to second_branch_index, and clear first branch from ROB
+			elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '0' and i < scnd_branch_idx then
+				--if the first ROB branch condition is not met, then we've correctly buffered the subsequent instructions
 				
 				if ROB_temp(i + 1).valid = '0' then 
 					--we can buffer PM_data_in right here, and shift down this range of instructions since the branch condition was met
@@ -182,7 +210,8 @@ package body ROB_functions is
 					end if;
 				end if;
 			
-			elsif i >= scnd_branch_idx and results_avail = '1' and condition_met = '1' then
+			--elsif i >= scnd_branch_idx and results_avail = '1' and condition_met = '1' then
+			elsif i >= scnd_branch_idx and results_avail = '1' and condition_met = '0' then
 				--these results are still speculative. buffer PM_data_in or update ROB results as applicable
 				if ROB_temp(i + 1).valid = '0' then 
 					--we can buffer PM_data_in right here, mark as speculative

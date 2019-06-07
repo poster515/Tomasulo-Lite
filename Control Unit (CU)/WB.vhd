@@ -36,7 +36,8 @@ entity WB is
 		stall_out		: out std_logic;
 		WB_data_out		: out std_logic_vector(15 downto 0);
 		ROB_out			: out ROB;
-		WB_IW_out		: out std_logic_vector(15 downto 0)
+		WB_IW_out		: out std_logic_vector(15 downto 0);
+		revalidate_reg	: out std_logic
 	);
 end WB;
 
@@ -129,6 +130,7 @@ begin
 			RF_wr_en 			<= '0';
 			WB_out_mux_sel 	<= "01";
 			clear_zero_inst 	<= '0'; 
+			revalidate_reg		<= '0';
 			
 		elsif rising_edge(sys_clock) then
 			
@@ -222,11 +224,20 @@ begin
 						RF_in_demux 		<= ROB_actual(1).inst(11 downto 7);	--
 						
 					else
-						--report "WB: 5. not sure. buffering PM_data_in and updating ROB with results.";
+						report "WB: 5. not sure. buffering PM_data_in and updating ROB with results.";
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(next_IW_is_addr), IW_in, WB_data, '1', clear_zero_inst, 
 															results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 						clear_zero_inst 	<= '0'; 	
-						RF_wr_en 			<= '0';			
+						RF_wr_en 			<= '0';	
+				
+						if no_ROB_match(ROB_actual, IW_in, ROB_DEPTH) = '1' then
+						--the incoming IW_in doesn't match any instruction in the ROB, which means it belongs to a branch that was cleared
+							revalidate_reg 	<= '1';
+							RF_in_demux 		<= IW_in(11 downto 7);
+						else
+							revalidate_reg 	<= '0';
+						end if;
+						
 					end if;
 					
 				else
@@ -236,6 +247,14 @@ begin
 														results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 					clear_zero_inst 	<= '0'; 	
 					RF_wr_en 			<= '0';
+					
+					if no_ROB_match(ROB_actual, IW_in, ROB_DEPTH) = '1' then
+					--the incoming IW_in doesn't match any instruction in the ROB, which means it belongs to a branch that was cleared
+						revalidate_reg 	<= '1';
+						RF_in_demux 		<= IW_in(11 downto 7);
+					else
+						revalidate_reg 	<= '0';
+					end if;
 					
 				end if; --PM_data_in
 				
