@@ -118,6 +118,116 @@ begin
 --			speculate_results <= '0';
 		end if;
 	end process;
+--	
+--	process(reset_n, ROB_actual, frst_branch_index)
+--	begin
+--	
+--		if reset_n = '0' then
+--			
+--			SIB_actual <= initialize_SIB(SIB_actual, ROB_DEPTH);
+--			revalidate_reg		<= '0';
+--			
+--		else
+--			
+--			if frst_branch_index < 10 then
+--			--if we're here, we know there's at least one branch in the ROB
+--			--need to buffer all valid (frst_branch_index < instructions < scnd_branch_index)
+--				
+--				if results_available = '1' and condition_met = '1' then
+--				--then we know that the branch was incorrectly skipped, need to trigger a purge of all speculative instructions prior to scnd_branch_index
+--				--don't want to buffer PM_data_in, since the instruction on this clock cycle is known to be incorrectly fetched
+--				
+--				--begin to purge SIB
+--				
+--					purge_SIB 		<= '1';
+--					
+--					if SIB_match(SIB_actual, IW_in, ROB_DEPTH) < 10 then
+--					--IW_in matches an instruction in the SIB
+--						revalidate_reg 	<= '1';
+--						RF_in_demux 		<= SIB_actual(SIB_match(SIB_actual, IW_in, ROB_DEPTH)).inst(11 downto 7);
+--						
+--						if SIB_match(SIB_actual, IW_in, ROB_DEPTH) = 0 and SIB_actual(0).valid = '1' and SIB_actual(1).valid = '1' then
+--						--clear purge_SIB, if the match was at the last one (i.e., SIB(0).valid = '1' and SIB(1).valid = '0')
+--							purge_SIB <= '0';
+--							
+--						end if;
+--					else
+--						revalidate_reg 	<= '0';
+--					end if;
+--					
+--					SIB_actual <= buffer_spec_insts(ROB_actual, frst_branch_index, scnd_branch_index, PM_data_in, ROB_DEPTH);
+--					
+--				elsif purge_SIB = '1' then
+--				--new branch has been encountered while clearing the previous branch's SIB entries, continue clearing SIB
+--				--don't want to buffer PM_data_in during this clock edge unless the 
+--					if SIB_match(SIB_actual, IW_in, ROB_DEPTH) < 10 then
+--					--IW_in matches an instruction in the SIB
+--						revalidate_reg 	<= '1';
+--						RF_in_demux 		<= SIB_actual(SIB_match(SIB_actual, IW_in, ROB_DEPTH)).inst(11 downto 7);
+--						
+--						if SIB_match(SIB_actual, IW_in, ROB_DEPTH) = 0 and SIB_actual(0).valid = '1' and SIB_actual(1).valid = '1' then
+--						--clear purge_SIB, if the match was at the last one (i.e., SIB(0).valid = '1' and SIB(1).valid = '0')
+--							purge_SIB <= '0';
+--							
+--						end if;
+--					else
+--						revalidate_reg 	<= '0';
+--					end if;
+--					
+--				else
+--					--doesn't matter, just continue to buffer PM_data_in
+--					SIB_actual <= buffer_spec_insts(ROB_actual, frst_branch_index, scnd_branch_index, PM_data_in, ROB_DEPTH);
+--					
+--				end if;
+--				
+--			elsif purge_SIB = '1' then
+--			--we know that the branch needs to be taken, continue clearing SIB
+--				
+--				if SIB_match(SIB_actual, IW_in, ROB_DEPTH) < 10 then
+--				--IW_in matches an instruction in the SIB
+--					revalidate_reg 	<= '1';
+--					RF_in_demux 		<= SIB_actual(SIB_match(SIB_actual, IW_in, ROB_DEPTH)).inst(11 downto 7);
+--					
+--					if SIB_match(SIB_actual, IW_in, ROB_DEPTH) = 0 and SIB_actual(0).valid = '1' and SIB_actual(1).valid = '1' then
+--					--clear purge_SIB, if the match was at the last one (i.e., SIB(0).valid = '1' and SIB(1).valid = '0')
+--						purge_SIB <= '0';
+--						
+--					end if;
+--				else
+--					revalidate_reg 	<= '0';
+--				end if;
+--				
+--				--now, finally, shift SIB
+--				SIB_actual <= buffer_spec_insts(ROB_actual, frst_branch_index, scnd_branch_index, PM_data_in, ROB_DEPTH);
+--				
+--			else
+--				
+--				--just check if SIB has any instructions in it
+--				purge_SIB <= purge_SIB and is_SIB_empty(SIB_actual);
+--				
+--			end if; --frst_branch_index < 10
+--		end if; --reset_n
+--	
+--	end process;
+
+clear_LAB_IW_out
+clear_ID_IW_out
+clear_EX_IW_out
+clear_MEM_IW_out
+
+convert_and_shift(reg_in	: in std_logic_vector(4 downto 0) )
+
+	return std_logic_vector(15 downto 0);
+
+for i in 0 to ROB_DEPTH - 1 loop
+
+	if i > frst_branch_index and i < scnd_branch_index then
+		RF_revalidation <= RF_revalidation or convert_and_shift(ROB_actual(i).inst(11 downto 7));
+	end if;
+	
+end loop;
+
+
 
 	process(reset_n, sys_clock)
 	begin
@@ -130,7 +240,7 @@ begin
 			RF_wr_en 			<= '0';
 			WB_out_mux_sel 	<= "01";
 			clear_zero_inst 	<= '0'; 
-			revalidate_reg		<= '0';
+			
 			
 		elsif rising_edge(sys_clock) then
 			
@@ -230,14 +340,6 @@ begin
 						clear_zero_inst 	<= '0'; 	
 						RF_wr_en 			<= '0';	
 				
-						if no_ROB_match(ROB_actual, IW_in, ROB_DEPTH) = '1' then
-						--the incoming IW_in doesn't match any instruction in the ROB, which means it belongs to a branch that was cleared
-							revalidate_reg 	<= '1';
-							RF_in_demux 		<= IW_in(11 downto 7);
-						else
-							revalidate_reg 	<= '0';
-						end if;
-						
 					end if;
 					
 				else
@@ -247,14 +349,6 @@ begin
 														results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 					clear_zero_inst 	<= '0'; 	
 					RF_wr_en 			<= '0';
-					
-					if no_ROB_match(ROB_actual, IW_in, ROB_DEPTH) = '1' then
-					--the incoming IW_in doesn't match any instruction in the ROB, which means it belongs to a branch that was cleared
-						revalidate_reg 	<= '1';
-						RF_in_demux 		<= IW_in(11 downto 7);
-					else
-						revalidate_reg 	<= '0';
-					end if;
 					
 				end if; --PM_data_in
 				

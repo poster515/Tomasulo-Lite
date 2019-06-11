@@ -244,6 +244,11 @@ begin
 								IW_reg <= "1111111111111111";
 							end if;
 						end if;
+						
+					elsif results_available = '1' and condition_met = '1' then
+						--purge speculative instructions in ROB since some (or all) were erroneously fetched from PM
+						--additionally, don't want to buffer PM_data_in
+					
 					
 					else
 						--report "Have at least one valid instruction in LAB";
