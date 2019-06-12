@@ -36,12 +36,4 @@ package control_unit_types is
 	
 	type ROB is array(9 downto 0) of ROB_entry;
 	
-	type SIB_entry is
-		record
-		  inst			: std_logic_vector(15 downto 0);	--buffers instruction
-		  valid			: std_logic;							--tracks if valid instruction buffered
-		end record;
-	
-	type SIB is array(9 downto 0) of SIOB_entry;
-
 end control_unit_types;

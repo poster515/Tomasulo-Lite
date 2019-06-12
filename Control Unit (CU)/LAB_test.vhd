@@ -16,6 +16,7 @@ entity LAB_test is
 		ID_IW						: in std_logic_vector(15 downto 0); --source registers for instruction in ID stage (results available)
 		EX_IW						: in std_logic_vector(15 downto 0); --source registers for instruction in EX stage (results available)
 		MEM_IW					: in std_logic_vector(15 downto 0); --source registers for instruction in MEM stage (results available)
+		WB_IW						: in std_logic_vector(15 downto 0);
 		ID_reset, EX_reset, MEM_reset	: in std_logic;
 		PM_data_in				: in std_logic_vector(15 downto 0);
 		RF_in_3, RF_in_4		: in std_logic_vector(15 downto 0);
@@ -25,6 +26,8 @@ entity LAB_test is
 		RF_in_4_valid			: in std_logic;
 		ROB_in					: in ROB;
 		ALU_SR_in				: in std_logic_vector(3 downto 0);
+		frst_branch_idx		: in integer;
+		scnd_branch_idx		: in integer;
 		
 		PC							: out std_logic_vector(10 downto 0);
 		IW							: out std_logic_vector(15 downto 0);
@@ -38,7 +41,8 @@ entity LAB_test is
 		condition_met			: inout std_logic;	--signal to WB for ROB. as soon as "results_available" goes high, need to evaluate all instructions after first branch
 		results_available		: inout std_logic;	--signal to WB for ROB. as soon as it goes high, need to evaluate all instructions after first branch
 		ALU_fwd_reg_1 			: out std_logic;		--output to ID stage to tell EX stage to forward MEM_out data in to ALU_in_1
-		ALU_fwd_reg_2 			: out std_logic		--output to ID stage to tell EX stage to forward MEM_out data in to ALU_in_2
+		ALU_fwd_reg_2 			: out std_logic;		--output to ID stage to tell EX stage to forward MEM_out data in to ALU_in_2
+		RF_revalidate			: out std_logic_vector(15 downto 0)
 	);
 end entity LAB_test;
 
@@ -129,6 +133,7 @@ begin
 			LAB_full 			<= '0';
 			ALU_fwd_reg_1 		<= '0';
 			ALU_fwd_reg_2		<= '0';
+			RF_revalidate		<= "0000000000000000";
 			
 		elsif rising_edge(sys_clock) then
 			LAB_reset_out		<= '1';
@@ -248,8 +253,19 @@ begin
 					elsif results_available = '1' and condition_met = '1' then
 						--purge speculative instructions in ROB since some (or all) were erroneously fetched from PM
 						--additionally, don't want to buffer PM_data_in
+						
+						--clear all speculatively fetched instructions from LAB
+						LAB <= purge_insts(LAB, ROB_in, frst_branch_idx);
+						
+						--issue no-op. this may incur a one clock penalty but reduces the complexity of determining any other valid instructions in LAB
+						IW_reg <= "1111111111111111";
+						
+						--clear the speculatively fetched instructions issued into pipeline - only clears these and not non-speculative instructions
+						clear_IW_outs	<= check_ROB_for_wrongly_fetched_insts(ROB_in, LAB_IW, ID_IW, EX_IW, MEM_IW);
 					
-					
+						--make function that logically ORs a RF revalidation vector for the RF for registers in pipeline that were incorrectly fetched and executed
+						RF_revalidate <= revalidate_RF_regs(LAB_IW, ID_IW, EX_IW, MEM_IW);
+						
 					else
 						--report "Have at least one valid instruction in LAB";
 						--have at least one valid instruction waiting in LAB
@@ -386,12 +402,14 @@ begin
 
 							end if; --various tags
 						end loop; --for i
+						
+						RF_revalidate		<= "0000000000000000";
 					
 					end if; --LAB(0).valid = '0' 
 			else
 				--if stalled, just issue noop
-				IW_reg <= "1111111111111111";
-				
+				IW_reg 			<= "1111111111111111";
+				RF_revalidate	<= "0000000000000000";
 			end if; --stall_pipeline
 					
 		end if; --reset_n
@@ -638,5 +656,10 @@ begin
 		IW 	<= IW_reg;
 		MEM 	<= MEM_reg;
 		LAB_stall <= LAB_full;
+		
+		clear_LAB_IW_out	<= clear_IW_outs(0);
+		clear_ID_IW_out	<= clear_IW_outs(1);
+		clear_EX_IW_out	<= clear_IW_outs(2);
+		clear_MEM_IW_out	<= clear_IW_outs(3);
 		
 end architecture arch;

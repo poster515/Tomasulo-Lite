@@ -17,6 +17,9 @@ package ROB_functions is
 	function convert_CZ ( clear_zero : in std_logic )
 		return integer;
 		
+	function convert_shift_IW_regs(reg_in	: in std_logic_vector(4 downto 0) )
+		return std_logic_vector(15 downto 0);
+		
 	function update_ROB( 
 		ROB_in 				: in ROB;
 		PM_data_in			: in std_logic_vector(15 downto 0);

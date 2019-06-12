@@ -35,6 +35,24 @@ package LAB_functions is
 	--function to type convert std_logic to integer
 	function convert_SL ( shift_LAB : in std_logic )
 		return integer;
+		
+	function purge_insts(	LAB					: in LAB_actual;
+									ROB_in				: in ROB;
+									frst_branch_idx	: in integer);
+		return LAB_actual;
+		
+	function check_ROB_for_wrongly_fetched_insts(ROB_in	: in ROB;
+																LAB_IW	: in std_logic_vector(15 downto 0);
+																ID_IW		: in std_logic_vector(15 downto 0);
+																EX_IW		: in std_logic_vector(15 downto 0);
+																MEM_IW	: in std_logic_vector(15 downto 0))
+		return std_logic_vector;
+		
+	function revalidate_RF_regs(LAB_IW	: in std_logic_vector(15 downto 0);
+										ID_IW		: in std_logic_vector(15 downto 0);
+										EX_IW		: in std_logic_vector(15 downto 0);
+										MEM_IW	: in std_logic_vector(15 downto 0))
+		return std_logic_vector;
 	
 	--function to determine if results of branch condition are ready	
 	function results_ready( bne 				: in std_logic; 
@@ -260,6 +278,100 @@ package body LAB_functions is
 		end if;
 		
 	end;
+	
+	--function to purge LAB of all instructions that were incorrectly fetched as part of speculative branch execution
+	function purge_insts(	LAB					: in LAB_actual;
+									ROB_in				: in ROB;
+									frst_branch_idx	: in integer);
+		return LAB_actual is
+		
+		variable i, clear_remaining		: integer 		:= 5;	
+		variable LAB_temp						: LAB_actual 	:= LAB;
+		
+	begin
+		
+		for i in 0 to 4 loop
+			if ROB_in(frst_branch_idx + 1).inst = LAB_temp(i).inst and LAB_temp(i).inst_valid = '1' then
+			--clear all subsequent instructions from LAB
+				LAB_temp(i).inst				:= "0000000000000000";
+				LAB_temp(i).inst_valid		:= '0';
+				LAB_temp(i).addr				:= "0000000000000000";
+				LAB_temp(i).addr_valid		:= '1';
+				
+				clear_remaining = i;
+				
+			elsif clear_remaining > i then
+				LAB_temp(i).inst				:= "0000000000000000";
+				LAB_temp(i).inst_valid		:= '0';
+				LAB_temp(i).addr				:= "0000000000000000";
+				LAB_temp(i).addr_valid		:= '1';
+			end if;
+		end loop;	--i
+		
+		return LAB_temp;
+	
+	end;
+	
+	--function to determine if incorrectly, speculatively fetched instructions are in pipeline 
+	--returns std_logic_vector(3 downto 0) = | LAB_IW | ID_IW | EX_IW | MEM_IW |
+	
+	function check_ROB_for_wrongly_fetched_insts(ROB_in	: in ROB;
+																LAB_IW	: in std_logic_vector(15 downto 0);
+																ID_IW		: in std_logic_vector(15 downto 0);
+																EX_IW		: in std_logic_vector(15 downto 0);
+																MEM_IW	: in std_logic_vector(15 downto 0))
+		return std_logic_vector is
+		
+		variable i		: integer 	:= 0;	
+		variable temp 	: std_logic_vector(3 downto 0) := "0000";
+		
+	begin 
+	
+		for i in 0 to 9 loop
+	
+			if ROB_in(i).inst = LAB_IW then
+				temp := temp or "1000";
+				
+			elsif ROB_in(i).inst = ID_IW then
+				temp := temp or "0100";
+				
+			elsif ROB_in(i).inst = EX_IW then
+				temp := temp or "0010";
+				
+			elsif ROB_in(i).inst = MEM_IW then
+				temp := temp or "0001";
+				
+			end if;
+			
+		end loop;
+		
+		return temp;
+	end;
+	
+	--this function will generate a 32-bit revalidation vector for the RF based on registers in the pipeline that were wrongly fetched and executed
+	function revalidate_RF_regs(	LAB_IW	: in std_logic_vector(15 downto 0);
+											ID_IW		: in std_logic_vector(15 downto 0);
+											EX_IW		: in std_logic_vector(15 downto 0);
+											MEM_IW	: in std_logic_vector(15 downto 0))
+		return std_logic_vector is
+		
+		variable temp_L	: unsigned(15 downto 0) := LAB_IW;
+		variable temp_I	: unsigned(15 downto 0) := ID_IW;
+		variable temp_E	: unsigned(15 downto 0) := EX_IW;
+		variable temp_M	: unsigned(15 downto 0) := MEM_IW;
+		
+		variable one		: unsigned(15 downto 0) := "0000000000000001";
+	begin
+	
+		temp_L := shift_left(one, to_integer(unsigned(LAB_IW(11 downto 7))));
+		temp_I := shift_left(one, to_integer(unsigned(ID_IW(11 downto 7))));
+		temp_E := shift_left(one, to_integer(unsigned(EX_IW(11 downto 7))));
+		temp_M := shift_left(one, to_integer(unsigned(MEM_IW(11 downto 7))));
+	
+	
+		return std_logic_vector(temp_L or temp_I or temp_E or temp_M);
+	end;
+		
 	
 	--function to determine if results of branch condition are ready	
 	function results_ready( bne 				: in std_logic; 
