@@ -34,6 +34,7 @@ entity control_unit is
 		ID_RF_out_4_mux					: out std_logic_vector(4 downto 0);	--controls fourth output mux
 		ID_RF_out1_en, ID_RF_out2_en	: out std_logic; --enables RF_out_X 
 		ID_RF_out3_en, ID_RF_out4_en	: out std_logic; --enables RF_out_X 
+		RF_revalidate						: out std_logic_vector(31 downto 0);
 		
 		--(EX) ALU control Signals
 		ALU_out1_en, ALU_out2_en		: out std_logic; 
@@ -76,31 +77,35 @@ architecture behavioral of control_unit is
 	signal ID_stall_out			: std_logic;
 	signal LAB_ID_fwd_reg1		: std_logic;
 	signal LAB_ID_fwd_reg2		: std_logic;
+	signal clear_ID_IW_out		: std_logic;
 	
 	--ID <-> EX Signals
-	signal ID_EX_IW				: std_logic_vector(15 downto 0); --goes to EX control unit
-	signal EX_stall_out			: std_logic;
-	signal ID_EX_mem_address	: std_logic_vector(15 downto 0);
-	signal ID_EX_immediate_val	: std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
-	signal ID_reset_out			: std_logic;
-	signal ID_EX_fwd_reg1		: std_logic;
-	signal ID_EX_fwd_reg2		: std_logic;
+	signal ID_EX_IW, ID_EX_mux_IW	: std_logic_vector(15 downto 0); --goes to EX control unit
+	signal EX_stall_out				: std_logic;
+	signal ID_EX_mem_address		: std_logic_vector(15 downto 0);
+	signal ID_EX_immediate_val		: std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
+	signal ID_reset_out				: std_logic;
+	signal ID_EX_fwd_reg1			: std_logic;
+	signal ID_EX_fwd_reg2			: std_logic;
+	signal clear_EX_IW_out			: std_logic;
  
 	--EX <-> MEM Signals
-	signal EX_MEM_IW				: std_logic_vector(15 downto 0); -- forwarding to MEM control unit
-	signal MEM_stall_out			: std_logic;
-	signal EX_reset_out			: std_logic;
+	signal EX_MEM_IW, EX_MEM_mux_IW	: std_logic_vector(15 downto 0); -- forwarding to MEM control unit
+	signal MEM_stall_out					: std_logic;
+	signal EX_reset_out					: std_logic;
+	signal clear_MEM_IW_out				: std_logic;
 	
 	--MEM <-> WB Signals
-	signal MEM_WB_IW				: std_logic_vector(15 downto 0);
-	signal WB_stall_out			: std_logic;
-	signal MEM_reset_out			: std_logic;
+	signal MEM_WB_IW, MEM_WB_mux_IW	: std_logic_vector(15 downto 0);
+	signal WB_stall_out					: std_logic;
+	signal MEM_reset_out					: std_logic;
 	
 	--WB <-> LAB signals
 	signal condition_met			: std_logic;
 	signal results_available	: std_logic;
 	signal ROB_in					: ROB;
 	signal WB_IW_out				: std_logic_vector(15 downto 0);
+	signal frst_branch_index	: integer;
 	
 	component LAB_test is
 		generic ( 	LAB_MAX		: integer	:= 5;
@@ -120,6 +125,7 @@ architecture behavioral of control_unit is
 			RF_in_4_valid			: in std_logic;
 			ROB_in					: in ROB;
 			ALU_SR_in				: in std_logic_vector(3 downto 0);
+			frst_branch_idx		: in integer;
 			
 			PC							: out std_logic_vector(10 downto 0);
 			IW							: out std_logic_vector(15 downto 0);
@@ -133,7 +139,11 @@ architecture behavioral of control_unit is
 			condition_met			: inout std_logic;	--signal to WB for ROB. as soon as "results_available" goes high, need to evaluate all instructions after first branch
 			results_available		: inout std_logic;		--signal to WB for ROB. as soon as it goes high, need to evaluate all instructions after first branch
 			ALU_fwd_reg_1 			: out std_logic;		--output to ID stage to tell EX stage to forward MEM_out data in to ALU_in_1
-			ALU_fwd_reg_2 			: out std_logic
+			ALU_fwd_reg_2 			: out std_logic;
+			RF_revalidate			: out std_logic_vector(31 downto 0);
+			clear_ID_IW_out		: out std_logic;
+			clear_EX_IW_out		: out std_logic;
+			clear_MEM_IW_out		: out std_logic
 		);
 	end component;
 
@@ -244,9 +254,20 @@ architecture behavioral of control_unit is
 			stall_out		: out std_logic;
 			WB_data_out		: out std_logic_vector(15 downto 0);
 			ROB_out			: out ROB;
-			WB_IW_out		: out std_logic_vector(15 downto 0)
+			WB_IW_out		: out std_logic_vector(15 downto 0);
+			frst_branch_index	: inout integer
 		);
 	end component;
+	
+	component mux_2_new is
+	PORT
+	(
+		data0x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+		data1x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+		sel			: IN STD_LOGIC;
+		result		: OUT STD_LOGIC_VECTOR (15 DOWNTO 0)
+	);
+	end component mux_2_new;
 	
 begin
 
@@ -274,6 +295,7 @@ begin
 		RF_in_4_valid	=> RF_in_4_valid,
 		ROB_in			=>	ROB_in,
 		ALU_SR_in		=> ALU_SR_in,
+		frst_branch_idx => frst_branch_index,
 		PC					=> PC_CU_out,
 		IW					=> LAB_ID_IW,
 		MEM				=> LAB_mem_addr_out,
@@ -286,7 +308,11 @@ begin
 		condition_met	=> condition_met,
 		results_available	=> results_available,
 		ALU_fwd_reg_1 	=> LAB_ID_fwd_reg1,
-		ALU_fwd_reg_2 	=> LAB_ID_fwd_reg2
+		ALU_fwd_reg_2 	=> LAB_ID_fwd_reg2,
+		RF_revalidate	=> RF_revalidate,
+		clear_ID_IW_out	=> clear_ID_IW_out,
+		clear_EX_IW_out	=> clear_EX_IW_out,
+		clear_MEM_IW_out	=> clear_MEM_IW_out
 	);
 	
 	ID_actual	: ID
@@ -319,12 +345,21 @@ begin
 		ALU_fwd_reg_2_out	=> ID_EX_fwd_reg2
 	);
 	
+	ID_EX_output_IW	: mux_2_new 
+	PORT MAP
+	(
+		data0x		=> ID_EX_IW,
+		data1x		=> "1111111111111111",
+		sel			=> clear_ID_IW_out,
+		result		=> ID_EX_mux_IW
+	);
+	
 	EX_actual : EX
 	port map (
 		--Input data and clock
 		reset_n					=> ID_reset_out, 
 		sys_clock				=> sys_clock,	
-		IW_in						=> ID_EX_IW,
+		IW_in						=> ID_EX_mux_IW,
 		LAB_stall_in			=> LAB_stall_out,
 		WB_stall_in				=> WB_stall_out,
 		MEM_stall_in			=> MEM_stall_out,
@@ -350,12 +385,21 @@ begin
 		reset_out				=>	EX_reset_out
 	);
 	
+	EX_MEM_output_IW	: mux_2_new 
+	PORT MAP
+	(
+		data0x		=> EX_MEM_IW,
+		data1x		=> "1111111111111111",
+		sel			=> clear_EX_IW_out,
+		result		=> EX_MEM_mux_IW
+	);
+	
 	MEM_actual : MEM
 	port map ( 
 		--Input data and clock
 		reset_n						=> EX_reset_out, 
 		sys_clock					=> sys_clock,	
-		IW_in							=> EX_MEM_IW,
+		IW_in							=> EX_MEM_mux_IW,
 		LAB_stall_in				=> LAB_stall_out,
 		WB_stall_in					=> WB_stall_out,
 		I2C_error					=> I2C_error,
@@ -379,13 +423,22 @@ begin
 		reset_out					=> MEM_reset_out
 	);
 	
+	MEM_WB_output_IW	: mux_2_new 
+	PORT MAP
+	(
+		data0x		=> MEM_WB_IW,
+		data1x		=> "1111111111111111",
+		sel			=> clear_MEM_IW_out,
+		result		=> MEM_WB_mux_IW
+	);
+	
 	WB_actual : WB
 	port map ( 
 		--Input data and clock
 		reset_n						=> reset_n, 
 		reset_MEM					=> MEM_reset_out,
 		sys_clock					=> sys_clock,	
-		IW_in							=> MEM_WB_IW, 
+		IW_in							=> MEM_WB_mux_IW, 
 		PM_data_in					=> PM_data_in,
 		LAB_stall_in				=> LAB_stall_out,
 		MEM_out_top					=> MEM_out_top,
@@ -402,7 +455,8 @@ begin
 		stall_out					=> WB_stall_out,
 		WB_data_out					=> WB_data_out,
 		ROB_out						=> ROB_in,
-		WB_IW_out					=> WB_IW_out
+		WB_IW_out					=> WB_IW_out,
+		frst_branch_index			=> frst_branch_index
 	);
 		
 		

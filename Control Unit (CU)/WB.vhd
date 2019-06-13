@@ -37,7 +37,7 @@ entity WB is
 		WB_data_out		: out std_logic_vector(15 downto 0);
 		ROB_out			: out ROB;
 		WB_IW_out		: out std_logic_vector(15 downto 0);
-		revalidate_reg	: out std_logic
+		frst_branch_index	: inout integer
 	);
 end WB;
 
@@ -60,7 +60,7 @@ architecture behavioral of WB is
 	signal WB_data											: std_logic_vector(15 downto 0);
 	signal clear_zero_inst, speculate_results		: std_logic;
 	signal i, j												: integer range 0 to ROB_DEPTH;
-	signal frst_branch_index, scnd_branch_index	: integer range 0 to ROB_DEPTH;
+	signal scnd_branch_index							: integer range 0 to ROB_DEPTH;
 	signal ROB_actual										: ROB;
 	
 	--signal tracks whether the next IW is a memory address (for jumps, loads, etc)
@@ -173,7 +173,7 @@ begin
 															IW_in, WB_data, '0', '1', results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 
 						RF_in_demux 		<= IW_in(11 downto 7);	--use IW to find destination register for the aforementioned instructions
-						
+						WB_IW_out			<= IW_in;
 						--only if zeroth instruction is non-speculative can we write back results to RF
 						clear_zero_inst 	<= '1'; 	--enable clearing the zeroth instruction since zero_inst_match = '1'
 						
@@ -223,6 +223,7 @@ begin
 						
 						clear_zero_inst 	<= not(ROB_actual(1).specul);	--enable clearing zeroth instruction if its complete
 						RF_in_demux 		<= ROB_actual(1).inst(11 downto 7);	--
+						WB_IW_out			<= ROB_actual(1).inst;
 						
 					else
 						report "WB: 5. not sure. buffering PM_data_in and updating ROB with results.";
@@ -230,7 +231,7 @@ begin
 															results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 						clear_zero_inst 	<= '0'; 	
 						RF_wr_en 			<= '0';	
-				
+						WB_IW_out			<= "1111111111111111";
 					end if;
 					
 				else
@@ -240,6 +241,7 @@ begin
 														results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 					clear_zero_inst 	<= '0'; 	
 					RF_wr_en 			<= '0';
+					WB_IW_out			<= "1111111111111111";
 					
 				end if; --PM_data_in
 				

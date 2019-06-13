@@ -16,7 +16,6 @@ entity LAB_test is
 		ID_IW						: in std_logic_vector(15 downto 0); --source registers for instruction in ID stage (results available)
 		EX_IW						: in std_logic_vector(15 downto 0); --source registers for instruction in EX stage (results available)
 		MEM_IW					: in std_logic_vector(15 downto 0); --source registers for instruction in MEM stage (results available)
-		WB_IW						: in std_logic_vector(15 downto 0);
 		ID_reset, EX_reset, MEM_reset	: in std_logic;
 		PM_data_in				: in std_logic_vector(15 downto 0);
 		RF_in_3, RF_in_4		: in std_logic_vector(15 downto 0);
@@ -27,7 +26,6 @@ entity LAB_test is
 		ROB_in					: in ROB;
 		ALU_SR_in				: in std_logic_vector(3 downto 0);
 		frst_branch_idx		: in integer;
-		scnd_branch_idx		: in integer;
 		
 		PC							: out std_logic_vector(10 downto 0);
 		IW							: out std_logic_vector(15 downto 0);
@@ -42,7 +40,10 @@ entity LAB_test is
 		results_available		: inout std_logic;	--signal to WB for ROB. as soon as it goes high, need to evaluate all instructions after first branch
 		ALU_fwd_reg_1 			: out std_logic;		--output to ID stage to tell EX stage to forward MEM_out data in to ALU_in_1
 		ALU_fwd_reg_2 			: out std_logic;		--output to ID stage to tell EX stage to forward MEM_out data in to ALU_in_2
-		RF_revalidate			: out std_logic_vector(15 downto 0)
+		RF_revalidate			: out std_logic_vector(31 downto 0);
+		clear_ID_IW_out		: out std_logic;
+		clear_EX_IW_out		: out std_logic;
+		clear_MEM_IW_out		: out std_logic
 	);
 end entity LAB_test;
 
@@ -110,6 +111,9 @@ architecture arch of LAB_test is
 	--signal which goes to '1' when PM_data_in is an instruction requiring use of an actual Reg2, vice an immediate value
 	signal reg2_used		: std_logic;
 	
+	--signal to store bits that indicate that various pipeline stages should be cleared due to an incorrectly taken branch
+	signal clear_IW_outs : std_logic_vector(0 to 2);
+	
 	--signals storing information that the PM_data_in, if issued, will require data forwarded from MEM_out stage
 --	signal ALU_fwd_reg_1_reg, ALU_fwd_reg_2_reg	: std_logic;
 	
@@ -133,14 +137,17 @@ begin
 			LAB_full 			<= '0';
 			ALU_fwd_reg_1 		<= '0';
 			ALU_fwd_reg_2		<= '0';
-			RF_revalidate		<= "0000000000000000";
+			RF_revalidate		<= "00000000000000000000000000000000";
+			--should clear_IW_outs be "111" instead to initialize everything to a no-op?
+			clear_IW_outs 		<= "000";
+			
+			RF_revalidate 		<= "00000000000000000000000000000000";
 			
 		elsif rising_edge(sys_clock) then
 			LAB_reset_out		<= '1';
 			LAB <= LAB;
 			--branches <= branches;
 			--jumps are easily handled with "program_counter" process below 
-			--branches are constantly being evaluated with the state machine "branch_state" below
 			--ALU instructions are managed and re-ordered strictly between branches in ROB
 
 			--continually check for branch condition on PM_data_in
@@ -186,6 +193,12 @@ begin
 	--				if PM_data_in matches any pipeline stage instruction (and the associated reset_n is high), then issue next
 	--				valid, non-conflicting instruction or if none available, just buffer PM_data_in in LAB and issue a no-op command
 	--				(i.e., "1111111111111111")
+	
+						--first make sure that the outputs aren't being cleared
+						clear_IW_outs <= "000";
+						
+						--make sure that the RF_revalidate signal is cleared
+						RF_revalidate <= "00000000000000000000000000000000";
 		
 						--if there's a conflict and its not a jump and its not a memory address
 						if PM_datahaz_status = '1' then 
@@ -261,12 +274,14 @@ begin
 						IW_reg <= "1111111111111111";
 						
 						--clear the speculatively fetched instructions issued into pipeline - only clears these and not non-speculative instructions
-						clear_IW_outs	<= check_ROB_for_wrongly_fetched_insts(ROB_in, LAB_IW, ID_IW, EX_IW, MEM_IW);
+						clear_IW_outs	<= check_ROB_for_wrongly_fetched_insts(ROB_in, IW_reg, ID_IW, EX_IW, MEM_IW);
 					
 						--make function that logically ORs a RF revalidation vector for the RF for registers in pipeline that were incorrectly fetched and executed
-						RF_revalidate <= revalidate_RF_regs(LAB_IW, ID_IW, EX_IW, MEM_IW);
+						RF_revalidate <= revalidate_RF_regs(ROB_in, frst_branch_idx, IW_reg, ID_IW, EX_IW, MEM_IW);
 						
 					else
+						RF_revalidate <= "00000000000000000000000000000000";
+						clear_IW_outs <= "000";
 						--report "Have at least one valid instruction in LAB";
 						--have at least one valid instruction waiting in LAB
 						--use loop to check for hazards against stages of the pipeline
@@ -403,13 +418,13 @@ begin
 							end if; --various tags
 						end loop; --for i
 						
-						RF_revalidate		<= "0000000000000000";
+						RF_revalidate		<= "00000000000000000000000000000000";
 					
 					end if; --LAB(0).valid = '0' 
 			else
 				--if stalled, just issue noop
 				IW_reg 			<= "1111111111111111";
-				RF_revalidate	<= "0000000000000000";
+				RF_revalidate	<= "00000000000000000000000000000000";
 			end if; --stall_pipeline
 					
 		end if; --reset_n
@@ -656,10 +671,9 @@ begin
 		IW 	<= IW_reg;
 		MEM 	<= MEM_reg;
 		LAB_stall <= LAB_full;
-		
-		clear_LAB_IW_out	<= clear_IW_outs(0);
-		clear_ID_IW_out	<= clear_IW_outs(1);
-		clear_EX_IW_out	<= clear_IW_outs(2);
-		clear_MEM_IW_out	<= clear_IW_outs(3);
+
+		clear_ID_IW_out	<= clear_IW_outs(0);
+		clear_EX_IW_out	<= clear_IW_outs(1);
+		clear_MEM_IW_out	<= clear_IW_outs(2);
 		
 end architecture arch;

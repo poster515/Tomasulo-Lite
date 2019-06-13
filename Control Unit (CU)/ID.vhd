@@ -123,7 +123,7 @@ begin
 				end if; --IW_in
 				
 				IW_out <= IW_in;	--forward IW to EX stage
-				
+
 			elsif stall_in = '1' then
 				RF_out_1_mux_reg <= RF_out_1_mux_reg;	--if we get a stall signal, latch current value
 				RF_out_2_mux_reg <= RF_out_2_mux_reg;	--

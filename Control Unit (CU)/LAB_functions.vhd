@@ -38,7 +38,7 @@ package LAB_functions is
 		
 	function purge_insts(	LAB					: in LAB_actual;
 									ROB_in				: in ROB;
-									frst_branch_idx	: in integer);
+									frst_branch_idx	: in integer	)
 		return LAB_actual;
 		
 	function check_ROB_for_wrongly_fetched_insts(ROB_in	: in ROB;
@@ -48,10 +48,12 @@ package LAB_functions is
 																MEM_IW	: in std_logic_vector(15 downto 0))
 		return std_logic_vector;
 		
-	function revalidate_RF_regs(LAB_IW	: in std_logic_vector(15 downto 0);
-										ID_IW		: in std_logic_vector(15 downto 0);
-										EX_IW		: in std_logic_vector(15 downto 0);
-										MEM_IW	: in std_logic_vector(15 downto 0))
+	function revalidate_RF_regs(	ROB_in				: in ROB;
+											frst_branch_idx	: in integer;
+											LAB_IW				: in std_logic_vector(15 downto 0);
+											ID_IW					: in std_logic_vector(15 downto 0);
+											EX_IW					: in std_logic_vector(15 downto 0);
+											MEM_IW				: in std_logic_vector(15 downto 0))
 		return std_logic_vector;
 	
 	--function to determine if results of branch condition are ready	
@@ -282,7 +284,7 @@ package body LAB_functions is
 	--function to purge LAB of all instructions that were incorrectly fetched as part of speculative branch execution
 	function purge_insts(	LAB					: in LAB_actual;
 									ROB_in				: in ROB;
-									frst_branch_idx	: in integer);
+									frst_branch_idx	: in integer)
 		return LAB_actual is
 		
 		variable i, clear_remaining		: integer 		:= 5;	
@@ -298,13 +300,16 @@ package body LAB_functions is
 				LAB_temp(i).addr				:= "0000000000000000";
 				LAB_temp(i).addr_valid		:= '1';
 				
-				clear_remaining = i;
+				clear_remaining := i;
 				
 			elsif clear_remaining > i then
 				LAB_temp(i).inst				:= "0000000000000000";
 				LAB_temp(i).inst_valid		:= '0';
 				LAB_temp(i).addr				:= "0000000000000000";
 				LAB_temp(i).addr_valid		:= '1';
+				
+			else 
+				LAB_temp(i) := LAB_temp(i);
 			end if;
 		end loop;	--i
 		
@@ -323,23 +328,23 @@ package body LAB_functions is
 		return std_logic_vector is
 		
 		variable i		: integer 	:= 0;	
-		variable temp 	: std_logic_vector(3 downto 0) := "0000";
+		variable temp 	: std_logic_vector(0 to 2) := "000";
 		
 	begin 
 	
 		for i in 0 to 9 loop
 	
 			if ROB_in(i).inst = LAB_IW then
-				temp := temp or "1000";
+				temp := temp or "100";
 				
 			elsif ROB_in(i).inst = ID_IW then
-				temp := temp or "0100";
+				temp := temp or "010";
 				
 			elsif ROB_in(i).inst = EX_IW then
-				temp := temp or "0010";
+				temp := temp or "001";
 				
-			elsif ROB_in(i).inst = MEM_IW then
-				temp := temp or "0001";
+--			elsif ROB_in(i).inst = MEM_IW then
+--				temp := temp or "0001";
 				
 			end if;
 			
@@ -349,25 +354,39 @@ package body LAB_functions is
 	end;
 	
 	--this function will generate a 32-bit revalidation vector for the RF based on registers in the pipeline that were wrongly fetched and executed
-	function revalidate_RF_regs(	LAB_IW	: in std_logic_vector(15 downto 0);
+	function revalidate_RF_regs(	ROB_in				: in ROB;
+											frst_branch_idx	: in integer;
+											LAB_IW	: in std_logic_vector(15 downto 0);
 											ID_IW		: in std_logic_vector(15 downto 0);
 											EX_IW		: in std_logic_vector(15 downto 0);
 											MEM_IW	: in std_logic_vector(15 downto 0))
 		return std_logic_vector is
 		
-		variable temp_L	: unsigned(15 downto 0) := LAB_IW;
-		variable temp_I	: unsigned(15 downto 0) := ID_IW;
-		variable temp_E	: unsigned(15 downto 0) := EX_IW;
-		variable temp_M	: unsigned(15 downto 0) := MEM_IW;
+		variable i			: integer					:= 0;
+		variable temp_L	: unsigned(31 downto 0) := "00000000000000000000000000000000";
+		variable temp_I	: unsigned(31 downto 0) := "00000000000000000000000000000000";
+		variable temp_E	: unsigned(31 downto 0) := "00000000000000000000000000000000";
+		variable temp_M	: unsigned(31 downto 0) := "00000000000000000000000000000000";
 		
-		variable one		: unsigned(15 downto 0) := "0000000000000001";
+		variable one		: unsigned(31 downto 0) := "00000000000000000000000000000001";
 	begin
 	
-		temp_L := shift_left(one, to_integer(unsigned(LAB_IW(11 downto 7))));
-		temp_I := shift_left(one, to_integer(unsigned(ID_IW(11 downto 7))));
-		temp_E := shift_left(one, to_integer(unsigned(EX_IW(11 downto 7))));
-		temp_M := shift_left(one, to_integer(unsigned(MEM_IW(11 downto 7))));
-	
+		for i in 0 to 9 loop
+			if i > frst_branch_idx then
+				if ROB_in(i).inst = LAB_IW then
+					temp_L := shift_left(one, to_integer(unsigned(LAB_IW(11 downto 7))));
+				
+				elsif ROB_in(i).inst = ID_IW then
+					temp_I := shift_left(one, to_integer(unsigned(ID_IW(11 downto 7))));
+					
+				elsif ROB_in(i).inst = EX_IW then
+					temp_E := shift_left(one, to_integer(unsigned(EX_IW(11 downto 7))));
+					
+				elsif ROB_in(i).inst = MEM_IW then
+					temp_M := shift_left(one, to_integer(unsigned(MEM_IW(11 downto 7))));
+				end if;
+			end if;
+		end loop;	--i
 	
 		return std_logic_vector(temp_L or temp_I or temp_E or temp_M);
 	end;
@@ -414,15 +433,20 @@ package body LAB_functions is
 					exit;
 					
 				elsif WB_IW_out(11 downto 7) = ROB_in(i).inst(11 downto 7) and i > j then	--
-					
-					report "LAB_func: bnez. WB_IW_out matches branch.";
-					reg1_resolved 			:= reg1_resolved and '1';
-					WB_IW_resolves_br 	:= WB_IW_resolves_br and '1';
-					
-					if WB_data_out /= "0000000000000000" then
-						condition_met		:= '1';
+					if WB_IW_resolves_br = '1' then
+						report "LAB_func: bnez. WB_IW_out matches branch.";
+						reg1_resolved 			:= reg1_resolved and '1';
+						WB_IW_resolves_br 	:= '0';
+						
+						if WB_data_out /= "0000000000000000" then
+							condition_met		:= '1';
+						else
+							condition_met		:= '0';
+						end if;
+						exit;
 					else
-						condition_met		:= '0';
+						report "LAB_func: already resolved branch dependency with WB_IW.";
+						exit;
 					end if;
 					
 				elsif WB_IW_out(11 downto 7) = ROB_in(i).inst(6 downto 2) and bne = '1' and i > j then	--
@@ -438,13 +462,13 @@ package body LAB_functions is
 					end if;	
 					
 				elsif WB_IW_out(11 downto 7) = ROB_in(i).inst(11 downto 7) and i > j and WB_IW_resolves_br = '0' then	--
-					
+					report "LAB_func: WB_IW only resolved one reg1 dependency.";
 					condition_met			:= '0';
 					reg1_resolved 			:= '0';
 					WB_IW_resolves_br 	:= '0'; --this ensures that additional instructions in ROB also matching WB_IW_out and that write back to register needed by branch can't resolve condition
 				
 				elsif WB_IW_out(11 downto 7) = ROB_in(i).inst(6 downto 2) and bne = '1' and i > j and WB_IW_resolves_br = '0' then	--
-					
+					report "LAB_func: WB_IW only resolved one reg2 dependency.";
 					condition_met			:= '0';
 					reg2_resolved 			:= '0';
 					WB_IW_resolves_br 	:= '0'; 
@@ -457,11 +481,19 @@ package body LAB_functions is
 					condition_met		:= '0';
 					exit;
 					
-				elsif ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and bne = '1' and i > j then	--
+				elsif ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and i > j then	--
+					report "LAB_func: " & integer'image(j) & "th slot resolves " & integer'image(i) & "th slot branch";
 					reg1_resolved 		:= '1';
 					reg1_slot			:= j;
 					
+				elsif ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '0' and i > j then	--
+					report "LAB_func: " & integer'image(j) & "th slot does not resolve " & integer'image(i) & "th slot branch. exiting";
+					reg1_resolved 		:= '0';
+					exit;
+					
 				elsif ROB_in(j).inst(11 downto 7) = ROB_in(i).inst(6 downto 2) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and bne = '1' and i > j then	--
+					
+					report "LAB_func: reg2 resolved for " & integer'image(i) & "th slot branch via " & integer'image(j) & "th slot";
 					reg2_resolved 		:= '1';
 					reg2_slot			:= j;
 					
