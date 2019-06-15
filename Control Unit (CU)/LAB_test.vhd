@@ -154,8 +154,9 @@ begin
 			if branch = '1' then
 				--do initial check to see if results are available
 				report "LAB: detected branch in PM_data_in.";
-				results_available 	<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out)(0); --'0' = not available, '1' = available
-				condition_met 			<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out)(1); --'0' = not met, '1' = met
+				--TODO: change this condition to just verify RF_in data, vice using the LAB_functions function, which is invalid anyway
+				results_available 	<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, frst_branch_idx)(0); --'0' = not available, '1' = available
+				condition_met 			<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, frst_branch_idx)(1); --'0' = not met, '1' = met
 
 			--this "elsif" handles other branches that currently exist in the ROB that have not been resolved yet. should continually monitor those, as determined by "ROB_branch" process below. 
 			--need this additional if case because the data sent to "results_result" differ from the above if case. 
@@ -166,8 +167,8 @@ begin
 				
 			elsif branch_exists = '1' and is_unresolved = '1' then	
 				report "LAB: branch exists in ROB.";
-				results_available 	<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out)(0); --'0' = not available, '1' = available
-				condition_met 			<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out)(1); --'0' = not met, '1' = met
+				results_available 	<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, frst_branch_idx)(0); --'0' = not available, '1' = available
+				condition_met 			<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, frst_branch_idx)(1); --'0' = not met, '1' = met
 
 			else
 			
