@@ -69,6 +69,19 @@ package LAB_functions is
 									frst_branch_idx: in integer	)
 		return std_logic_vector; --std_logic_vector([[condition met]], [[results ready]])
 
+		function results_ready_init(  bne 				    : in std_logic;
+																	bnez				    : in std_logic;
+																	RF_in_3_valid 	: in std_logic;  --valid marker from RF for Reg1 field of branch IW
+																	RF_in_4_valid	  : in std_logic;  --valid marker from RF for Reg2 field of branch IW
+																	RF_in_3			    : in std_logic_vector(15 downto 0);
+																	RF_in_4			    : in std_logic_vector(15 downto 0);
+																	ROB_in			    : in ROB;
+																	WB_IW_out		    : in std_logic_vector(15 downto 0);
+																	WB_data_out		  : in std_logic_vector(15 downto 0);
+																	PM_data_in      : in integer	)
+
+			return std_logic_vector;
+
 end LAB_functions;
 
 package body LAB_functions is
