@@ -116,6 +116,7 @@ architecture behavioral of control_unit is
 			ID_IW						: in std_logic_vector(15 downto 0); --source registers for instruction in ID stage (results available)
 			EX_IW						: in std_logic_vector(15 downto 0); --source registers for instruction in EX stage (results available)
 			MEM_IW					: in std_logic_vector(15 downto 0); --source registers for instruction in MEM stage (results available)
+			WB_IW_in					: in std_logic_vector(15 downto 0);
 			ID_reset, EX_reset, MEM_reset	: in std_logic;
 			PM_data_in				: in std_logic_vector(15 downto 0);
 			RF_in_3, RF_in_4		: in std_logic_vector(15 downto 0);
@@ -283,6 +284,7 @@ begin
 		ID_IW				=> LAB_ID_IW,	
 		EX_IW				=> ID_EX_IW,
 		MEM_IW			=> EX_MEM_IW,
+		WB_IW_in			=> MEM_WB_IW,
 		ID_reset			=> LAB_reset_out,
 		EX_reset			=> ID_reset_out, 
 		MEM_reset		=> EX_reset_out,

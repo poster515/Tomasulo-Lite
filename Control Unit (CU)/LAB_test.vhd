@@ -16,6 +16,7 @@ entity LAB_test is
 		ID_IW						: in std_logic_vector(15 downto 0); --source registers for instruction in ID stage (results available)
 		EX_IW						: in std_logic_vector(15 downto 0); --source registers for instruction in EX stage (results available)
 		MEM_IW					: in std_logic_vector(15 downto 0); --source registers for instruction in MEM stage (results available)
+		WB_IW_in					: in std_logic_vector(15 downto 0); --source registers for instruction in MEM stage (results available)
 		ID_reset, EX_reset, MEM_reset	: in std_logic;
 		PM_data_in				: in std_logic_vector(15 downto 0);
 		RF_in_3, RF_in_4		: in std_logic_vector(15 downto 0);
@@ -140,9 +141,7 @@ begin
 			RF_revalidate		<= "00000000000000000000000000000000";
 			--should clear_IW_outs be "111" instead to initialize everything to a no-op?
 			clear_IW_outs 		<= "000";
-			
-			RF_revalidate 		<= "00000000000000000000000000000000";
-			
+
 		elsif rising_edge(sys_clock) then
 			LAB_reset_out		<= '1';
 			LAB <= LAB;
@@ -154,9 +153,9 @@ begin
 			if branch = '1' then
 				--do initial check to see if results are available
 				report "LAB: detected branch in PM_data_in.";
-				--TODO: change this condition to just verify RF_in data, vice using the LAB_functions function, which is invalid anyway
-				results_available 	<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, frst_branch_idx)(0); --'0' = not available, '1' = available
-				condition_met 			<= results_ready(bne, bnez, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, frst_branch_idx)(1); --'0' = not met, '1' = met
+				
+				results_available 	<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, PM_data_in, frst_branch_idx)(0); --'0' = not available, '1' = available
+				condition_met 			<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, PM_data_in, frst_branch_idx)(1); --'0' = not met, '1' = met
 
 			--this "elsif" handles other branches that currently exist in the ROB that have not been resolved yet. should continually monitor those, as determined by "ROB_branch" process below. 
 			--need this additional if case because the data sent to "results_result" differ from the above if case. 
@@ -167,8 +166,8 @@ begin
 				
 			elsif branch_exists = '1' and is_unresolved = '1' then	
 				report "LAB: branch exists in ROB.";
-				results_available 	<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, frst_branch_idx)(0); --'0' = not available, '1' = available
-				condition_met 			<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, frst_branch_idx)(1); --'0' = not met, '1' = met
+				results_available 	<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, PM_data_in, frst_branch_idx)(0); --'0' = not available, '1' = available
+				condition_met 			<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, PM_data_in, frst_branch_idx)(1); --'0' = not met, '1' = met
 
 			else
 			
@@ -180,6 +179,10 @@ begin
 			if branch_reg = '1' and results_available = '0' then
 				--this function will store the current PM_data_in, being the branch address, and shift the array down if a previous branch condition is resolved
 				branches <= store_shift_branch_addr(branches, results_available, '1', PM_data_in, PC_reg, ROB_DEPTH); --'1' is a bit stating that the next two bytes are valid data (PM_data_in)
+			
+			elsif results_available = '1' and condition_met = '1' then
+				--clear branches since all subsequent branches will be invalidly fetched instructions
+				branches <= init_branches(branches, ROB_DEPTH);
 			else
 				--this function will just shift "branches" appropriately if a previous branch condition is resolved or the incoming branch is resolved
 				branches <= store_shift_branch_addr(branches, results_available, '0', "0000000000000000", "00000000000", ROB_DEPTH);
@@ -263,7 +266,7 @@ begin
 								IW_reg <= "1111111111111111";
 							end if;
 						end if;
-						
+
 					elsif results_available = '1' and condition_met = '1' then
 						--purge speculative instructions in ROB since some (or all) were erroneously fetched from PM
 						--additionally, don't want to buffer PM_data_in
@@ -276,10 +279,10 @@ begin
 						
 						--clear the speculatively fetched instructions issued into pipeline - only clears these and not non-speculative instructions
 						clear_IW_outs	<= check_ROB_for_wrongly_fetched_insts(ROB_in, IW_reg, ID_IW, EX_IW, MEM_IW);
-					
+						report "LAB: branch incorrectly taken - purging all irrelevant data.";
 						--make function that logically ORs a RF revalidation vector for the RF for registers in pipeline that were incorrectly fetched and executed
-						RF_revalidate <= revalidate_RF_regs(ROB_in, frst_branch_idx, IW_reg, ID_IW, EX_IW, MEM_IW);
-						
+						RF_revalidate <= revalidate_RF_regs(ROB_in, frst_branch_idx, IW_reg, ID_IW, EX_IW, MEM_IW, WB_IW_in);
+						report "LAB: RF_revalidate = " & integer'image(to_integer(unsigned(revalidate_RF_regs(ROB_in, frst_branch_idx, IW_reg, ID_IW, EX_IW, MEM_IW, WB_IW_in))));
 					else
 						RF_revalidate <= "00000000000000000000000000000000";
 						clear_IW_outs <= "000";
@@ -418,9 +421,7 @@ begin
 
 							end if; --various tags
 						end loop; --for i
-						
-						RF_revalidate		<= "00000000000000000000000000000000";
-					
+
 					end if; --LAB(0).valid = '0' 
 			else
 				--if stalled, just issue noop
@@ -484,7 +485,7 @@ begin
 	end process; --program_counter
 	
 	--process to determine whether an unresolved branch instruction exists in the ROB, this is used to then confirm if the results are ready
-	ROB_branch	: process (reset_n, ROB_in) 
+	ROB_branch	: process (reset_n, ROB_in, PM_data_in) 
 	begin
 		if reset_n = '0' then
 			branch_exists 	<= '0';

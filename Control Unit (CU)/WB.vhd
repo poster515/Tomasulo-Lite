@@ -131,7 +131,7 @@ begin
 			RF_wr_en 			<= '0';
 			WB_out_mux_sel 	<= "01";
 			clear_zero_inst 	<= '0'; 
-			
+			WB_IW_out 			<= "0000000000000000";
 			
 		elsif rising_edge(sys_clock) then
 			
@@ -165,6 +165,7 @@ begin
 --															"1111111111111111", "0000000000000000", '0', '0', '0', '0', speculate_results, 10, 10, ROB_DEPTH);
 						clear_zero_inst 	<= '0'; 	
 						RF_wr_en 			<= '0';
+						WB_IW_out			<= "1111111111111111";
 
 					elsif (zero_inst_match = '1' and (ROB_actual(0).specul = '0' or (results_available = '1' and condition_met = '0'))) or ROB_actual(0).complete = '1' then 
 						--report "WB: 1. writing back ROB(0) results to RF";
@@ -194,6 +195,7 @@ begin
 															IW_in, WB_data, '1', results_available and condition_met, results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 						clear_zero_inst 	<= '0'; 
 						RF_wr_en 			<= '0';
+						WB_IW_out			<= "1111111111111111";
 						
 					elsif zero_inst_match = '0' and ROB_actual(0).complete = '0' then 
 						--report "WB: 3. can't write ROB(0) results (if applicable) to RF";
@@ -203,6 +205,7 @@ begin
 						
 						clear_zero_inst 	<= '0'; 
 						RF_wr_en 			<= '0';
+						WB_IW_out			<= "1111111111111111";
 												
 					elsif ROB_actual(1).complete = '1' and clear_zero_inst = '1' and ROB_actual(1).specul = '0' and ROB_actual(0).specul = '0' then		
 						--report "WB: 4. can write complete, non-speculative ROB(1) results to RF";
