@@ -413,7 +413,7 @@ package body LAB_functions is
 			end if;
 		end loop;	--i
 	
-		return std_logic_vector(temp_L or temp_I or temp_E or temp_M);
+		return std_logic_vector(temp_L or temp_I or temp_E or temp_M or temp_W);
 	end;
 		
 	
