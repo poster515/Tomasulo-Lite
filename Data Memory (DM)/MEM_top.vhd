@@ -26,6 +26,16 @@ entity MEM_top is
 end MEM_top;
 
 architecture behavioral of MEM_top is
+	
+	component mux_2_new is
+	PORT
+	(
+		data0x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+		data1x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
+		sel		: IN STD_LOGIC ;
+		result		: OUT STD_LOGIC_VECTOR (15 DOWNTO 0)
+	);
+	END mux_2_new;
 
 	component mux_4_new is
 	PORT
@@ -50,29 +60,67 @@ architecture behavioral of MEM_top is
 		);
 	end component;
 	
-	signal mem_addr_reg				: std_logic_vector(10 downto 0);
-	signal data_in_reg, MEM_out_top_reg, data_out, MEM_mux_out		: std_logic_vector(15 downto 0);
-	signal 
+	signal mem_addr_reg, st_buff_addr									: std_logic_vector(10 downto 0);
+	signal data_in_reg, MEM_out_top_reg, data_out, MEM_mux_out	: std_logic_vector(15 downto 0);
+	signal non_specul_out, specul_out, st_buff_data					: std_logic_vector(15 downto 0);
+	signal st_buff_wren														: std_logic;
 
 begin
 
-	--output mux
-	MEM_out_mux	: mux_4_new
+	--non-speculative mem_top output mux
+	non_specul_out_mux	: mux_4_new
 	port map (
 		data0x	=> "0000000000000000",
 		data1x  	=> data_out,		--data from DM 					(data_out)
 		data2x  	=> MEM_in_1,		--data from ALU output			(ALU_top_out_1)
 		data3x	=> MEM_in_2,		--data forwarded through ALU 	(ALU_top_out_2)
 		sel 		=> MEM_out_mux_sel,
-		result  	=> MEM_mux_out
+		result  	=> non_specul_out
+	);
+	
+	DM_data_in : mux_2_new
+	port map
+	(
+		data0x		=> MEM_in_2,
+		data1x		=> st_buff_data,
+		sel			=> check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)),
+		result		=> MEM_data
+	);
+	
+	DM_addr_in : mux_2_new is
+	port map
+	(
+		data0x		=> MEM_in_1,
+		data1x		=> "00000" & st_buff_addr,
+		sel			=> check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)),
+		result		=> MEM_address
+	);
+	
+	DM_wren_in : mux_2_new is
+	port map
+	(
+		data0x		=> wr_en,
+		data1x		=> st_buff_wren,
+		sel			=> check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) and store_inst, -- only concerned in selecting st_buff_wren if the incoming store inst matches an address in st_buff
+		result		=> wren_non_speculative
+	);
+	
+	--potentially speculative mem_top output
+	MEM_top_out_mux : mux_2_new is
+	port map
+	(
+		data0x		=> non_specul_out,
+		data1x		=> st_buff_data,
+		sel			=> check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) and (load_inst or store_inst),
+		result		=> MEM_out_top_reg
 	);
 	
 	data_memory : DataMem
 	port map
 		(
-			address	=> MEM_in_1(10 downto 0),
+			address	=> MEM_address(10 downto 0),
 			clock		=> sys_clock,
-			data		=> MEM_in_2,
+			data		=> MEM_data,
 			wren		=> wren_non_speculative,
 			q			=> data_out
 		);
@@ -82,13 +130,15 @@ begin
 		if reset_n = '0' then
 			MEM_out_top_reg	<= "0000000000000000";
 			st_buff				<= init_st_buff(st_buff);
+			st_buff_data		<= "0000000000000000";
+			st_buff_addr		<= "00000000000"
 		
-		--elsif store_inst = '1' and inst_is_specul = '0'
 		elsif store_inst = '1' and inst_is_specul = '0' then
 			--if address not in store_buffer, just write to DM
+			
 			if check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) = '0' then
 				--prioritize writing back this non-speculative store over anything in st_buffer, if there isn't an existing address there
-				wren_non_speculative <= wr_en;
+				
 			elsif check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) = '1' then
 				--have an address match in st_buff - need to add to st_buff instead
 				--determine if we can execute another, non-speculative store first though
@@ -99,7 +149,6 @@ begin
 				else
 					--can neither write to DM from ALU nor write to DM from st_buff - just buffer ALU outputs in st_buff
 					st_buff_wren 	<= '0';
-					wren_non_speculative <= '0';
 				end if;
 			end if;
 			
@@ -117,12 +166,8 @@ begin
 			--if load_inst = '1', check store_buffer for data
 			if load_inst = '1' then
 				--if address not in store_buffer, just read DM
-				if check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) = '0' then
-					--read DM data instead
-					MEM_out_top_reg	<= MEM_mux_out;
-				else
-					--read latest store_buffer data
-					MEM_out_top_reg	<= fetch_st_buff_data(st_buff, MEM_in_1(10 downto 0));
+				if check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) = '1' then
+					st_buff_data	<= fetch_st_buff_data(st_buff, MEM_in_1(10 downto 0));
 				end if;
 			--elsif store_inst = '1' and inst_is_specul = '1' then store data at end of store_buffer
 			elsif store_inst = '1' and inst_is_specul = '1' then 

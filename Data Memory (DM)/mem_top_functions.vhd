@@ -2,6 +2,7 @@ library ieee;
 use ieee.std_logic_1164.all; 
 use ieee.numeric_std.all; 
 use work.control_unit_types.all;
+use work.LAB_functions.all;
  
 package mem_top_functions is 
 	
@@ -56,7 +57,7 @@ package body mem_top_functions is
 	begin
 	
 		for i in 0 to 9 loop
-			if st_buff(i).addr = address then
+			if st_buff(i).addr = address and st_buff(i).valid = '1' then
 				return '1';
 			end if;
 		end loop;
@@ -95,37 +96,44 @@ package body mem_top_functions is
 				
 				if store_inst = '1' then
 					--n_clear_zero automatically shifts temp_SB entries
-					temp_SB(i + not(shift_st_buff)).addr		:= address;
-					temp_SB(i + not(shift_st_buff)).data		:= data;
-					temp_SB(i + not(shift_st_buff)).valid 		:= store_inst;
-					temp_SB(i + not(shift_st_buff)).specul 	:= store_inst;
+					temp_SB(i + convert_SL(not(shift_st_buff))).addr		:= address;
+					temp_SB(i + convert_SL(not(shift_st_buff))).data		:= data;
+					temp_SB(i + convert_SL(not(shift_st_buff))).valid 		:= store_inst;
+					temp_SB(i + convert_SL(not(shift_st_buff))).specul 	:= store_inst;
 					exit;
 				else
 					--results_available automatically shifts entries
-					temp_SB(i) := temp_SB(i + shift_st_buff);
-					exit;
-				end if;
-
-			--TODO: CHECK THIS CONDITION
-			elsif i = 8 and results_available = '1' and addr_valid = '1' then
-
-				if store_inst = '1' then
-					--n_clear_zero automatically shifts temp_SB entries
-					temp_SB(i + not(shift_st_buff)).addr		:= address;
-					temp_SB(i + not(shift_st_buff)).data		:= data;
-					temp_SB(i + not(shift_st_buff)).valid 		:= store_inst;
-					temp_SB(i + not(shift_st_buff)).specul 	:= store_inst;
-					exit;
-				else
-					--results_available automatically shifts entries
-					temp_SB(i) := temp_SB(i + shift_st_buff);
+					temp_SB(i) := temp_SB(i + convert_SL(shift_st_buff));
 					exit;
 				end if;
 				
-			--TODO: CHECK THIS CONDITION	
+			--condition for when we've gotten to the last slot in the st_buff
+			elsif temp_SB(i + 1).valid = '1' and i = 8 then
+				if store_inst = '1' and shift_st_buff = '1' then
+					--we know that we want to store inst at very end of st_buff
+					temp_SB(i + 1).addr		:= address;
+					temp_SB(i + 1).data		:= data;
+					temp_SB(i + 1).valid 	:= store_inst;
+					temp_SB(i + 1).specul 	:= store_inst;
+					exit;
+				elsif store_inst = '0' and shift_st_buff = '1' then
+					--store_inst = '0' and shift_st_buff = '1' makes sense; this is handled appropriately here
+					temp_SB(i + 1).data		:= "0000000000000000";	
+					temp_SB(i + 1).addr  	:= "00000000000";	
+					temp_SB(i + 1).valid		:= '0';
+					temp_SB(i + 1).specul	:= '0';
+					exit;
+				else
+					--we can't get to a scenario with 10 speculative stores, since ROB is only 10 entries long
+					--therefore, it is impossible to have store_inst = '1' and shift_st_buff = '0' here
+					--store_inst = '0' and shift_st_buff = '0' means we don't want to overwrite i + 1 data
+					temp_SB(i + 1)				:= temp_SB(i + 1);
+					exit;
+				end if;
+				
 			else
 				--results_available automatically shifts entries
-				temp_SB(i) := temp_SB(i + shift_st_buff);
+				temp_SB(i) := temp_SB(i + convert_SL(shift_st_buff));
 				
 			end if; --
 		
@@ -135,8 +143,17 @@ package body mem_top_functions is
 	
 	function fetch_st_buff_data(	st_buff			: in store_buffer;
 											address			: in std_logic_vector(10 downto 0))
-		return std_logic_vector;
+		return std_logic_vector is
+		
+	begin
+		for i in 0 to 9 loop
+			if st_buff(i).addr = address and st_buff(i).valid = '1' then
+				return st_buff(i).data;
+			end if;
+		end loop;
+		
+		return "0000000000000000";
 	
-	
+	end function;
 	
 end package body mem_top_functions;

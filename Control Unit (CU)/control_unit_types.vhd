@@ -12,6 +12,17 @@ package control_unit_types is
 		end record;
 		
 	type branch_addrs is array (9 downto 0) of branch_addr;
+	
+	type store_buffer_entry is
+		record
+			data			: std_logic_vector(15 downto 0);		--data to be stored
+			addr  		: std_logic_vector(10 downto 0);		--address
+			valid			: std_logic;								--denotes whether this entry contains valid data
+			specul		: std_logic;								--denotes whether this entry contains speculative data (i.e., can't write back)
+			in_zone		: std_logic;								--denotes whether this entry is in the first branch of ROB or not 
+		end record;
+		
+	type store_buffer is array (9 downto 0) of store_buffer_entry;
 
 	--LAB declarations
 	type LAB_entry is
