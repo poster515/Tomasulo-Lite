@@ -1,4 +1,4 @@
---Written by: Joe Post
+ --Written by: Joe Post
 
 --This block instantiates the highest level data memory block, which has access to the A and C busses. 
 --DM writes are only enabled if the X_bus_in_sel and wren lines are high simultaneously. 
@@ -32,7 +32,7 @@ architecture behavioral of MEM_top is
 	(
 		data0x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
 		data1x		: IN STD_LOGIC_VECTOR (15 DOWNTO 0);
-		sel		: IN STD_LOGIC ;
+		sel			: IN STD_LOGIC ;
 		result		: OUT STD_LOGIC_VECTOR (15 DOWNTO 0)
 	);
 	END mux_2_new;
@@ -67,7 +67,7 @@ architecture behavioral of MEM_top is
 
 begin
 
-	--non-speculative mem_top output mux
+	--non-speculative DM_out select mux
 	non_specul_out_mux	: mux_4_new
 	port map (
 		data0x	=> "0000000000000000",
@@ -83,7 +83,7 @@ begin
 	(
 		data0x		=> MEM_in_2,
 		data1x		=> st_buff_data,
-		sel			=> check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)),
+		sel			=> check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or write_back_to_st_buff, --need this second input to be indicative that the st_buff is writing back to DM
 		result		=> MEM_data
 	);
 	
@@ -95,6 +95,9 @@ begin
 		sel			=> check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)),
 		result		=> MEM_address
 	);
+	
+	--=IF(AND(IF(D2=0;FALSE;TRUE);OR(IF(B2=0;TRUE;FALSE);IF(C2=0;TRUE;FALSE)));1;0)
+	--=IF(AND(OR(IF(C2=0,0,1);IF(B2=0,0,1));IF(D2=0,0,1));1;0)
 	
 	DM_wren_in : mux_2_new is
 	port map
