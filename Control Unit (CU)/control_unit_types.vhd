@@ -15,6 +15,7 @@ package control_unit_types is
 	
 	type store_buffer_entry is
 		record
+			iwrd			: std_logic_vector(15 downto 0);		--instruction word associated with this entry - needed to check against the ROB later
 			data			: std_logic_vector(15 downto 0);		--data to be stored
 			addr  		: std_logic_vector(10 downto 0);		--address
 			valid			: std_logic;								--denotes whether this entry contains valid data
