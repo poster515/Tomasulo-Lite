@@ -36,7 +36,7 @@ architecture behavioral of MEM_top is
 		sel			: IN STD_LOGIC ;
 		result		: OUT STD_LOGIC_VECTOR (15 DOWNTO 0)
 	);
-	END mux_2_new;
+	END component mux_2_new;
 
 	component mux_4_new is
 	PORT
@@ -62,14 +62,16 @@ architecture behavioral of MEM_top is
 	end component;
 	
 	signal mem_addr_reg, st_buff_addr									: std_logic_vector(10 downto 0);
+	signal MEM_data, MEM_address											: std_logic_vector(15 downto 0);
 	signal data_in_reg, MEM_out_top_reg, data_out, MEM_mux_out	: std_logic_vector(15 downto 0);
 	signal non_specul_out, specul_out, st_buff_data					: std_logic_vector(15 downto 0);
-	signal st_buff_wren														: std_logic;
-	
+	signal st_buff_wren, wren_non_speculative 						: std_logic;
+	signal inst_is_specul													: std_logic;
+	signal MEM_out_top_mux_sel												: std_logic;
 	signal DM_data_in_mux_sel, DM_addr_in_mux_sel, DM_wren_in_mux_sel : std_logic;	--select signals that alternate data going to Data Memory
 	signal store_inst, load_inst											: std_logic;	--denotes whether the incoming instruction word is a load or a store
-	
-	signal inst_is_specul	 : std_logic;
+	signal st_buff			 													: store_buffer;
+	signal buffer_st_in														: std_logic;
 begin
 
 	DM_data_in : mux_2_new
@@ -81,7 +83,7 @@ begin
 		result		=> MEM_data
 	);
 	
-	DM_addr_in : mux_2_new is
+	DM_addr_in : mux_2_new
 	port map
 	(
 		data0x		=> MEM_in_1,
@@ -90,15 +92,6 @@ begin
 		result		=> MEM_address
 	);
 
-	DM_wren_in : mux_2_new is
-	port map
-	(
-		data0x		=> wr_en,
-		data1x		=> st_buff_wren,
-		sel			=> DM_wren_in_mux_sel, -- only concerned in selecting st_buff_wren if the incoming store inst matches an address in st_buff
-		result		=> wren_non_speculative
-	);
-	
 	--non-speculative DM_out select mux
 	non_specul_out_mux	: mux_4_new
 	port map (
@@ -106,12 +99,12 @@ begin
 		data1x  	=> data_out,		--data from DM 					(data_out)
 		data2x  	=> MEM_in_1,		--data from ALU output			(ALU_top_out_1)
 		data3x	=> MEM_in_2,		--data forwarded through ALU 	(ALU_top_out_2)
-		sel 		=> DM_out_mux_sel,
+		sel 		=> MEM_out_mux_sel,
 		result  	=> non_specul_out
 	);
 	
 	--potentially speculative mem_top output
-	MEM_top_out_mux : mux_2_new is
+	MEM_top_out_mux : mux_2_new
 	port map
 	(
 		data0x		=> non_specul_out,
@@ -134,6 +127,16 @@ begin
 	store_inst		<= instruction_word(15) and not(instruction_word(14)) and not(instruction_word(13)) and not(instruction_word(12)) and instruction_word(1);
 	load_inst		<= instruction_word(15) and not(instruction_word(14)) and not(instruction_word(13)) and not(instruction_word(12)) and not(instruction_word(1));
 	
+	--process to changewr_en to Data Memory in lieu of instantiating a single bit mux	
+	process(DM_wren_in_mux_sel, wr_en, st_buff_wren)
+	begin
+		if DM_wren_in_mux_sel = '0' then
+			wren_non_speculative	<=  wr_en;
+		else
+			wren_non_speculative <= st_buff_wren;
+		end if;
+	end process; 
+	
 	--need triggered process to determine if incoming instruction_word is speculative
 	process(reset_n, ROB_in, instruction_word)
 	begin
@@ -149,7 +152,6 @@ begin
 	process(reset_n, sys_clock, MEM_in_1, store_inst, load_inst, inst_is_specul)
 	begin
 		if reset_n = '0' then
-			MEM_out_top_reg	<= "0000000000000000";
 			st_buff				<= init_st_buff(st_buff);
 			st_buff_data		<= "0000000000000000";
 			st_buff_addr		<= "00000000000";
@@ -180,6 +182,7 @@ begin
 				else
 					--can neither write to DM from ALU nor write to DM from st_buff - just buffer ALU outputs in st_buff
 					st_buff_wren 	<= '0';
+					st_buff_addr	<= "00000000000";
 				end if;
 				
 			elsif rising_edge(sys_clock) then

@@ -16,9 +16,10 @@ package mem_top_functions is
 	function update_st_buff(	st_buff				: in store_buffer;
 										address				: in std_logic_vector(10 downto 0);
 										data 					: in std_logic_vector(15 downto 0);
-										inst_is_specul		: in std_logic;
-										shift_st_buff		: in std_logic;
-										ROB_in				: in ROB)
+										store_inst			: in std_logic; --'0' = don't store new instruction, '1' = store new inst		
+										shift_st_buff		: in std_logic; --'0' = don't shift down, '1' = shift down
+										ROB_in				: in ROB;
+										instruction_word	: in std_logic_vector(15 downto 0)) 
 		return store_buffer;
 	
 	function fetch_st_buff_data(	st_buff			: in store_buffer;
@@ -170,6 +171,7 @@ package body mem_top_functions is
 				temp_SB(i).specul 	:= check_ROB_for_speculation(ROB_in, temp_SB(i + convert_SL(shift_st_buff)).iwrd);
 				
 			end if; --
+		end loop;
 		
 		return temp_SB;
 	

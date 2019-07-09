@@ -30,6 +30,7 @@ entity LAB_test is
 		
 		PC							: out std_logic_vector(10 downto 0);
 		IW							: out std_logic_vector(15 downto 0);
+		IW_out_specul			: out std_logic;	--denotes that the outgoing IW is speculative
 		MEM						: out std_logic_vector(15 downto 0); --MEM is the IW representing the next IW as part of LD, ST, JMP, BNE(Z) operations
 		LAB_reset_out			: out std_logic; --reset signal for ID stage
 		LAB_stall				: out std_logic;
@@ -217,8 +218,7 @@ begin
 							
 							--TODO: shouldn't I be buffering the branch and load/stores addresses in this case too?
 							report "LAB: 5. LAB(0) is invalid, but can't issue PM_data_in.";
-							IW_reg 					<= "1111111111111111"; --issue no-op
-						
+							IW_reg 				<= "1111111111111111"; --issue no-op
 						else
 							--just issue PM_data_in and issue forwarding data commands
 							
@@ -261,9 +261,9 @@ begin
 										ALU_fwd_reg_2	<= '0';
 									end if;	
 							else
-								ALU_fwd_reg_1 	<= '0';
-								ALU_fwd_reg_2	<= '0';
-								IW_reg <= "1111111111111111";
+								ALU_fwd_reg_1 		<= '0';
+								ALU_fwd_reg_2		<= '0';
+								IW_reg 				<= "1111111111111111";
 							end if;
 						end if;
 
@@ -275,8 +275,8 @@ begin
 						LAB <= purge_insts(LAB, ROB_in, frst_branch_idx);
 						
 						--issue no-op. this may incur a one clock penalty but reduces the complexity of determining any other valid instructions in LAB
-						IW_reg <= "1111111111111111";
-						
+						IW_reg 				<= "1111111111111111";
+
 						--clear the speculatively fetched instructions issued into pipeline - only clears these and not non-speculative instructions
 						clear_IW_outs	<= check_ROB_for_wrongly_fetched_insts(ROB_in, IW_reg, ID_IW, EX_IW, MEM_IW);
 						report "LAB: branch incorrectly taken - purging all irrelevant data.";
@@ -355,8 +355,8 @@ begin
 								--now we're at the first spot we can buffer PM_data_in, since there's no valid instruction here and the PM_data_in has a hazard
 								--just buffer PM_data_in
 								report "LAB: Can't issue any valid LAB inst or PM_data, buffer PM_data";
-								IW_reg 	<= "1111111111111111";
-								LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i - 1, LAB_MAX, '0', ld_st_reg);
+								IW_reg 				<= "1111111111111111";
+								LAB 					<= shiftLAB_and_bufferPM(LAB, PM_data_in, i - 1, LAB_MAX, '0', ld_st_reg);
 								exit;
 								
 							elsif i = LAB_MAX - 1 then 
@@ -408,11 +408,11 @@ begin
 									--TODO: fix this function to accommodate for the fact that the incoming PM_data_in may be an address for a load/store
 									--add next_IW_is_addr to function call?
 									report "LAB: 2. can't issue any LAB inst/PM_data, so buffer PM_data.";
-									LAB 				<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '0', ld_st_reg);
-									IW_reg 			<= "1111111111111111";
-									LAB_full 		<= LAB(LAB_MAX - 1).inst_valid;
-									ALU_fwd_reg_1 	<= '0';
-									ALU_fwd_reg_2	<= '0';
+									LAB 					<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '0', ld_st_reg);
+									IW_reg 				<= "1111111111111111";
+									LAB_full 			<= LAB(LAB_MAX - 1).inst_valid;
+									ALU_fwd_reg_1 		<= '0';
+									ALU_fwd_reg_2		<= '0';
 									exit;
 								end if;
 							else
@@ -425,8 +425,8 @@ begin
 					end if; --LAB(0).valid = '0' 
 			else
 				--if stalled, just issue noop
-				IW_reg 			<= "1111111111111111";
-				RF_revalidate	<= "00000000000000000000000000000000";
+				IW_reg 				<= "1111111111111111";
+				RF_revalidate		<= "00000000000000000000000000000000";
 			end if; --stall_pipeline
 					
 		end if; --reset_n
