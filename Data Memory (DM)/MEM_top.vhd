@@ -5,8 +5,10 @@
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
+use ieee.numeric_std.all;
 use work.control_unit_types.all;
 use work.mem_top_functions.all;
+use work.LAB_functions.all;
 
 entity MEM_top is
    port ( 
@@ -61,10 +63,10 @@ architecture behavioral of MEM_top is
 		);
 	end component;
 	
-	signal mem_addr_reg, st_buff_addr									: std_logic_vector(10 downto 0);
+	signal st_buff_addr														: std_logic_vector(10 downto 0);
 	signal MEM_data, MEM_address											: std_logic_vector(15 downto 0);
 	signal data_in_reg, MEM_out_top_reg, data_out, MEM_mux_out	: std_logic_vector(15 downto 0);
-	signal non_specul_out, specul_out, st_buff_data					: std_logic_vector(15 downto 0);
+	signal non_specul_out, st_buff_data									: std_logic_vector(15 downto 0);
 	signal st_buff_wren, wren_non_speculative 						: std_logic;
 	signal inst_is_specul													: std_logic;
 	signal MEM_out_top_mux_sel												: std_logic;
@@ -171,7 +173,9 @@ begin
 			DM_addr_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
 			DM_wren_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
 			MEM_out_top_mux_sel 	<= check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) and (load_inst or store_inst);
-	
+			
+			
+			
 			if (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) = '1') or ((not(load_inst) and (not(store_inst) or inst_is_specul)) = '1') then
 				--have an address match in st_buff - need to add to st_buff instead
 				--determine if we can execute another, non-speculative store first though
@@ -186,12 +190,22 @@ begin
 				end if;
 				
 			elsif rising_edge(sys_clock) then
+				report "MEM_top: MEM_out_top_mux_sel = " & integer'image(convert_SL(MEM_out_top_mux_sel));
+				report "MEM_top: DM_data_in_mux_sel = " & integer'image(convert_SL(DM_data_in_mux_sel));
+				report "MEM_top: DM_addr_in_mux_sel = " & integer'image(convert_SL(DM_addr_in_mux_sel));
+				report "MEM_top: DM_wren_in_mux_sel = " & integer'image(convert_SL(DM_wren_in_mux_sel));
 				--if load_inst = '1', check store_buffer for data
 				if load_inst = '1' then
 					--if address not in store_buffer, just read DM
 					if check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) = '1' then
 						st_buff_data	<= fetch_st_buff_data(st_buff, MEM_in_1(10 downto 0));
+						
+					--else just use the actual DM output, this is already done right after the first 'else' statement in this process
+					else
 					end if;
+				elsif store_inst = '1' then
+					
+					
 				end if;
 				
 				--now update st_buff. options: 
