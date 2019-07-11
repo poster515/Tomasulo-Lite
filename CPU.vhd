@@ -54,6 +54,7 @@ architecture structural of CPU is
 	signal I2C_out								: std_logic_vector(15 downto 0);
 	signal ROB_out								: ROB;
 	signal MEM_instruction_word			: std_logic_vector(15 downto 0);
+	signal ID_IW_out							: std_logic_vector(15 downto 0);
 	
 	--anti-system clock for the program memory
 	signal n_sys_clock						: std_logic;
@@ -85,6 +86,7 @@ architecture structural of CPU is
 		ID_RF_out1_en, ID_RF_out2_en	: out std_logic; --
 		ID_RF_out3_en, ID_RF_out4_en	: out std_logic; --
 		RF_revalidate						: out std_logic_vector(31 downto 0);
+		ID_EX_IW_actual					: out std_logic_vector(15 downto 0);
 		
 		--(EX) ALU control Signals
 		ALU_out1_en, ALU_out2_en		: out std_logic; --
@@ -130,6 +132,7 @@ architecture structural of CPU is
 		--Input data and clock
 		clk 			: in std_logic;
 		WB_data_in	: in std_logic_vector(15 downto 0);
+		IW_in			: in std_logic_vector(15 downto 0);
 
 		--Control signals
 		reset_n			: in std_logic; --all registers reset to 0 when this goes low
@@ -252,7 +255,8 @@ begin
 		ID_RF_out2_en						=> ID_RF_out2_en,			--MAPPED
 		ID_RF_out3_en						=> ID_RF_out3_en,			--MAPPED
 		ID_RF_out4_en						=> ID_RF_out4_en,			--MAPPED
-		RF_revalidate						=> RF_revalidate,
+		RF_revalidate						=> RF_revalidate,			--MAPPED
+		ID_EX_IW_actual					=> ID_IW_out,				--MAPPED
 		
 		--(EX) ALU control Signals
 		ALU_out1_en							=> ALU_out1_en, 			--MAPPED
@@ -300,6 +304,7 @@ begin
 		--Input data and clock
 		clk 					=> sys_clock,		
 		WB_data_in			=> WB_data,
+		IW_in					=> ID_IW_out,
 
 		--Control signals
 		reset_n				=> reset_n,

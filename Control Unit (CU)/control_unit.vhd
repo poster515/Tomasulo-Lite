@@ -35,6 +35,7 @@ entity control_unit is
 		ID_RF_out1_en, ID_RF_out2_en	: out std_logic; --enables RF_out_X 
 		ID_RF_out3_en, ID_RF_out4_en	: out std_logic; --enables RF_out_X 
 		RF_revalidate						: out std_logic_vector(31 downto 0);
+		ID_EX_IW_actual					: out std_logic_vector(15 downto 0);
 		
 		--(EX) ALU control Signals
 		ALU_out1_en, ALU_out2_en		: out std_logic; 
@@ -53,6 +54,7 @@ entity control_unit is
 		MEM_GPIO_in_en, MEM_GPIO_wr_en 	: out std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
 		MEM_I2C_r_en, MEM_I2C_wr_en		: out std_logic; --initiates reads/writes for I2C (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
 		MEM_slave_addr							: out std_logic_vector(6 downto 0);
+		MEM_WB_mux_IW							: inout std_logic_vector(15 downto 0);
 		
 		--(WB) WB control Signals and Input/Output data
 		WB_RF_in_demux						: out std_logic_vector(4 downto 0); -- selects which 
@@ -61,7 +63,8 @@ entity control_unit is
 		MEM_out_top				: in std_logic_vector(15 downto 0);
 		GPIO_out					: in std_logic_vector(15 downto 0);
 		I2C_out					: in std_logic_vector(15 downto 0);
-		WB_data_out				: inout std_logic_vector(15 downto 0)
+		WB_data_out				: inout std_logic_vector(15 downto 0);
+		ROB_in					: inout ROB
 	);
 end control_unit;
 
@@ -80,7 +83,8 @@ architecture behavioral of control_unit is
 	signal clear_ID_IW_out		: std_logic;
 	
 	--ID <-> EX Signals
-	signal ID_EX_IW, ID_EX_mux_IW	: std_logic_vector(15 downto 0); --goes to EX control unit
+	signal ID_EX_IW					: std_logic_vector(15 downto 0); --goes to mux
+	signal ID_EX_mux_IW				: std_logic_vector(15 downto 0); --goes to EX control unit
 	signal EX_stall_out				: std_logic;
 	signal ID_EX_mem_address		: std_logic_vector(15 downto 0);
 	signal ID_EX_immediate_val		: std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
@@ -96,14 +100,13 @@ architecture behavioral of control_unit is
 	signal clear_MEM_IW_out				: std_logic;
 	
 	--MEM <-> WB Signals
-	signal MEM_WB_IW, MEM_WB_mux_IW	: std_logic_vector(15 downto 0);
+	signal MEM_WB_IW						: std_logic_vector(15 downto 0);
 	signal WB_stall_out					: std_logic;
 	signal MEM_reset_out					: std_logic;
 	
 	--WB <-> LAB signals
 	signal condition_met			: std_logic;
 	signal results_available	: std_logic;
-	signal ROB_in					: ROB;
 	signal WB_IW_out				: std_logic_vector(15 downto 0);
 	signal frst_branch_index	: integer;
 	
@@ -218,7 +221,7 @@ architecture behavioral of control_unit is
 			
 			--MEM Control Outputs
 			MEM_wr_en					: out std_logic; --write enable for data memory
-			MEM_out_mux_sel		: out std_logic_vector(1 downto 0); --enables MEM output 
+			MEM_out_mux_sel			: out std_logic_vector(1 downto 0); --enables MEM output 
 			
 			--ION Control Outputs
 			GPIO_in_en, GPIO_wr_en 	: out std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
@@ -355,6 +358,8 @@ begin
 		sel			=> clear_ID_IW_out,
 		result		=> ID_EX_mux_IW
 	);
+	
+	ID_EX_IW_actual <= ID_EX_mux_IW;
 	
 	EX_actual : EX
 	port map (

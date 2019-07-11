@@ -33,10 +33,11 @@ entity WB is
 		RF_wr_en					: out std_logic;	--
 					
 		--Outputs
-		stall_out		: out std_logic;
-		WB_data_out		: out std_logic_vector(15 downto 0);
-		ROB_out			: out ROB;
-		WB_IW_out		: out std_logic_vector(15 downto 0);
+		stall_out			: out std_logic;
+		WB_data_out			: out std_logic_vector(15 downto 0);
+		ROB_out				: out ROB;
+		--speculate_results	: out std_logic;	--denotes that the newly fetched PM_data_in is speculative
+		WB_IW_out			: out std_logic_vector(15 downto 0);
 		frst_branch_index	: inout integer
 	);
 end WB;
@@ -58,7 +59,8 @@ architecture behavioral of WB is
 	signal WB_out_mux_sel								: std_logic_vector(1 downto 0); --selects data input to redirect to RF
 	signal stall, zero_inst_match						: std_logic; 					--overall stall signal;
 	signal WB_data											: std_logic_vector(15 downto 0);
-	signal clear_zero_inst, speculate_results		: std_logic;
+	signal clear_zero_inst								: std_logic;
+	signal speculate_results							: std_logic;
 	signal i, j												: integer range 0 to ROB_DEPTH;
 	signal scnd_branch_index							: integer range 0 to ROB_DEPTH;
 	signal ROB_actual										: ROB;
