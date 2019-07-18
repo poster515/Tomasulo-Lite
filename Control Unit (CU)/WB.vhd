@@ -282,13 +282,15 @@ begin
 		end if; --reset_n
 	end process;
 	
-	process(reset_n, sys_clock)
+	--process(reset_n, sys_clock)
+	process(reset_n, ROB_actual)
 	begin
 		if reset_n = '0' then
 			frst_branch_index <= ROB_DEPTH;
 			scnd_branch_index <= ROB_DEPTH;
 			
-		elsif rising_edge(sys_clock) then
+		--elsif rising_edge(sys_clock) then
+		else
 		
 			for i in 0 to ROB_DEPTH - 1 loop
 				if ROB_actual(i).inst(15 downto 12) = "1010" and ROB_actual(i).specul = '1' then

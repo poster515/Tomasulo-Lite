@@ -103,73 +103,94 @@ package body mem_top_functions is
 				--3) clear/re-mark st_buff instructions as non-speculative (ROB_in) 
 				
 			--st_buff <= update_st_buff(st_buff, MEM_in_1(10 downto 0), MEM_in_2, buffer_st_in, DM_wren_in_mux_sel, ROB_in); 
-
+		
 		for i in 0 to 8 loop
 			--condition covers when we get to a location in st_buff that isn't valid, i.e., we can buffer inst there
 			if temp_SB(i).valid = '0' and store_inst = '1' then
-				--incoming instruction is a new, valid store instruction and should be buffered 
-				temp_SB(i).iwrd		:= instruction_word;
-				temp_SB(i).data		:= data;	
-				temp_SB(i).addr  		:= address;	
-				temp_SB(i).valid		:= check_ROB_for_iwrd(ROB_in, instruction_word);
-				temp_SB(i).specul		:= check_ROB_for_speculation(ROB_in, instruction_word);
+				if check_ROB_for_iwrd(ROB_in, temp_SB(i).data) = '1' then
+					--incoming instruction is a new, valid store instruction and should be buffered 
+					temp_SB(i).iwrd		:= instruction_word;
+					temp_SB(i).data		:= data;	
+					temp_SB(i).addr  		:= address;	
+					temp_SB(i).valid		:= check_ROB_for_iwrd(ROB_in, instruction_word);
+					temp_SB(i).specul		:= check_ROB_for_speculation(ROB_in, instruction_word);
+				else
+					temp_SB(i)				:= ((others => '0'), (others => '0'), (others => '0'), '0', '0');
+
+				end if;
 				exit;
-				
 			--condition for when we've gotten to the last valid instruction in the st_buff
 			elsif temp_SB(i).valid = '1' and temp_SB(i + 1).valid = '0' then
 				
 				if store_inst = '1' then
-					--n_clear_zero automatically shifts temp_SB entries
-					temp_SB(i + convert_SL(not(shift_st_buff))).iwrd		:= instruction_word;
-					temp_SB(i + convert_SL(not(shift_st_buff))).addr		:= address;
-					temp_SB(i + convert_SL(not(shift_st_buff))).data		:= data;
-					temp_SB(i + convert_SL(not(shift_st_buff))).valid 		:= check_ROB_for_iwrd(ROB_in, instruction_word);
-					temp_SB(i + convert_SL(not(shift_st_buff))).specul 	:= check_ROB_for_speculation(ROB_in, instruction_word);
+					if check_ROB_for_iwrd(ROB_in, temp_SB(i + convert_SL(not(shift_st_buff))).data) = '1' then
+						--n_clear_zero automatically shifts temp_SB entries
+						temp_SB(i + convert_SL(not(shift_st_buff))).iwrd		:= instruction_word;
+						temp_SB(i + convert_SL(not(shift_st_buff))).addr		:= address;
+						temp_SB(i + convert_SL(not(shift_st_buff))).data		:= data;
+						temp_SB(i + convert_SL(not(shift_st_buff))).valid 		:= check_ROB_for_iwrd(ROB_in, instruction_word);
+						temp_SB(i + convert_SL(not(shift_st_buff))).specul 	:= check_ROB_for_speculation(ROB_in, instruction_word);
+					else
+						temp_SB(i + convert_SL(not(shift_st_buff)))				:= ((others => '0'), (others => '0'), (others => '0'), '0', '0');	
+
+					end if;
 					exit;
 				else
 					--results_available automatically shifts entries
-					temp_SB(i) := temp_SB(i + convert_SL(shift_st_buff));
+					if check_ROB_for_iwrd(ROB_in, temp_SB(i).data) = '1' then
+						temp_SB(i) 	:= temp_SB(i + convert_SL(shift_st_buff));
+					else
+						temp_SB(i)	:= ((others => '0'), (others => '0'), (others => '0'), '0', '0');	
+
+					end if;
 					exit;
 				end if;
 				
 			--condition for when we've gotten to the last slot in the st_buff
 			elsif temp_SB(i + 1).valid = '1' and i = 8 then
 				if store_inst = '1' and shift_st_buff = '1' then
-					--we know that we want to store inst at very end of st_buff
-					temp_SB(i + 1).iwrd		:= instruction_word;
-					temp_SB(i + 1).addr		:= address;
-					temp_SB(i + 1).data		:= data;
-					temp_SB(i + 1).valid 	:= check_ROB_for_iwrd(ROB_in, instruction_word);
-					temp_SB(i + 1).specul 	:= check_ROB_for_speculation(ROB_in, instruction_word);
+					if check_ROB_for_iwrd(ROB_in, temp_SB(i + 1).data) = '1' then
+						--we know that we want to store inst at very end of st_buff
+						temp_SB(i + 1).iwrd		:= instruction_word;
+						temp_SB(i + 1).addr		:= address;
+						temp_SB(i + 1).data		:= data;
+						temp_SB(i + 1).valid 	:= check_ROB_for_iwrd(ROB_in, instruction_word);
+						temp_SB(i + 1).specul 	:= check_ROB_for_speculation(ROB_in, instruction_word);
+					else 
+						temp_SB(i + 1)				:= ((others => '0'), (others => '0'), (others => '0'), '0', '0');	
+					end if;
 					exit;
 				elsif store_inst = '0' and shift_st_buff = '1' then
 					--store_inst = '0' and shift_st_buff = '1' makes sense; this is handled appropriately here
-					temp_SB(i + 1).iwrd		:= "0000000000000000";	
-					temp_SB(i + 1).data		:= "0000000000000000";	
-					temp_SB(i + 1).addr  	:= "00000000000";	
-					temp_SB(i + 1).valid		:= '0';
-					temp_SB(i + 1).specul	:= '0';
+					temp_SB(i + 1)					:= ((others => '0'), (others => '0'), (others => '0'), '0', '0');	
 					exit;
 				else
 					--we can't get to a scenario with 10 speculative stores, since ROB is only 10 entries long
 					--therefore, it is impossible to have store_inst = '1' and shift_st_buff = '0' here
 					--store_inst = '0' and shift_st_buff = '0' means we don't want to overwrite i + 1 data
-					temp_SB(i + 1).iwrd		:= temp_SB(i + 1).iwrd;
-					temp_SB(i + 1).addr		:= temp_SB(i + 1).addr;
-					temp_SB(i + 1).data		:= temp_SB(i + 1).data;
-					temp_SB(i + 1).valid 	:= check_ROB_for_iwrd(ROB_in, temp_SB(i + 1).iwrd);
-					temp_SB(i + 1).specul 	:= check_ROB_for_speculation(ROB_in, temp_SB(i + 1).iwrd);
+					if check_ROB_for_iwrd(ROB_in, temp_SB(i + 1).data) = '1' then
+						temp_SB(i + 1).iwrd		:= temp_SB(i + 1).iwrd;
+						temp_SB(i + 1).addr		:= temp_SB(i + 1).addr;
+						temp_SB(i + 1).data		:= temp_SB(i + 1).data;
+						temp_SB(i + 1).valid 	:= check_ROB_for_iwrd(ROB_in, temp_SB(i + 1).iwrd);
+						temp_SB(i + 1).specul 	:= check_ROB_for_speculation(ROB_in, temp_SB(i + 1).iwrd);
+					else
+						temp_SB(i + 1)				:= ((others => '0'), (others => '0'), (others => '0'), '0', '0');	
+					end if;
 					exit;
 				end if;
 				
 			else
-				--results_available automatically shifts entries
-				temp_SB(i).iwrd		:= temp_SB(i + convert_SL(shift_st_buff)).iwrd;
-				temp_SB(i).addr		:= temp_SB(i + convert_SL(shift_st_buff)).addr;
-				temp_SB(i).data		:= temp_SB(i + convert_SL(shift_st_buff)).data;
-				temp_SB(i).valid 		:= check_ROB_for_iwrd(ROB_in, temp_SB(i + convert_SL(shift_st_buff)).iwrd);
-				temp_SB(i).specul 	:= check_ROB_for_speculation(ROB_in, temp_SB(i + convert_SL(shift_st_buff)).iwrd);
-				
+				if check_ROB_for_iwrd(ROB_in, temp_SB(i).data) = '1' then
+					--results_available automatically shifts entries
+					temp_SB(i).iwrd		:= temp_SB(i + convert_SL(shift_st_buff)).iwrd;
+					temp_SB(i).addr		:= temp_SB(i + convert_SL(shift_st_buff)).addr;
+					temp_SB(i).data		:= temp_SB(i + convert_SL(shift_st_buff)).data;
+					temp_SB(i).valid 		:= check_ROB_for_iwrd(ROB_in, temp_SB(i + convert_SL(shift_st_buff)).iwrd);
+					temp_SB(i).specul 	:= check_ROB_for_speculation(ROB_in, temp_SB(i + convert_SL(shift_st_buff)).iwrd);
+				else
+					temp_SB(i)				:= ((others => '0'), (others => '0'), (others => '0'), '0', '0');	
+				end if;
 			end if; --
 		end loop;
 		

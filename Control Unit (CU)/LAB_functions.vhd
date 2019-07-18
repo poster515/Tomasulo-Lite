@@ -355,13 +355,13 @@ package body LAB_functions is
 	
 			if ROB_in(i).inst = LAB_IW then
 				temp := temp or "100";
-				
+				report "LAB_func: LAB_IW_out matches " & integer'image(i) & "th ROB inst";
 			elsif ROB_in(i).inst = ID_IW then
 				temp := temp or "010";
-				
+				report "LAB_func: ID_IW_out matches " & integer'image(i) & "th ROB inst";
 			elsif ROB_in(i).inst = EX_IW then
 				temp := temp or "001";
-				
+				report "LAB_func: EX_IW_out matches " & integer'image(i) & "th ROB inst";
 --			elsif ROB_in(i).inst = MEM_IW then
 --				temp := temp or "0001";
 				

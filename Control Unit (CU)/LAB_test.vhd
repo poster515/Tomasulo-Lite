@@ -192,8 +192,25 @@ begin
 			--if pipeline isn't stalled, just dispatch instruction
 			if stall_pipeline = '0' then 
 
-					--this first "if" handles the processor startup until we have a data hazard with incoming PM_data_in
-					if LAB(0).inst_valid = '0' then
+					if results_available = '1' and condition_met = '1' then
+						--purge speculative instructions in ROB since some (or all) were erroneously fetched from PM
+						--additionally, don't want to buffer PM_data_in
+						
+						--clear all speculatively fetched instructions from LAB
+						LAB <= purge_insts(LAB, ROB_in, frst_branch_idx);
+						
+						--issue no-op. this may incur a one clock penalty but reduces the complexity of determining any other valid instructions in LAB
+						IW_reg 				<= "1111111111111111";
+
+						--clear the speculatively fetched instructions issued into pipeline - only clears these and not non-speculative instructions
+						clear_IW_outs	<= check_ROB_for_wrongly_fetched_insts(ROB_in, IW_reg, ID_IW, EX_IW, MEM_IW);
+						report "LAB: branch incorrectly taken - purging all irrelevant data.";
+						--make function that logically ORs a RF revalidation vector for the RF for registers in pipeline that were incorrectly fetched and executed
+						RF_revalidate <= revalidate_RF_regs(ROB_in, frst_branch_idx, IW_reg, ID_IW, EX_IW, MEM_IW, WB_IW_in);
+						report "LAB: RF_revalidate = " & integer'image(to_integer(unsigned(revalidate_RF_regs(ROB_in, frst_branch_idx, IW_reg, ID_IW, EX_IW, MEM_IW, WB_IW_in))));
+						
+					--this first "elsif" handles the processor startup until we have a data hazard with incoming PM_data_in	
+					elsif LAB(0).inst_valid = '0' then
 					
 	--				if PM_data_in matches any pipeline stage instruction (and the associated reset_n is high), then issue next
 	--				valid, non-conflicting instruction or if none available, just buffer PM_data_in in LAB and issue a no-op command
@@ -266,23 +283,6 @@ begin
 								IW_reg 				<= "1111111111111111";
 							end if;
 						end if;
-
-					elsif results_available = '1' and condition_met = '1' then
-						--purge speculative instructions in ROB since some (or all) were erroneously fetched from PM
-						--additionally, don't want to buffer PM_data_in
-						
-						--clear all speculatively fetched instructions from LAB
-						LAB <= purge_insts(LAB, ROB_in, frst_branch_idx);
-						
-						--issue no-op. this may incur a one clock penalty but reduces the complexity of determining any other valid instructions in LAB
-						IW_reg 				<= "1111111111111111";
-
-						--clear the speculatively fetched instructions issued into pipeline - only clears these and not non-speculative instructions
-						clear_IW_outs	<= check_ROB_for_wrongly_fetched_insts(ROB_in, IW_reg, ID_IW, EX_IW, MEM_IW);
-						report "LAB: branch incorrectly taken - purging all irrelevant data.";
-						--make function that logically ORs a RF revalidation vector for the RF for registers in pipeline that were incorrectly fetched and executed
-						RF_revalidate <= revalidate_RF_regs(ROB_in, frst_branch_idx, IW_reg, ID_IW, EX_IW, MEM_IW, WB_IW_in);
-						report "LAB: RF_revalidate = " & integer'image(to_integer(unsigned(revalidate_RF_regs(ROB_in, frst_branch_idx, IW_reg, ID_IW, EX_IW, MEM_IW, WB_IW_in))));
 					else
 						RF_revalidate <= "00000000000000000000000000000000";
 						clear_IW_outs <= "000";
@@ -306,13 +306,15 @@ begin
 								(((EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
 								 ((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_IW(15 downto 12) = "1111") or
 								 --allows a GPIO/W to be issued, followed by a GPIO/R to the same register
-								 ((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) and EX_IW(15 downto 12) = "1011" and EX_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00"))) 
+								 ((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) and EX_IW(15 downto 12) = "1011" and EX_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00")) or
+								 (EX_IW(6 downto 2) = LAB(i).inst(6 downto 2) and EX_IW(15 downto 12) = "1000" and EX_IW(1 downto 0) = "10" and LAB(i).inst(15 downto 12) = "1000" and LAB(i).inst(1 downto 0) = "00")) 
 								 
 								 and EX_reset = '1') and
 								 
 								(((MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
 								 ((MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) or MEM_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and MEM_IW(15 downto 12) = "1111") or
-								 (MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) and MEM_IW(15 downto 12) = "1011" and MEM_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00")) 
+								 (MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) and MEM_IW(15 downto 12) = "1011" and MEM_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00") or
+								 (MEM_IW(6 downto 2) = LAB(i).inst(6 downto 2) and MEM_IW(15 downto 12) = "1000" and MEM_IW(1 downto 0) = "10" and LAB(i).inst(15 downto 12) = "1000" and LAB(i).inst(1 downto 0) = "00")) 
 								 
 								 and MEM_reset = '1') and
 									
