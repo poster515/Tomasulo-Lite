@@ -352,18 +352,15 @@ package body LAB_functions is
 	begin 
 	
 		for i in 0 to 9 loop
-	
-			if ROB_in(i).inst = LAB_IW then
+
+			if ROB_in(i).inst = ID_IW then
 				temp := temp or "100";
-				report "LAB_func: LAB_IW_out matches " & integer'image(i) & "th ROB inst";
-			elsif ROB_in(i).inst = ID_IW then
-				temp := temp or "010";
-				report "LAB_func: ID_IW_out matches " & integer'image(i) & "th ROB inst";
+				--report "LAB_func: LAB_IW_out matches " & integer'image(i) & "th ROB inst";
 			elsif ROB_in(i).inst = EX_IW then
+				temp := temp or "010";
+				--report "LAB_func: ID_IW_out matches " & integer'image(i) & "th ROB inst";
+			elsif ROB_in(i).inst = MEM_IW then
 				temp := temp or "001";
-				report "LAB_func: EX_IW_out matches " & integer'image(i) & "th ROB inst";
---			elsif ROB_in(i).inst = MEM_IW then
---				temp := temp or "0001";
 				
 			end if;
 			
@@ -446,11 +443,13 @@ package body LAB_functions is
 	begin
 
 	if frst_branch_idx < 10 then
-
-		if ROB_in(frst_branch_idx).inst(15 downto 12) = "1010" and ROB_in(frst_branch_idx).valid = '1' then	--we have the first branch instruction in ROB
-			
-			for j in 9 downto 0 loop
+		--report "LAB_func: should have branch in ROB...";
 		
+		if ROB_in(frst_branch_idx).inst(15 downto 12) = "1010" and ROB_in(frst_branch_idx).valid = '1' then	--we have the first branch instruction in ROB
+			--report "LAB_func: found branch in ROB!";
+			--report "LAB_func: frst_branch_idx = " & integer'image(frst_branch_idx);
+			for j in 9 downto 0 loop
+				
 				if ROB_in(frst_branch_idx).inst(11 downto 7) = ROB_in(j).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '0' and frst_branch_idx > j then
 					reg1_resolved		:= '0';
 					condition_met		:= '0';
@@ -489,37 +488,38 @@ package body LAB_functions is
 						reg2_slot			:= reg2_slot;
 					end if;
 					
-				elsif j = 9 then
+				elsif j = 0 then
 				
 					--since reg1_resolved and reg2_resolved have, thus far, only represented ROB entries, now we need to check WB_IW_out and RF entries
 					if reg1_resolved = '1' and reg2_resolved = '1' then
 						--then we have all necessary info in ROB - need to check ROB output though since it can be writing back a branch condition register this cycle
+						--report "LAB_func: reg1 and reg2 resolved.";
 						
 						if WB_IW_out(11 downto 7) = ROB_in(frst_branch_idx).inst(11 downto 7) then	--
 						--WB is writing back to reg1 - evaluate now for condition
-							
+							report "LAB_func: WB IW matches ROB bnez branch.";
 							if WB_data_out /= "0000000000000000" and bnez = '1' then
 								condition_met		:= '1';
-								
+								report "LAB_func: WB_data_out is not zero.";
 							elsif WB_data_out /= ROB_in(reg2_slot).result and bne = '1' then
 								condition_met 		:= '1';
-							
+								report "LAB_func: WB_data_out is not equal to reg2.";
 							else
 								condition_met		:= '0';
-								
+								report "LAB_func: WB_data_out is ???.";
 							end if;
 							
 							exit;
 							
 						elsif WB_IW_out(11 downto 7) = ROB_in(frst_branch_idx).inst(6 downto 2) and bne = '1' then	--
 						--WB is writing back to reg2 - evaluate now for condition
-							
+							--report "LAB_func: WB IW matches ROB bne branch.";
 							if WB_data_out /= ROB_in(reg1_slot).result then
 								condition_met 		:= '1';
-							
+								report "LAB_func: WB_data_out is NOT equal to reg2.";
 							else
 								condition_met		:= '0';
-								
+								report "LAB_func: WB_data_out is ??";
 							end if;
 							
 							exit;
@@ -537,9 +537,13 @@ package body LAB_functions is
 						exit; --exit here since the operand dependency closest to branch isn't complete - therefore we can't know outcome of evaluation
 					
 					end if;
+				else
+					--report "LAB_func: Can't match a single LAB instruction to ROB?";
 				
 				end if;
 			end loop;
+		else
+			--report "LAB_func: Can't find first branch?";
 		end if;
 	else
 	--there is no branch in ROB yet, just look at WB_data_out and RF.

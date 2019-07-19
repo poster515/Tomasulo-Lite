@@ -127,7 +127,7 @@ package body ROB_functions is
 --							IW_in, WB_data, '1', '0', results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 --		
 			if i < frst_branch_idx then 
-				
+				--report "ROB_func: made it to condition 1, i = " & integer'image(i);	
 				if ROB_temp(i + 1).valid = '1' and ROB_temp(i + 1).inst = IW_in then
 					if IW_result_en = '1' and IW_updated = '0' then
 						report "ROB_func: update ROB entry, shift down [frst_br>inst]";
@@ -136,6 +136,8 @@ package body ROB_functions is
 						ROB_temp(i + n_clear_zero).inst 		:= ROB_temp(i + 1).inst;
 						ROB_temp(i + n_clear_zero).complete	:= '1';
 						IW_updated := '1';
+					else
+						ROB_temp(i + n_clear_zero) := ROB_temp(i + 1);
 					end if;
 					
 				elsif PM_buffer_en = '1' and ROB_temp(i).valid = '0' then
@@ -153,39 +155,45 @@ package body ROB_functions is
 					exit;
 				
 				else
---					report "ROB_func: just shift ROB entry down.";
+					report "ROB_func: shifting ROB if applicable, i = " & integer'image(i);
 					ROB_temp(i) := ROB_temp(i + convert_CZ(clear_zero));
 					
-					if ROB_temp(i + convert_CZ(clear_zero)).inst(15 downto 12) = "1010" then
-						--if results_avail = '1' and condition_met = '1' then
-						if results_avail = '1' and condition_met = '0' then
-							report "ROB_func: just shift ROB entry down, and mark branch as complete.";
-							ROB_temp(i).complete := '1';
-							ROB_temp(i).specul	:= '0';
-						--elsif results_avail = '1' and condition_met = '0' then
-						elsif results_avail = '1' and condition_met = '1' then
-							report "ROB_func: just shift ROB entry down and clear branch.";
-							ROB_temp(i) 			:= ((others => '0'), '0', '0', (others => '0'), '0');
-						end if;
-					end if;
+--					if ROB_temp(i + convert_CZ(clear_zero)).inst(15 downto 12) = "1010" then
+--						--if results_avail = '1' and condition_met = '1' then
+--						if results_avail = '1' and condition_met = '0' then
+--							report "ROB_func: just shift ROB entry down, and mark branch as complete.";
+--							ROB_temp(i).complete := '1';
+--							ROB_temp(i).specul	:= '0';
+--						--elsif results_avail = '1' and condition_met = '0' then
+--						elsif results_avail = '1' and condition_met = '1' then
+--							report "ROB_func: just shift ROB entry down and clear branch.";
+--							ROB_temp(i) 			:= ((others => '0'), '0', '0', (others => '0'), '0');
+--						else
+--							report "ROB_func: hit i < frst_branch_idx at i = " & integer'image(i);
+--						end if;
+--					else
+--						report "ROB_func: unknown. i < frst_branch_idx at i = " & integer'image(i);
+--					end if;
 						
 				end if;
 				
 			--elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '0' and i < scnd_branch_idx then
 				--if the first ROB branch condition is not met, then we've wasted time buffering a bunch of invalid instructions
 				--need to purge the ROB after frst_branch_idx entirely
-			elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '1' then
+			elsif i >= (frst_branch_idx) and results_avail = '1' and condition_met = '1' then
 				--if the first ROB branch condition is met, then we've wasted time buffering a subsequent bunch of invalid instructions
 				--need to purge the ROB after frst_branch_idx entirely
+				--report "ROB_func: made it to condition 2, i = " & integer'image(i);	
+				report "ROB_func: clearing entry since branch was wrong.";
 				ROB_temp(i) 	:= ((others => '0'), '0', '0', (others => '0'), '0');
 
 			--elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '1' and i < scnd_branch_idx then
 				--shift all instructions down, and buffer PM_data_in or update ROB results as applicable
 				--report "i>=frst_branch_idx and results_avail='1', condition_met='1', i=" & Integer'image(i);
 				--mark all speculative results as non-speculative, from first_branch_index to second_branch_index, and clear first branch from ROB
-			elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '0' and i < scnd_branch_idx then
+			elsif i >= (frst_branch_idx) and results_avail = '1' and condition_met = '0' and i < (scnd_branch_idx) then
 				--if the first ROB branch condition is not met, then we've correctly buffered the subsequent instructions
-				
+				--report "ROB_func: made it to condition 3, i = " & integer'image(i);	
 				if ROB_temp(i + 1).valid = '0' then 
 					--we can buffer PM_data_in right here, and shift down this range of instructions since the branch condition was met
 					if PM_buffer_en = '1' then
@@ -211,7 +219,8 @@ package body ROB_functions is
 				end if;
 			
 			--elsif i >= scnd_branch_idx and results_avail = '1' and condition_met = '1' then
-			elsif i >= scnd_branch_idx and results_avail = '1' and condition_met = '0' then
+			elsif i >= (scnd_branch_idx) and results_avail = '1' and condition_met = '0' then
+				--report "ROB_func: made it to condition 4, i = " & integer'image(i);
 				--these results are still speculative. buffer PM_data_in or update ROB results as applicable
 				if ROB_temp(i + 1).valid = '0' then 
 					--we can buffer PM_data_in right here, mark as speculative
@@ -239,7 +248,7 @@ package body ROB_functions is
 				end if;
 
 			elsif results_avail = '0' then
-
+				--report "ROB_func: made it to condition 5, i = " & integer'image(i);
 				--condition covers when we get to a location in the ROB that isn't valid, i.e., we can buffer PM_data_in there
 				if ROB_temp(i).valid = '0' then
 					
@@ -312,6 +321,8 @@ package body ROB_functions is
 					ROB_temp(i)	:= ROB_temp(i + convert_CZ(clear_zero));
 					
 				end if; --ROB_temp(i).valid
+			else
+				report "ROB_func: Unknown state reached.";
 				
 			end if; --results_available = '1' and condition_met = '1'
 			
