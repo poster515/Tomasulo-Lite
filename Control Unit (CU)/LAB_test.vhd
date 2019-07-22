@@ -123,24 +123,26 @@ architecture arch of LAB_test is
 		--read/write from I2C slave
 		
 begin
-	process(reset_n, results_available, condition_met)
+	process(reset_n, sys_clock, results_available, condition_met)
 	begin
 		if reset_n = '0' then
 			clear_IW_outs	<= "000";
 			RF_revalidate	<= "00000000000000000000000000000000";
-		elsif results_available = '1' and condition_met = '1' then
-		
-			--clear the speculatively fetched instructions issued into pipeline - only clears these and not non-speculative instructions
-			clear_IW_outs	<= check_ROB_for_wrongly_fetched_insts(ROB_in, IW_reg, ID_IW, EX_IW, MEM_IW);
-			report "LAB: branch incorrectly taken - purging all irrelevant data.";
 			
-			--make function that logically ORs a RF revalidation vector for the RF for registers in pipeline that were incorrectly fetched and executed
-			RF_revalidate <= revalidate_RF_regs(ROB_in, frst_branch_idx, IW_reg, ID_IW, EX_IW, MEM_IW, WB_IW_in);
-			report "LAB: RF_revalidate = " & integer'image(to_integer(unsigned(revalidate_RF_regs(ROB_in, frst_branch_idx, IW_reg, ID_IW, EX_IW, MEM_IW, WB_IW_in))));
-			
-		else
-			clear_IW_outs	<= "000";
-			RF_revalidate	<= "00000000000000000000000000000000";
+		elsif rising_edge(sys_clock) then
+			if results_available = '1' and condition_met = '1' then
+				--clear the speculatively fetched instructions issued into pipeline - only clears these and not non-speculative instructions
+				clear_IW_outs	<= check_ROB_for_wrongly_fetched_insts(ROB_in, IW_reg, ID_IW, EX_IW, MEM_IW);
+				report "LAB: branch incorrectly taken - purging all irrelevant data.";
+				
+				--make function that logically ORs a RF revalidation vector for the RF for registers in pipeline that were incorrectly fetched and executed
+				RF_revalidate <= revalidate_RF_regs(ROB_in, frst_branch_idx, IW_reg, ID_IW, EX_IW, MEM_IW, WB_IW_in);
+				report "LAB: RF_revalidate = " & integer'image(to_integer(unsigned(revalidate_RF_regs(ROB_in, frst_branch_idx, IW_reg, ID_IW, EX_IW, MEM_IW, WB_IW_in))));
+				
+			else
+				clear_IW_outs	<= "000";
+				RF_revalidate	<= "00000000000000000000000000000000";
+			end if;
 		end if;
 	end process;
 

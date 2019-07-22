@@ -36,7 +36,6 @@ entity WB is
 		stall_out			: out std_logic;
 		WB_data_out			: out std_logic_vector(15 downto 0);
 		ROB_out				: out ROB;
-		--speculate_results	: out std_logic;	--denotes that the newly fetched PM_data_in is speculative
 		WB_IW_out			: out std_logic_vector(15 downto 0);
 		frst_branch_index	: inout integer
 	);

@@ -89,7 +89,8 @@ begin
 					--for BNEZ (1010...00), loads (1000...00), stores (1000...11), GPIO/I2C writes (1011..X1), LOGI (1100) only need 1 RF output
 					elsif (IW_in(15 downto 12) = "1010" and IW_in(1 downto 0) = "00") or
 							(IW_in(15 downto 12) = "1000" and (IW_in(1 downto 0) = "00" or IW_in(1 downto 0) = "11")) or
-							(IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "X1") or IW_in(15 downto 12) = "1100" then
+							(IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "X1") or IW_in(15 downto 12) = "1100" or
+							((not(IW_in(15)) and not(IW_in(14)) and IW_in(0)) = '1') then
 						RF_out1_en <= '1'; 
 						RF_out2_en <= '0';
 						
@@ -116,7 +117,8 @@ begin
 					immediate_val_reg <= "000000" & IW_in(11 downto 2);
 					
 				--ADDI (0000..10), SUBI (0001..10), MULTI (0010..10), DIVI (0011..10), LOGI (1100)
-				elsif (IW_in(15 downto 14) = "00" and IW_in(1 downto 0) = "10") or IW_in(15 downto 12) = "1100" then
+				elsif ((IW_in(15 downto 14) = "00" and IW_in(1 downto 0) = "10") or IW_in(15 downto 12) = "1100") or
+					((not(IW_in(15)) and not(IW_in(14)) and IW_in(0)) = '1') then
 						
 					immediate_val_reg <= "00000000000" & IW_in(6 downto 2);
 					

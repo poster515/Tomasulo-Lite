@@ -33,7 +33,7 @@ entity EX is
 		EX_stall_out	: out std_logic;
 		IW_out			: out std_logic_vector(15 downto 0); -- forwarding to MEM control unit
 		mem_addr_out	: out std_logic_vector(15 downto 0); -- memory address directly to ALU
-		immediate_val	: out	std_logic_vector(15 downto 0);	 --represents various immediate values from various OpCodes
+		immediate_val	: out	std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
 		reset_out		: out std_logic
 	);
 end EX;

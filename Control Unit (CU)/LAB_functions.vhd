@@ -385,6 +385,7 @@ package body LAB_functions is
 		variable temp_E	: unsigned(31 downto 0) := "00000000000000000000000000000000";
 		variable temp_M	: unsigned(31 downto 0) := "00000000000000000000000000000000";
 		variable temp_W	: unsigned(31 downto 0) := "00000000000000000000000000000000";
+		variable temp_R	: unsigned(31 downto 0) := "00000000000000000000000000000000"; --represents speculative instructions in ROB that have already been completed before branch cond determined
 		
 		variable one		: unsigned(31 downto 0) := "00000000000000000000000000000001";
 	begin
@@ -406,11 +407,14 @@ package body LAB_functions is
 				elsif ROB_in(i).inst = WB_IW_in then
 					temp_W := shift_left(one, to_integer(unsigned(WB_IW_in(11 downto 7))));
 					report "LAB_func: revalidating reg " & integer'image(to_integer(unsigned(WB_IW_in(11 downto 7))));
+				elsif i > frst_branch_idx and ROB_in(i).valid = '1' then --need to revalidate complete, speculative registers in ROB
+					temp_R := temp_R or shift_left(one, to_integer(unsigned(ROB_in(i).inst(11 downto 7))));
+					report "LAB_func: revalidating reg " & integer'image(to_integer(unsigned(ROB_in(i).inst(11 downto 7))));
 				end if;
 			end if;
 		end loop;	--i
 	
-		return std_logic_vector(temp_L or temp_I or temp_E or temp_M or temp_W);
+		return std_logic_vector(temp_L or temp_I or temp_E or temp_M or temp_W or temp_R);
 	end;
 		
 	

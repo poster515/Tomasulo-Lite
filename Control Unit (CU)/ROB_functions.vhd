@@ -130,7 +130,7 @@ package body ROB_functions is
 				--report "ROB_func: made it to condition 1, i = " & integer'image(i);	
 				if ROB_temp(i + 1).valid = '1' and ROB_temp(i + 1).inst = IW_in then
 					if IW_result_en = '1' and IW_updated = '0' then
-						report "ROB_func: update ROB entry, shift down [frst_br>inst]";
+						--report "ROB_func: update ROB entry, shift down [frst_br>inst]";
 						--n_clear_zero automatically shifts ROB entries
 						ROB_temp(i + n_clear_zero).result 	:= IW_result;
 						ROB_temp(i + n_clear_zero).inst 		:= ROB_temp(i + 1).inst;
@@ -141,21 +141,21 @@ package body ROB_functions is
 					end if;
 					
 				elsif PM_buffer_en = '1' and ROB_temp(i).valid = '0' then
-					report "ROB_func: buffer PM_data_in, shift down [frst_br>inst]";
+					--report "ROB_func: buffer PM_data_in, shift down [frst_br>inst]";
 					ROB_temp(i).inst 		:= PM_data_in;
 					ROB_temp(i).valid 	:= '1';
 					ROB_temp(i).specul	:= speculate_res;
 					exit;
 					
 				elsif ROB_temp(i + 1).valid = '0' and PM_buffer_en = '1' then
-					report "ROB_func: buffer PM_data_in, shift down [frst_br>inst]";
+					--report "ROB_func: buffer PM_data_in, shift down [frst_br>inst]";
 					ROB_temp(i + n_clear_zero).inst 		:= PM_data_in;
 					ROB_temp(i + n_clear_zero).valid 	:= '1';
 					ROB_temp(i + n_clear_zero).specul	:= speculate_res;
 					exit;
 				
 				else
-					report "ROB_func: shifting ROB if applicable, i = " & integer'image(i);
+					--report "ROB_func: shifting ROB if applicable, i = " & integer'image(i);
 					ROB_temp(i) := ROB_temp(i + convert_CZ(clear_zero));
 					
 --					if ROB_temp(i + convert_CZ(clear_zero)).inst(15 downto 12) = "1010" then
@@ -184,7 +184,7 @@ package body ROB_functions is
 				--if the first ROB branch condition is met, then we've wasted time buffering a subsequent bunch of invalid instructions
 				--need to purge the ROB after frst_branch_idx entirely
 				--report "ROB_func: made it to condition 2, i = " & integer'image(i);	
-				report "ROB_func: clearing entry since branch was wrong.";
+				--report "ROB_func: clearing entry since branch was wrong.";
 				ROB_temp(i) 	:= ((others => '0'), '0', '0', (others => '0'), '0');
 
 			--elsif i >= frst_branch_idx and results_avail = '1' and condition_met = '1' and i < scnd_branch_idx then
@@ -197,7 +197,7 @@ package body ROB_functions is
 				if ROB_temp(i + 1).valid = '0' then 
 					--we can buffer PM_data_in right here, and shift down this range of instructions since the branch condition was met
 					if PM_buffer_en = '1' then
-						report "ROB_func: buffer PM_data_in, shift down [frst_br < insts < scnd_br]";
+						--report "ROB_func: buffer PM_data_in, shift down [frst_br < insts < scnd_br]";
 						ROB_temp(i + n_clear_zero).inst 		:= PM_data_in;
 						ROB_temp(i + n_clear_zero).valid 	:= '1';
 						ROB_temp(i + n_clear_zero).specul	:= speculate_res;
@@ -208,7 +208,7 @@ package body ROB_functions is
 				elsif IW_in = ROB_temp(i + 1).inst and ROB_temp(i + 1).valid = '1' then 
 					--we can shift the matching instruction down a slot
 					if IW_result_en = '1' and IW_updated = '0' then
-						report "ROB_func: shift matching IW_in inst down a slot";
+						--report "ROB_func: shift matching IW_in inst down a slot";
 						--n_clear_zero automatically shifts ROB entries
 						ROB_temp(i + n_clear_zero).result 	:= IW_result;
 						ROB_temp(i + n_clear_zero).inst 		:= ROB_temp(i + 1).inst;
@@ -225,7 +225,7 @@ package body ROB_functions is
 				if ROB_temp(i + 1).valid = '0' then 
 					--we can buffer PM_data_in right here, mark as speculative
 					if PM_buffer_en = '1' then
-						report "ROB_func: buffer PM_data, mark all future results as speculative.";
+						--report "ROB_func: buffer PM_data, mark all future results as speculative.";
 						ROB_temp(i + n_clear_zero).inst 		:= PM_data_in;
 						ROB_temp(i + n_clear_zero).valid 	:= '1';
 						ROB_temp(i + n_clear_zero).specul	:= '1';
@@ -238,7 +238,7 @@ package body ROB_functions is
 					--we can shift the matching instruction down a slot
 					if IW_result_en = '1' and IW_updated = '0' then
 						--n_clear_zero automatically shifts ROB entries
-						report "ROB_func: shift ROB down as appropriate.";
+						--report "ROB_func: shift ROB down as appropriate.";
 						ROB_temp(i + n_clear_zero).result 	:= IW_result;
 						ROB_temp(i + n_clear_zero).inst 		:= ROB_temp(i + 1).inst;
 						IW_updated := '1';
@@ -254,7 +254,7 @@ package body ROB_functions is
 					
 					if PM_buffer_en = '1' then
 						--just insert here 
-						report "ROB_func: buffer PM_data in ROB.";
+						--report "ROB_func: buffer PM_data in ROB.";
 						ROB_temp(i).inst 		:= PM_data_in;
 						ROB_temp(i).valid 	:= '1';
 						ROB_temp(i).specul	:= speculate_res;
@@ -266,13 +266,13 @@ package body ROB_functions is
 					
 					if PM_buffer_en = '1' then
 						--n_clear_zero automatically shifts ROB entries
-						report "ROB_func: buffer PM_data in ROB and shift ROB down."; 
+						--report "ROB_func: buffer PM_data in ROB and shift ROB down."; 
 						ROB_temp(i + n_clear_zero).inst 		:= PM_data_in;
 						ROB_temp(i + n_clear_zero).valid 	:= '1';
 						ROB_temp(i + n_clear_zero).specul	:= speculate_res;
 						exit;
 					else
-						report "ROB_func: can't do anything, shift ROB down.";
+						--report "ROB_func: can't do anything, shift ROB down.";
 						--n_clear_zero automatically shifts ROB entries
 						ROB_temp(i + n_clear_zero) 			:= ROB_temp(i + 1);
 					end if;
@@ -282,7 +282,7 @@ package body ROB_functions is
 					
 					--if we can update IW_in entry, and we haven't updated any result yet, in case of identical instructions
 					if IW_result_en = '1' and IW_updated = '0' then
-						report "ROB_func: update IW in ROB and shift ROB down.";
+						--report "ROB_func: update IW in ROB and shift ROB down.";
 						--n_clear_zero automatically shifts ROB entries
 						ROB_temp(i + n_clear_zero).result 		:= IW_result;
 						ROB_temp(i + n_clear_zero).inst 			:= ROB_temp(i + 1).inst;
@@ -293,7 +293,7 @@ package body ROB_functions is
 						IW_updated := '1';
 						
 					else 
-						report "ROB_func: can't do anything, just shift ROB down.";
+						--report "ROB_func: can't do anything, just shift ROB down.";
 						--n_clear_zero automatically shifts ROB entries
 						ROB_temp(i) := ROB_temp(i + convert_CZ(clear_zero));
 					
@@ -316,13 +316,13 @@ package body ROB_functions is
 					end if;
 				
 				else
-					report "ROB_func: can't do anything, just shift ROB down.";
+					--report "ROB_func: can't do anything, just shift ROB down.";
 					--clear_zero automatically shifts ROB entries
 					ROB_temp(i)	:= ROB_temp(i + convert_CZ(clear_zero));
 					
 				end if; --ROB_temp(i).valid
 			else
-				report "ROB_func: Unknown state reached.";
+				--report "ROB_func: Unknown state reached.";
 				
 			end if; --results_available = '1' and condition_met = '1'
 			
