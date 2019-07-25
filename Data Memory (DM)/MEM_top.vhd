@@ -132,6 +132,11 @@ begin
 	
 	long_st_buff_addr <= "00000" & DM_st_buff_addr;
 	
+	DM_data_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
+	DM_addr_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
+	DM_wren_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
+	MEM_out_top_mux_sel 	<= check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) and (load_inst or store_inst);
+	
 	--process to multiplex wr_en to Data Memory in lieu of instantiating a single bit mux	
 	process(DM_wren_in_mux_sel, wr_en, DM_st_buff_wren)
 	begin
@@ -154,7 +159,6 @@ begin
 		end if;		
 	end process;
 	
-	
 	process(reset_n, sys_clock, MEM_in_1, store_inst, load_inst, inst_is_specul, st_buff)
 	begin
 		if reset_n = '0' then
@@ -165,10 +169,10 @@ begin
 			
 			st_buff_data			<= "0000000000000000";
 			
-			DM_data_in_mux_sel 	<= '0';
-			DM_addr_in_mux_sel 	<= '0'; 
-			DM_wren_in_mux_sel 	<= '0';
-			MEM_out_top_mux_sel  <= '0';
+--			DM_data_in_mux_sel 	<= '0';
+--			DM_addr_in_mux_sel 	<= '0'; 
+--			DM_wren_in_mux_sel 	<= '0';
+--			MEM_out_top_mux_sel  <= '0';
 			
 			buffer_st_in			<= '0';
 			
@@ -177,11 +181,11 @@ begin
 			--buffer_st_in denotes that the incoming instruction/data must be buffered in st_buff since it is a store and either 1) speculative or 2) existing in st_buff under another address
 			buffer_st_in			<= store_inst and (inst_is_specul or check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)));
 			
-			DM_data_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
-			DM_addr_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
-			DM_wren_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
-			MEM_out_top_mux_sel 	<= check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) and (load_inst or store_inst);
-			
+--			DM_data_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
+--			DM_addr_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
+--			DM_wren_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
+--			MEM_out_top_mux_sel 	<= check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) and (load_inst or store_inst);
+--			
 			--report "MEM_top: MEM_out_top_mux_sel = " & integer'image(convert_SL(MEM_out_top_mux_sel));
 			--report "MEM_top: DM_data_in_mux_sel = " & integer'image(convert_SL(DM_data_in_mux_sel));
 			--report "MEM_top: DM_addr_in_mux_sel = " & integer'image(convert_SL(DM_addr_in_mux_sel));
@@ -197,24 +201,24 @@ begin
 					DM_st_buff_data 	<= st_buff(0).data;	--data for storing back to DM from st_buff
 					DM_st_buff_addr 	<= st_buff(0).addr;	--address for storing back to DM from st_buff
 					
-					report "MEM_top: Can't use DM for ld/st, writing back st_buff data to DM";
+					--report "MEM_top: Can't use DM for ld/st, writing back st_buff data to DM";
 				else
 					--can neither write to DM from ALU nor write to DM from st_buff - just buffer ALU outputs in st_buff
 					DM_st_buff_wren 	<= '0';
 					DM_st_buff_addr	<= "00000000000";
 					
-					report "MEM_top: Can't use DM for ld/st or write back st_buff data to DM";
+					--report "MEM_top: Can't use DM for ld/st or write back st_buff data to DM";
 				end if;
 				
 				if load_inst = '1' then
 					st_buff_data	<= fetch_st_buff_data(st_buff, MEM_in_1(10 downto 0));
-					report "MEM_top: Have address match in st_buff, loading data from st_buff";
+					--report "MEM_top: Have address match in st_buff, loading data from st_buff";
 				end if;
 			else
 				--include as a catch-all for this clock cycle
 				DM_st_buff_wren 	<= '0';
 				DM_st_buff_addr	<= "00000000000";
-				report "MEM_top: Hit else statement, do nothing with DM";
+				--report "MEM_top: Hit else statement, do nothing with DM";
 			end if;
 			
 			if rising_edge(sys_clock) then
@@ -229,7 +233,7 @@ begin
 					--3) clear/re-mark st_buff instructions as non-speculative (ROB_in) 
 					
 				st_buff				<= update_st_buff(st_buff, MEM_in_1(10 downto 0), MEM_in_2, buffer_st_in, DM_wren_in_mux_sel, ROB_in, instruction_word); 
-				MEM_out_top_reg 	<= MEM_out_top_mux_out;
+				--MEM_out_top_reg 	<= MEM_out_top_mux_out;
 			end if; 
 		end if; --reset_n
 	end process;
@@ -237,6 +241,7 @@ begin
 	--latch inputs
 
 	--latch outputs
-	MEM_out_top <= MEM_out_top_reg;
+	--MEM_out_top <= MEM_out_top_reg;
+	MEM_out_top <= MEM_out_top_mux_out;
 	
 end behavioral;

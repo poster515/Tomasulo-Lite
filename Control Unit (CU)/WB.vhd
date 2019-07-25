@@ -57,7 +57,7 @@ architecture behavioral of WB is
 
 	signal WB_out_mux_sel								: std_logic_vector(1 downto 0); --selects data input to redirect to RF
 	signal stall, zero_inst_match						: std_logic; 					--overall stall signal;
-	signal WB_data											: std_logic_vector(15 downto 0);
+	signal WB_data, WB_data_out_reg					: std_logic_vector(15 downto 0);
 	signal clear_zero_inst								: std_logic;
 	signal speculate_results							: std_logic;
 	signal i, j												: integer range 0 to ROB_DEPTH;
@@ -66,6 +66,9 @@ architecture behavioral of WB is
 	
 	--signal tracks whether the next IW is a memory address (for jumps, loads, etc)
 	signal next_IW_is_addr	: std_logic;
+	
+	--signal that performs same function as RF_wr_en - except this is to update a ROB result.
+	--signal update_ROB_entry	: std_logic;
 
 begin
 
@@ -120,6 +123,35 @@ begin
 		end if;
 	end process;
 
+	process(reset_n, ROB_actual, clear_zero_inst, IW_in)
+	begin
+		if reset_n = '0' then
+			WB_out_mux_sel 	<= "01";
+		else
+			--this if..else series assigns the correct data input corresponding to IW_in
+			if (ROB_actual(0).complete = '1') or (ROB_actual(1).complete = '1' and clear_zero_inst = '1') then
+				WB_out_mux_sel <= "00";
+				
+			--for loads and ALU operations, forward MEM_top_data to RF
+			elsif ((IW_in(15 downto 12) = "1000") and (IW_in(1) = '0')) or (IW_in(15) = '0') or
+					(IW_in(15 downto 12) = "1100") then
+				WB_out_mux_sel <= "01";
+				
+			--GPIO reads
+			elsif (IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "00") then
+				WB_out_mux_sel <= "10";
+							
+			--I2C reads	
+			elsif (IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "10") then
+				WB_out_mux_sel <= "11";
+				
+			else
+				WB_out_mux_sel <= "00";
+				
+			end if; ----IW_in (various)
+		end if;
+	
+	end process;
 
 	process(reset_n, sys_clock)
 	begin
@@ -130,15 +162,20 @@ begin
 			stall_out 			<= '0';
 			RF_in_demux 		<= "00000";
 			RF_wr_en 			<= '0';
-			WB_out_mux_sel 	<= "01";
+			--WB_out_mux_sel 	<= "01";
 			clear_zero_inst 	<= '0'; 
 			WB_IW_out 			<= "0000000000000000";
+			WB_data_out_reg	<= "0000000000000000";
+			--update_ROB_entry 	<= '0';
 			
 		elsif rising_edge(sys_clock) then
 			
 			if stall = '0' then
 
 				stall_out <= '0';
+				
+				--forward data to RF
+				WB_data_out_reg <= WB_data;
 				
 				--if PM_data_in(15 downto 0) /= "1111111111111111" and reset_MEM = '1' then
 				if PM_data_in(15 downto 0) /= "1111111111111111" then
@@ -157,7 +194,6 @@ begin
 					
 					--update_ROB(ROB_in, PM_data_in, PM_buffer_en, IW_in, IW_result, IW_result_en, clear_zero, results_avail, condition_met
 					--				speculate_res, frst_branch_idx, scnd_branch_idx, ROB_DEPTH	)
-					
 					if reset_MEM = '0' then
 						--report "WB: 6. CPU not stalled and MEM_reset is '0'.";
 					
@@ -169,13 +205,18 @@ begin
 						WB_IW_out			<= "1111111111111111";
 
 					elsif (zero_inst_match = '1' and (ROB_actual(0).specul = '0' or (results_available = '1' and condition_met = '0'))) or ROB_actual(0).complete = '1' then 
-						--report "WB: 1. writing back ROB(0) results to RF";
+						report "WB: 1. writing back ROB(0) results to RF";
 						--incoming MEM IW matches zeroth ROB entry which should be committed in specul = '0'
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
 															IW_in, WB_data, '0', '1', results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
-
-						RF_in_demux 		<= IW_in(11 downto 7);	--use IW to find destination register for the aforementioned instructions
-						WB_IW_out			<= IW_in;
+						if zero_inst_match = '1' then
+							RF_in_demux 		<= IW_in(11 downto 7);	--use IW to find destination register for the aforementioned instructions
+							WB_IW_out			<= IW_in;
+						else
+							RF_in_demux			<= ROB_actual(0).inst(11 downto 7); --else need to use reg1 field from complete ROB instruction
+							WB_IW_out			<= ROB_actual(0).inst;
+						end if;
+						
 						--only if zeroth instruction is non-speculative can we write back results to RF
 						clear_zero_inst 	<= '1'; 	--enable clearing the zeroth instruction since zero_inst_match = '1'
 						
@@ -190,7 +231,7 @@ begin
 						
 					elsif zero_inst_match = '1' and ROB_actual(0).specul = '1' then 
 					
-						--report "WB: 2. can't write speculative ROB(0) results to RF";
+						report "WB: 2. can't write speculative ROB(0) results to RF";
 						--incoming MEM IW matches zeroth ROB entry which can't be committed since specul = '1'
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
 															IW_in, WB_data, '1', results_available and condition_met, results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
@@ -199,17 +240,16 @@ begin
 						WB_IW_out			<= "1111111111111111";
 						
 					elsif zero_inst_match = '0' and ROB_actual(0).complete = '0' then 
-						--report "WB: 3. can't write ROB(0) results (if applicable) to RF";
+						report "WB: 3. can't write ROB(0) results (if applicable) to RF";
 						--incoming MEM IW does not match zeroth ROB entry so just update ROB entry for IW_in and buffer PM_data_in, if not a jump
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
 															IW_in, WB_data, '1', '0', results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
-						
 						clear_zero_inst 	<= '0'; 
 						RF_wr_en 			<= '0';
 						WB_IW_out			<= "1111111111111111";
 												
 					elsif ROB_actual(1).complete = '1' and clear_zero_inst = '1' and ROB_actual(1).specul = '0' and ROB_actual(0).specul = '0' then		
-						--report "WB: 4. can write complete, non-speculative ROB(1) results to RF";
+						report "WB: 4. can write complete, non-speculative ROB(1) results to RF";
 						--previous clock cycle had a non-speculative zero_inst_match, and it happened again this clock cycle
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
 															IW_in, WB_data, '1', clear_zero_inst, results_available, condition_met, speculate_results, 
@@ -239,7 +279,7 @@ begin
 					end if;
 					
 				else
-					--report "WB: 7. reached else statement.";
+					report "WB: 7. reached else statement.";
 					
 					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, '0', IW_in, WB_data, '0', clear_zero_inst, 
 														results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
@@ -249,27 +289,27 @@ begin
 					
 				end if; --PM_data_in
 				
-				--this if..else series assigns the correct data input corresponding to IW_in
-				if (ROB_actual(0).complete = '1') or (ROB_actual(1).complete = '1' and clear_zero_inst = '1') then
-					WB_out_mux_sel <= "00";
-					
-				--for loads and ALU operations, forward MEM_top_data to RF
-				elsif ((IW_in(15 downto 12) = "1000") and (IW_in(1) = '0')) or (IW_in(15) = '0') or
-						(IW_in(15 downto 12) = "1100") then
-					WB_out_mux_sel <= "01";
-					
-				--GPIO reads
-				elsif (IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "00") then
-					WB_out_mux_sel <= "10";
-								
-				--I2C reads	
-				elsif (IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "10") then
-					WB_out_mux_sel <= "11";
-					
-				else
-					WB_out_mux_sel <= "00";
-					
-				end if; ----IW_in (various)
+--				--this if..else series assigns the correct data input corresponding to IW_in
+--				if (ROB_actual(0).complete = '1') or (ROB_actual(1).complete = '1' and clear_zero_inst = '1') then
+--					WB_out_mux_sel <= "00";
+--					
+--				--for loads and ALU operations, forward MEM_top_data to RF
+--				elsif ((IW_in(15 downto 12) = "1000") and (IW_in(1) = '0')) or (IW_in(15) = '0') or
+--						(IW_in(15 downto 12) = "1100") then
+--					WB_out_mux_sel <= "01";
+--					
+--				--GPIO reads
+--				elsif (IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "00") then
+--					WB_out_mux_sel <= "10";
+--								
+--				--I2C reads	
+--				elsif (IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "10") then
+--					WB_out_mux_sel <= "11";
+--					
+--				else
+--					WB_out_mux_sel <= "00";
+--					
+--				end if; ----IW_in (various)
 				
 			elsif stall = '1' then
 				
@@ -319,6 +359,6 @@ begin
 	end process;
 	
 	ROB_out 		<= ROB_actual;
-	WB_data_out	<= WB_data;
+	WB_data_out	<= WB_data_out_reg;
 	
 end behavioral;

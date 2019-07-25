@@ -606,7 +606,7 @@ begin
 	
 	--this process determines whether the PM_data_in poses a data hazard to any instruction in LAB or in pipeline
 	--PM_data_hazard_status	: process(reset_n, PM_data_in, ID_IW, EX_IW, MEM_IW, ID_reset, EX_reset, MEM_reset, reg2_used, LAB, branch_reg, ld_st_reg)
-	PM_data_hazard_status	: process(reset_n, PM_data_in, LAB)
+	PM_data_hazard_status	: process(reset_n, PM_data_in, LAB, ld_st)
 		variable dh_ptr_outer 	: integer range 0 to LAB_MAX - 1;
 		--variable last_dh			: integer range 0 to LAB_MAX - 1 + 3; --adding three to account for pipeline instructions
 	begin	
@@ -645,6 +645,9 @@ begin
 				end if;
 				
 			end loop; --dh_ptr_outer 
+		elsif ld_st = '1' then
+			--if ld_st = '1', then we have a load or store instruction on PM_data_in at this clock edge. need to set PM_datahaz_status so we can then fetch address
+			PM_datahaz_status <= '1';
 		else
 			PM_datahaz_status <= '0';
 		end if; --reset_n

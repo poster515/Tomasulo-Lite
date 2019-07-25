@@ -212,17 +212,10 @@ package body LAB_functions is
 		not_SL := convert_SL(not(shift_LAB));
 		
 		for i in 0 to LAB_MAX - 2 loop
-			--need to ensure that we're above last issued instruction, and instruction isn't a jump
-			if i >= issued_inst and PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" then
-			
-				if ld_st_reg = '1' and LAB_temp(i + 1).inst(15 downto 12) = "1000" and LAB_temp(i + 1).addr_valid = '0' and LAB_temp(i + 1).inst_valid = '1' then
-					LAB_temp(i + not_SL).inst 			:= LAB_temp(i + 1).inst;
-					LAB_temp(i + not_SL).inst_valid 	:= LAB_temp(i + 1).inst_valid;
-					LAB_temp(i + not_SL).addr			:= PM_data_in;
-					LAB_temp(i + not_SL).addr_valid 	:= '1';
-					address_updated		:= '1';
-					
-				elsif LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '0' then
+			--need to ensure that we're above last issued instruction, and instruction isn't a jump, and isn't a memory address for a load/store instruction
+			if i >= issued_inst and PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" and ld_st_reg = '0' then
+				
+				if LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '0' then
 				
 					if address_updated = '0' then
 					
@@ -256,28 +249,97 @@ package body LAB_functions is
 					else
 						LAB_temp(i + not_SL).addr_valid	:= '1';
 					end if;
+					
+					if shift_LAB = '1' then
+						--we're at the last spot in the LAB and need to provide zeros for last entry
+						LAB_temp(i).inst				:= "0000000000000000";
+						LAB_temp(i).inst_valid		:= '0';
+						LAB_temp(i).addr				:= "0000000000000000";
+						LAB_temp(i).addr_valid		:= '1';
+						exit;
+					end if;
+					
 					exit;
 				
 				else
 					report "LAB_func: 4. at " & Integer'image(i) & " shift entry from " & Integer'image(i + convert_SL(shift_LAB));
 					LAB_temp(i) := LAB_temp(i + convert_SL(shift_LAB));
 				end if;
-			
-			elsif ld_st_reg = '1' and ((LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '0') or i = LAB_MAX - 1) then
-				report "LAB_func: At spot " & integer'image(i + convert_SL(not(shift_LAB))) & " buffer mem address";
-				LAB_temp(i).inst 			:= LAB_temp(i + convert_SL(shift_LAB)).inst;
-				LAB_temp(i).inst_valid 	:= LAB_temp(i + convert_SL(shift_LAB)).inst_valid;
-				LAB_temp(i).addr 			:= PM_data_in;
-				LAB_temp(i).addr_valid 	:= '1';
-				exit;
+			------------------------EXPERIMENTAL-----------------------------	
+			elsif ld_st_reg = '1' then
+		
+				if LAB_temp(i).inst(15 downto 12) = "1000" and LAB_temp(i).addr_valid = '0' and LAB_temp(i).inst_valid = '1' and address_updated = '0' then 
+					--((LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '0') or i = LAB_MAX - 1) then
+					report "LAB_func: 78. At spot " & integer'image(i) & " buffer mem address";
+					LAB_temp(i).inst 			:= LAB_temp(i).inst;
+					LAB_temp(i).inst_valid 	:= LAB_temp(i).inst_valid;
+					LAB_temp(i).addr 			:= PM_data_in;
+					LAB_temp(i).addr_valid 	:= '1';
+					address_updated			:= '1';
+
+				elsif LAB_temp(i + 1).inst(15 downto 12) = "1000" and LAB_temp(i + 1).addr_valid = '0' and LAB_temp(i + 1).inst_valid = '1' and address_updated = '0' then
+					--if ld_st_reg = '1', we know PM_data_in is the address of the first load/store encountered with an invalid address field
+					report "LAB_func: 76. encountered load/store. shifting instruction";
+					LAB_temp(i + not_SL).inst 			:= LAB_temp(i + 1).inst;
+					LAB_temp(i + not_SL).inst_valid 	:= LAB_temp(i + 1).inst_valid;
+					LAB_temp(i + not_SL).addr			:= PM_data_in;
+					LAB_temp(i + not_SL).addr_valid 	:= '1';
+					address_updated						:= '1';
+					
+					if i + 1 = LAB_MAX - 1 and shift_LAB = '1' then
+						--we're at the last spot in the LAB and need to provide zeros for last entry
+						report "LAB_func: 234. at end of LAB, writing in 0s.";
+						
+						LAB_temp(i + 1).inst				:= "0000000000000000";
+						LAB_temp(i + 1).inst_valid		:= '0';
+						LAB_temp(i + 1).addr				:= "0000000000000000";
+						LAB_temp(i + 1).addr_valid		:= '1';
+						exit;
+					end if;
+				
+				else
+					if i + 1 = LAB_MAX - 1 and shift_LAB = '1' then
+						--we're at the last spot in the LAB and need to provide zeros for last entry
+						report "LAB_func: 264. at end of LAB, writing in 0s.";
+						LAB_temp(i + 1).inst				:= "0000000000000000";
+						LAB_temp(i + 1).inst_valid		:= '0';
+						LAB_temp(i + 1).addr				:= "0000000000000000";
+						LAB_temp(i + 1).addr_valid		:= '1';
+						exit;
+					else
+						report "LAB_func: 69. at " & Integer'image(i) & " shift entry from " & Integer'image(i + convert_SL(shift_LAB));
+						LAB_temp(i) := LAB_temp(i + convert_SL(shift_LAB));
+					end if;
+				end if;
+			------------------------END EXPERIMENTAL-----------------------------	
+
 			--need to handle case where we don't want to buffer PM_data_in (i.e., jumps and branches) but still want to shift LAB down and issue LAB(0)
 			else
 				if i >= issued_inst then
 					report "LAB_func: 2. at " & Integer'image(i + not_SL) & " shift entry from " & Integer'image(i + 1);
 					LAB_temp(i + not_SL)	:= LAB_temp(i + 1);
+					
+					if i + 1 = LAB_MAX - 1 and shift_LAB = '1' then
+						--we're at the last spot in the LAB and need to provide zeros for last entry
+						LAB_temp(i).inst				:= "0000000000000000";
+						LAB_temp(i).inst_valid		:= '0';
+						LAB_temp(i).addr				:= "0000000000000000";
+						LAB_temp(i).addr_valid		:= '1';
+						exit;
+					end if;
 				else
 					report "LAB_func: 3. at " & Integer'image(i + not_SL) & " shift entry from " & Integer'image(i + 1);
 					LAB_temp(i)	:= LAB_temp(i);
+					
+					if i + 1 = LAB_MAX - 1 and shift_LAB = '1' then
+						--we're at the last spot in the LAB and need to provide zeros for last entry
+						LAB_temp(i).inst				:= "0000000000000000";
+						LAB_temp(i).inst_valid		:= '0';
+						LAB_temp(i).addr				:= "0000000000000000";
+						LAB_temp(i).addr_valid		:= '1';
+						exit;
+					end if;
+					
 				end if;
 			end if; --i >= issued_inst
 		end loop; --for i
