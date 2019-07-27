@@ -134,27 +134,31 @@ package body ROB_functions is
 		n_clear_zero 	:= convert_CZ(not(clear_zero));
 		
 		for i in 0 to ROB_DEPTH - 2 loop
-			target_index 	:= i + clear_zero + to_integer(unsigned(loop_i_gtoet_FBI(i, frst_branch_idx) and results_available and not(condition_met) and loop_i_lt_SBI(i, scnd_branch_idx)));
+			target_index 	:= i + convert_CZ(clear_zero) + convert_CZ(loop_i_gtoet_FBI(i, frst_branch_idx) and results_avail and not(condition_met) and loop_i_lt_SBI(i, scnd_branch_idx));
 			
-			speculate		:= ROB_temp(target_index).specul and not(loop_i_gtoet_FBI(i, frst_branch_idx) and results_available and not(condition_met) and loop_i_lt_SBI(i, scnd_branch_idx));
+			speculate		:= ROB_temp(target_index).specul and not(loop_i_gtoet_FBI(i, frst_branch_idx) and results_avail and not(condition_met) and loop_i_lt_SBI(i, scnd_branch_idx));
 			
 			if target_index < 10 then
-				if IW_in = ROB_temp(target_index) and IW_buffer_en = '1' and IW_updated = '0' then
+				if IW_in = ROB_temp(target_index).inst and IW_result_en = '1' and IW_updated = '0' then
+					report "ROB_func: 1. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
 					ROB_temp(i + n_clear_zero).inst		:= ROB_temp(target_index).inst;
 					ROB_temp(i + n_clear_zero).complete	:= '1';
 					ROB_temp(i + n_clear_zero).valid		:= ROB_temp(target_index).valid;
-					ROB_temp(i + n_clear_zero).result 	:= result;
+					ROB_temp(i + n_clear_zero).result 	:= IW_result;
 					ROB_temp(i + n_clear_zero).specul	:= speculate;
 					
-				elsif results_avail = '1' and condition_met = '1' and loop_i_gtoet_FBI(i, frst_branch_idx) then
+				elsif results_avail = '1' and condition_met = '1' and loop_i_gtoet_FBI(i, frst_branch_idx) = '1' then
 					--need to purge all instruction subsequent to first_branch_idx
+					report "ROB_func: 2. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
 					ROB_temp(i + n_clear_zero)	:= ((others => '0'), '0', '0', (others => '0'), '0');
 
 				elsif ROB_temp(target_index).valid = '0' and PM_buffer_en = '1' then
+					report "ROB_func: 3. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
 					ROB_temp(i + n_clear_zero).inst		:= PM_data_in;
-					ROB_temp(i + n_lear_zero).valid		:= '1';
+					ROB_temp(i + n_clear_zero).valid		:= '1';
 
 				else
+					report "ROB_func: 4. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
 					ROB_temp(i + n_clear_zero)	:= ROB_temp(target_index);
 
 				end if;
@@ -162,14 +166,17 @@ package body ROB_functions is
 				--clear_zero = '1' and these are instructions resolved due to being in the first branch.
 				--either buffer PM_data_in or just write in zeros
 				if PM_buffer_en = '1' and PM_data_buffered = '0' then
+					report "ROB_func: 5. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
 					ROB_temp(i).inst		:= PM_data_in;
 					ROB_temp(i).valid		:= '1';
 					PM_data_buffered		:= '1';
 				else
+					report "ROB_func: 6. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
 					ROB_temp(i)				:= ((others => '0'), '0', '0', (others => '0'), '0');
 				end if;
 				
 			else
+				report "ROB_func: 7. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
 				ROB_temp(i + n_clear_zero)	:= ROB_temp(target_index);
 			end if;
 		end loop;
@@ -184,11 +191,11 @@ package body ROB_functions is
 		
 	begin
 		if i = 0 and branch = 0 then
-			return 0;
+			return '1';
 		elsif i >= branch - 1 then
-			return 1;
+			return '1';
 		else 
-			return 0;
+			return '0';
 		end if;
 			
 	end;
@@ -200,9 +207,9 @@ package body ROB_functions is
 		
 	begin
 		if i < branch then
-			return 1;
+			return '1';
 		else 
-			return 0;
+			return '0';
 		end if;
 			
 	end;
