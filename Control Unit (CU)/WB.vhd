@@ -66,9 +66,6 @@ architecture behavioral of WB is
 	
 	--signal tracks whether the next IW is a memory address (for jumps, loads, etc)
 	signal next_IW_is_addr	: std_logic;
-	
-	--signal that performs same function as RF_wr_en - except this is to update a ROB result.
-	--signal update_ROB_entry	: std_logic;
 
 begin
 
@@ -116,10 +113,9 @@ begin
 			
 		elsif results_available = '1' and condition_met = '1' and frst_branch_index < ROB_DEPTH then
 			--report "WB: results_avail = 1 and cond_met = 1";
+			--speculate_results 	<= check_ROB_for_valid_branch(ROB_actual);
 			speculate_results 	<= '0';
-			
---		else
---			speculate_results <= '0';
+		
 		end if;
 	end process;
 
@@ -162,11 +158,9 @@ begin
 			stall_out 			<= '0';
 			RF_in_demux 		<= "00000";
 			RF_wr_en 			<= '0';
-			--WB_out_mux_sel 	<= "01";
 			clear_zero_inst 	<= '0'; 
 			WB_IW_out 			<= "0000000000000000";
 			WB_data_out_reg	<= "0000000000000000";
-			--update_ROB_entry 	<= '0';
 			
 		elsif rising_edge(sys_clock) then
 			
@@ -204,7 +198,7 @@ begin
 						RF_wr_en 			<= '0';
 						WB_IW_out			<= "1111111111111111";
 
-					elsif (zero_inst_match = '1' and (ROB_actual(0).specul = '0' or (results_available = '1' and condition_met = '0'))) or ROB_actual(0).complete = '1' then 
+					elsif (zero_inst_match = '1' and (ROB_actual(0).specul = '0' or (results_available = '1' and condition_met = '0'))) or (ROB_actual(0).complete = '1' and ROB_actual(0).specul = '0') then 
 						report "WB: 1. writing back ROB(0) results to RF";
 						--incoming MEM IW matches zeroth ROB entry which should be committed in specul = '0'
 						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
@@ -288,28 +282,6 @@ begin
 					WB_IW_out			<= "1111111111111111";
 					
 				end if; --PM_data_in
-				
---				--this if..else series assigns the correct data input corresponding to IW_in
---				if (ROB_actual(0).complete = '1') or (ROB_actual(1).complete = '1' and clear_zero_inst = '1') then
---					WB_out_mux_sel <= "00";
---					
---				--for loads and ALU operations, forward MEM_top_data to RF
---				elsif ((IW_in(15 downto 12) = "1000") and (IW_in(1) = '0')) or (IW_in(15) = '0') or
---						(IW_in(15 downto 12) = "1100") then
---					WB_out_mux_sel <= "01";
---					
---				--GPIO reads
---				elsif (IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "00") then
---					WB_out_mux_sel <= "10";
---								
---				--I2C reads	
---				elsif (IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "10") then
---					WB_out_mux_sel <= "11";
---					
---				else
---					WB_out_mux_sel <= "00";
---					
---				end if; ----IW_in (various)
 				
 			elsif stall = '1' then
 				

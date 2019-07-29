@@ -128,6 +128,7 @@ package body ROB_functions is
 	variable speculate		: std_logic		:= '0';
 	variable PM_data_buffered : std_logic 	:= '0';
 	variable IW_updated		: std_logic		:= '0';
+	variable actual_index 	: integer		:= 0;
 	 
 	begin
 		
@@ -136,31 +137,62 @@ package body ROB_functions is
 		for i in 0 to ROB_DEPTH - 2 loop
 			target_index 	:= i + convert_CZ(clear_zero) + convert_CZ(loop_i_gtoet_FBI(i, frst_branch_idx) and results_avail and not(condition_met) and loop_i_lt_SBI(i, scnd_branch_idx));
 			
-			speculate		:= ROB_temp(target_index).specul and not(loop_i_gtoet_FBI(i, frst_branch_idx) and results_avail and not(condition_met) and loop_i_lt_SBI(i, scnd_branch_idx));
+			--speculate		:= not(loop_i_gtoet_FBI(i, frst_branch_idx) and results_avail and not(condition_met) and loop_i_lt_SBI(i, scnd_branch_idx));
+	
+			if loop_i_gtoet_FBI(i, frst_branch_idx) = '1' and loop_i_lt_SBI(i, scnd_branch_idx) = '1' then
+				--need to evaluate based on location WRT branch location
+				speculate		:= not(results_avail and not(condition_met));
+			else
+				--just use current speculative value
+				speculate		:= ROB_temp(target_index).specul;
+			end if;
+			
+			report "ROB_func: speculate = " & integer'image(convert_CZ(speculate)) & ", clear_zero = " & integer'image(convert_CZ(clear_zero));
+			
+			if target_index = i then
+				actual_index := i;
+			elsif results_avail = '1' then --TODO: evaluate whether FBI < i < SBI is a necessary condition here too.
+				actual_index := i;
+			else
+				actual_index := i + n_clear_zero;
+			end if;
 			
 			if target_index < 10 then
+				
 				if IW_in = ROB_temp(target_index).inst and IW_result_en = '1' and IW_updated = '0' then
 					report "ROB_func: 1. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
-					ROB_temp(i + n_clear_zero).inst		:= ROB_temp(target_index).inst;
-					ROB_temp(i + n_clear_zero).complete	:= '1';
-					ROB_temp(i + n_clear_zero).valid		:= ROB_temp(target_index).valid;
-					ROB_temp(i + n_clear_zero).result 	:= IW_result;
-					ROB_temp(i + n_clear_zero).specul	:= speculate;
+					ROB_temp(actual_index).inst		:= ROB_temp(target_index).inst;
+					ROB_temp(actual_index).complete	:= '1';
+					ROB_temp(actual_index).valid		:= ROB_temp(target_index).valid;
+					ROB_temp(actual_index).result 	:= IW_result;
+					ROB_temp(actual_index).specul		:= speculate;
 					
 				elsif results_avail = '1' and condition_met = '1' and loop_i_gtoet_FBI(i, frst_branch_idx) = '1' then
 					--need to purge all instruction subsequent to first_branch_idx
 					report "ROB_func: 2. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
-					ROB_temp(i + n_clear_zero)	:= ((others => '0'), '0', '0', (others => '0'), '0');
+					ROB_temp(actual_index)	:= ((others => '0'), '0', '0', (others => '0'), '0');
 
-				elsif ROB_temp(target_index).valid = '0' and PM_buffer_en = '1' then
+				elsif ROB_temp(target_index).valid = '0' and PM_buffer_en = '1' and PM_data_buffered = '0' then
 					report "ROB_func: 3. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
-					ROB_temp(i + n_clear_zero).inst		:= PM_data_in;
-					ROB_temp(i + n_clear_zero).valid		:= '1';
-
+					ROB_temp(actual_index).inst		:= PM_data_in;
+					ROB_temp(actual_index).valid		:= '1';
+					
+					if PM_data_in(15 downto 12) = "1010" then
+						ROB_temp(actual_index).specul := '1';
+					else
+						ROB_temp(actual_index).specul	:= speculate;
+					end if;
+					
+					PM_data_buffered := '1';
+					
 				else
 					report "ROB_func: 4. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
-					ROB_temp(i + n_clear_zero)	:= ROB_temp(target_index);
-
+					ROB_temp(actual_index).inst		:= ROB_temp(target_index).inst;
+					ROB_temp(actual_index).complete	:= ROB_temp(target_index).complete;
+					ROB_temp(actual_index).valid		:= ROB_temp(target_index).valid;
+					ROB_temp(actual_index).result 	:= ROB_temp(target_index).result;
+					ROB_temp(actual_index).specul		:= ROB_temp(target_index).valid and speculate;
+					
 				end if;
 			elsif (i = 8 and target_index = 10) or (i = 9 and target_index = 11) or (i = 9 and target_index = 10) then
 				--clear_zero = '1' and these are instructions resolved due to being in the first branch.
@@ -177,7 +209,7 @@ package body ROB_functions is
 				
 			else
 				report "ROB_func: 7. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
-				ROB_temp(i + n_clear_zero)	:= ROB_temp(target_index);
+				ROB_temp(actual_index)	:= ROB_temp(target_index);
 			end if;
 		end loop;
 		
@@ -192,7 +224,7 @@ package body ROB_functions is
 	begin
 		if i = 0 and branch = 0 then
 			return '1';
-		elsif i >= branch - 1 then
+		elsif i > branch - 1 then
 			return '1';
 		else 
 			return '0';

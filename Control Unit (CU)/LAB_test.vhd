@@ -175,7 +175,7 @@ begin
 			--continually check for branch condition on PM_data_in
 			if branch = '1' then
 				--do initial check to see if results are available
-				report "LAB: detected branch in PM_data_in.";
+				--report "LAB: detected branch in PM_data_in.";
 				
 				results_available 	<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, PM_data_in, frst_branch_idx)(0); --'0' = not available, '1' = available
 				condition_met 			<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, PM_data_in, frst_branch_idx)(1); --'0' = not met, '1' = met
@@ -188,7 +188,7 @@ begin
 				condition_met		<= '0';
 				
 			elsif branch_exists = '1' and is_unresolved = '1' then	
-				report "LAB: branch exists in ROB.";
+				--report "LAB: branch exists in ROB.";
 				results_available 	<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, PM_data_in, frst_branch_idx)(0); --'0' = not available, '1' = available
 				condition_met 			<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, PM_data_in, frst_branch_idx)(1); --'0' = not met, '1' = met
 
@@ -256,7 +256,7 @@ begin
 							end if;
 							
 							--TODO: shouldn't I be buffering the branch and load/stores addresses in this case too?
-							report "LAB: 5. LAB(0) is invalid, but can't issue PM_data_in.";
+							--report "LAB: 5. LAB(0) is invalid, but can't issue PM_data_in.";
 							IW_reg 				<= "1111111111111111"; --issue no-op
 						else
 							--just issue PM_data_in and issue forwarding data commands
@@ -345,7 +345,7 @@ begin
 								--check if there are any hazards within the LAB for the ith entry (for memory instructions)
 								if datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) = "1000" and LAB(i).addr_valid = '1' then
 								
-									report "LAB: Issuing memory instruction and buffering PM_data_in";
+									--report "LAB: Issuing memory instruction and buffering PM_data_in";
 									--if so, we can issue the ith instruction
 									IW_reg 		<= LAB(i).inst;
 									MEM_reg 		<= LAB(i).addr;
@@ -359,7 +359,7 @@ begin
 								--check if there are any hazards within the LAB now for the ith entry (for non-memory instructions)
 								elsif datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) /= "1000" then
 									
-									report "LAB: Issuing non-memory instruction and buffering PM_data_in";
+									--report "LAB: Issuing non-memory instruction and buffering PM_data_in";
 									--if not, we can issue the ith instruction
 									IW_reg 	<= LAB(i).inst;
 									
@@ -372,13 +372,13 @@ begin
 								else
 	--								--can't do anything if there's a data hazard for this LAB instruction, keep moving on, buffer PM but DON'T SHIFT LAB
 	--								--just issue no-op by default
-									report "LAB: Can't issue LAB instruction at slot: " & Integer'image(i);
+									--report "LAB: Can't issue LAB instruction at slot: " & Integer'image(i);
 								end if; --datahaz_status
 								
 							elsif LAB(i).inst_valid = '0' and PM_datahaz_status = '1' and PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" and branch_reg = '0' and ld_st_reg = '0' then
 								--now we're at the first spot we can buffer PM_data_in, since there's no valid instruction here and the PM_data_in has a hazard
 								--just buffer PM_data_in
-								report "LAB: Can't issue any valid LAB inst or PM_data, buffer PM_data";
+								--report "LAB: Can't issue any valid LAB inst or PM_data, buffer PM_data";
 								IW_reg 				<= "1111111111111111";
 								LAB 					<= shiftLAB_and_bufferPM(LAB, PM_data_in, i - 1, LAB_MAX, '0', ld_st_reg);
 								exit;
@@ -395,7 +395,7 @@ begin
 									if (((ID_IW(11 downto 7) = PM_data_in(11 downto 7)) or (ID_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and ID_reset = '1' and ID_IW(15 downto 12) /= "1111") or
 										(((MEM_IW(11 downto 7) = PM_data_in(11 downto 7)) or (MEM_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and MEM_reset = '1' and MEM_IW(15 downto 12) /= "1111")  then
 										
-										report "LAB: can't forward ALU data.";
+										--report "LAB: can't forward ALU data.";
 										ALU_fwd_reg_1 		<= '0';
 										ALU_fwd_reg_2		<= '0';
 								
@@ -431,7 +431,7 @@ begin
 									--can't issue any instruction in LAB and can't issue PM_data_in
 									--TODO: fix this function to accommodate for the fact that the incoming PM_data_in may be an address for a load/store
 									--add next_IW_is_addr to function call?
-									report "LAB: 2. can't issue any LAB inst/PM_data, so buffer PM_data.";
+									--report "LAB: 2. can't issue any LAB inst/PM_data, so buffer PM_data.";
 									LAB 					<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '0', ld_st_reg);
 									IW_reg 				<= "1111111111111111";
 									LAB_full 			<= LAB(LAB_MAX - 1).inst_valid;
@@ -441,7 +441,7 @@ begin
 								end if;
 							else
 								--we're somewhere in the middle of the LAB and have a hazard with the current LAB instruction
-								report "LAB: At LAB slot " & Integer'image(i) & " and can't issue this instruction.";
+								--report "LAB: At LAB slot " & Integer'image(i) & " and can't issue this instruction.";
 
 							end if; --various tags
 						end loop; --for i
