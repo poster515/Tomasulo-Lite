@@ -159,18 +159,18 @@ package body ROB_functions is
 			
 			if target_index < 10 then
 				
-				if IW_in = ROB_temp(target_index).inst and IW_result_en = '1' and IW_updated = '0' then
+				if results_avail = '1' and condition_met = '1' and loop_i_gtoet_FBI(i, frst_branch_idx) = '1' then
+					--need to purge all instruction subsequent to first_branch_idx
+					report "ROB_func: 2. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
+					ROB_temp(actual_index)	:= ((others => '0'), '0', '0', (others => '0'), '0');
+					
+				elsif IW_in = ROB_temp(target_index).inst and IW_result_en = '1' and IW_updated = '0' then
 					report "ROB_func: 1. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
 					ROB_temp(actual_index).inst		:= ROB_temp(target_index).inst;
 					ROB_temp(actual_index).complete	:= '1';
 					ROB_temp(actual_index).valid		:= ROB_temp(target_index).valid;
 					ROB_temp(actual_index).result 	:= IW_result;
 					ROB_temp(actual_index).specul		:= speculate;
-					
-				elsif results_avail = '1' and condition_met = '1' and loop_i_gtoet_FBI(i, frst_branch_idx) = '1' then
-					--need to purge all instruction subsequent to first_branch_idx
-					report "ROB_func: 2. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
-					ROB_temp(actual_index)	:= ((others => '0'), '0', '0', (others => '0'), '0');
 
 				elsif ROB_temp(target_index).valid = '0' and PM_buffer_en = '1' and PM_data_buffered = '0' then
 					report "ROB_func: 3. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);

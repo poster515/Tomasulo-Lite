@@ -265,8 +265,8 @@ begin
 						
 					else
 						report "WB: 5. not sure. buffering PM_data_in and updating ROB with results.";
-						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(next_IW_is_addr), IW_in, WB_data, '1', clear_zero_inst, 
-															results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+						ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr),
+															IW_in, WB_data, '1', clear_zero_inst, results_available, condition_met, speculate_results, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 						clear_zero_inst 	<= '0'; 	
 						RF_wr_en 			<= '0';	
 						WB_IW_out			<= "1111111111111111";
