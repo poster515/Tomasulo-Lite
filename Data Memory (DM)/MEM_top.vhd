@@ -168,29 +168,14 @@ begin
 			DM_st_buff_wren 		<= '0';
 			
 			st_buff_data			<= "0000000000000000";
-			
---			DM_data_in_mux_sel 	<= '0';
---			DM_addr_in_mux_sel 	<= '0'; 
---			DM_wren_in_mux_sel 	<= '0';
---			MEM_out_top_mux_sel  <= '0';
-			
+
 			buffer_st_in			<= '0';
 			
 			MEM_out_top_reg 		<= "0000000000000000";
 		else
 			--buffer_st_in denotes that the incoming instruction/data must be buffered in st_buff since it is a store and either 1) speculative or 2) existing in st_buff under another address
 			buffer_st_in			<= store_inst and (inst_is_specul or check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)));
-			
---			DM_data_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
---			DM_addr_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
---			DM_wren_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
---			MEM_out_top_mux_sel 	<= check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) and (load_inst or store_inst);
---			
-			--report "MEM_top: MEM_out_top_mux_sel = " & integer'image(convert_SL(MEM_out_top_mux_sel));
-			--report "MEM_top: DM_data_in_mux_sel = " & integer'image(convert_SL(DM_data_in_mux_sel));
-			--report "MEM_top: DM_addr_in_mux_sel = " & integer'image(convert_SL(DM_addr_in_mux_sel));
-			--report "MEM_top: DM_wren_in_mux_sel = " & integer'image(convert_SL(DM_wren_in_mux_sel));
-			
+
 			--this first if statement is entered every time we cannot use the DM for the purpose of loading or storing, as dictated by the incoming IW
 			--if (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) = '1') or ((not(load_inst) and (not(store_inst) or inst_is_specul)) = '1') then
 			if (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) = '1') and ((load_inst or store_inst) = '1') then
@@ -222,18 +207,9 @@ begin
 			end if;
 			
 			if rising_edge(sys_clock) then
---				report "MEM_top: MEM_out_top_mux_sel = " & integer'image(convert_SL(MEM_out_top_mux_sel));
---				report "MEM_top: DM_data_in_mux_sel = " & integer'image(convert_SL(DM_data_in_mux_sel));
---				report "MEM_top: DM_addr_in_mux_sel = " & integer'image(convert_SL(DM_addr_in_mux_sel));
---				report "MEM_top: DM_wren_in_mux_sel = " & integer'image(convert_SL(DM_wren_in_mux_sel));
---				
-				--now update st_buff. options: 
-					--1) buffer incoming store (buffer_st_in) 
-					--2) shift st_buff down (DM_wren_in_mux_sel)
-					--3) clear/re-mark st_buff instructions as non-speculative (ROB_in) 
 					
 				st_buff				<= update_st_buff(st_buff, MEM_in_1(10 downto 0), MEM_in_2, buffer_st_in, DM_wren_in_mux_sel, ROB_in, instruction_word); 
-				--MEM_out_top_reg 	<= MEM_out_top_mux_out;
+
 			end if; 
 		end if; --reset_n
 	end process;
@@ -241,7 +217,6 @@ begin
 	--latch inputs
 
 	--latch outputs
-	--MEM_out_top <= MEM_out_top_reg;
 	MEM_out_top <= MEM_out_top_mux_out;
 	
 end behavioral;

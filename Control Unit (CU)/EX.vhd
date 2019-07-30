@@ -58,7 +58,7 @@ architecture behavioral of EX is
 																 "0001", --bne(z)
 																 "1011", --GPIO/I2C
 																 "1100", --logic_i
-																 "0000",
+																 "0000", --cp
 																 "0000",
 																 "0000"
 																);
@@ -100,9 +100,10 @@ begin
 				
 				if ALU_fwd_reg_1_in = '0' then
 					--report "Setting ALU_d1_in_sel based on IW_in.";
-					ALU_d1_in_sel(0) <= not(IW_in(15)) or (IW_in(15) and not(IW_in(12)) and (IW_in(14) xor IW_in(13))) or
-													(IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12)));
-													
+					
+					--Updated 7/29 for SLAI, SRAI, SLLI, SRLI and CP
+					ALU_d1_in_sel(0) <= not(IW_in(15)) or (IW_in(15) and not(IW_in(12)) and (IW_in(14) xor IW_in(13))) or (IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12)));
+					--Updated 7/29 for SLAI, SRAI, SLLI, SRLI and CP								
 					ALU_d1_in_sel(1) <= IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12));
 				else
 					--report "Defaulting to '11' for ALU_d1_in_sel.";
@@ -111,23 +112,26 @@ begin
 				
 				if ALU_fwd_reg_2_in = '0' then
 					--report "Setting ALU_d2_in_sel based on IW_in.";
+					--Updated 7/29 for SLAI, SRAI, SLLI, SRLI and CP
 					ALU_d2_in_sel(0) <= (not(IW_in(15)) and ((IW_in(14) and (not(IW_in(13)) or not(IW_in(1)))) or (not(IW_in(1)) and not(IW_in(0))))) or
-												(IW_in(15) and not(IW_in(14)) and ((not(IW_in(13)) and not(IW_in(12)) and not(IW_in(1)) and IW_in(0)) or (not(IW_in(13)) and not(IW_in(12)) and not(IW_in(0)))));
-												
+												(IW_in(15) and not(IW_in(14)) and ((not(IW_in(13)) and not(IW_in(12)) and not(IW_in(1)) and IW_in(0)) or (not(IW_in(13)) and not(IW_in(12)) and not(IW_in(0))))) or
+												(IW_in(14) and not(IW_in(13)) and IW_in(12));
+					--Updated 7/29 for SLAI, SRAI, SLLI, SRLI	and CP						
 					ALU_d2_in_sel(1) <= (IW_in(15) and not(IW_in(13)) and not(IW_in(12)) and IW_in(0)) or (not(IW_in(15)) and not(IW_in(14)) and not(IW_in(1)) and IW_in(0)) or
-												(IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12)));
+												(IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12))) or (not(IW_in(15)) and IW_in(14) and IW_in(13) and IW_in(1));
 				else
 					--report "Defaulting to '11' for ALU_d2_in_sel.";
 					ALU_d2_in_sel <= "11";
 				end if;
 				
-				ALU_out1_en <= not(IW_in(15)) or (not(IW_in(13)) and not(IW_in(12)));
+				ALU_out1_en <= not(IW_in(15)) or (not(IW_in(13)) and not(IW_in(12))) or (IW_in(15) and IW_in(14) and not(IW_in(13)) and IW_in(12));
+				
 				ALU_out2_en <= (not(IW_in(15)) and not(IW_in(14)) and IW_in(13)) or 
 										(IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and IW_in(1)) or
 										(IW_in(15) and not(IW_in(14)) and IW_in(13) and IW_in(12) and IW_in(0));
 				
-				--stores (1000..1X), I2C/GPIO writes (1011..X1) need to forward data from ALU
-				if (IW_in(15) and not(IW_in(14)) and ((not(IW_in(13)) and not(IW_in(12)) and IW_in(1)) or (IW_in(13) and IW_in(12) and IW_in(0))))  = '1' then
+				--stores (1000..1X), I2C/GPIO writes (1011..X1), need to forward data from ALU
+				if (IW_in(15) and not(IW_in(14)) and ((not(IW_in(13)) and not(IW_in(12)) and IW_in(1)) or (IW_in(13) and IW_in(12) and IW_in(0)))) = '1' then
 					ALU_fwd_data_out_en <= '1';
 				else
 					ALU_fwd_data_out_en <= '0';

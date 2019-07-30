@@ -224,26 +224,9 @@ begin
 						--issue no-op. this may incur a one clock penalty but reduces the complexity of determining any other valid instructions in LAB
 						IW_reg 				<= "1111111111111111";
 
---						--clear the speculatively fetched instructions issued into pipeline - only clears these and not non-speculative instructions
---						clear_IW_outs	<= check_ROB_for_wrongly_fetched_insts(ROB_in, IW_reg, ID_IW, EX_IW, MEM_IW);
---						report "LAB: branch incorrectly taken - purging all irrelevant data.";
---						--make function that logically ORs a RF revalidation vector for the RF for registers in pipeline that were incorrectly fetched and executed
---						RF_revalidate <= revalidate_RF_regs(ROB_in, frst_branch_idx, IW_reg, ID_IW, EX_IW, MEM_IW, WB_IW_in);
---						report "LAB: RF_revalidate = " & integer'image(to_integer(unsigned(revalidate_RF_regs(ROB_in, frst_branch_idx, IW_reg, ID_IW, EX_IW, MEM_IW, WB_IW_in))));
-						
 					--this first "elsif" handles the processor startup until we have a data hazard with incoming PM_data_in	
 					elsif LAB(0).inst_valid = '0' then
 					
-	--				if PM_data_in matches any pipeline stage instruction (and the associated reset_n is high), then issue next
-	--				valid, non-conflicting instruction or if none available, just buffer PM_data_in in LAB and issue a no-op command
-	--				(i.e., "1111111111111111")
-	
---						--first make sure that the outputs aren't being cleared
---						clear_IW_outs <= "000";
---						
---						--make sure that the RF_revalidate signal is cleared
---						RF_revalidate <= "00000000000000000000000000000000";
-		
 						--if there's a conflict and its not a jump and its not a memory address
 						if PM_datahaz_status = '1' then 
 							
@@ -261,7 +244,6 @@ begin
 						else
 							--just issue PM_data_in and issue forwarding data commands
 							
-							--TODO: shouldn't I be waiting if this is a branch/load/store instruction?
 							--report "LAB. 4. writing ALU_fwd_reg_1_reg to ALU_fwd_reg_1 and ALU_fwd_reg_2_reg to ALU_fwd_reg_2.";
 
 							if PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" and branch_reg = '0' and ld_st_reg = '0' and PM_datahaz_status = '0' then
@@ -306,11 +288,7 @@ begin
 							end if;
 						end if;
 					else
---						RF_revalidate <= "00000000000000000000000000000000";
---						clear_IW_outs <= "000";
---						--report "Have at least one valid instruction in LAB";
-						--have at least one valid instruction waiting in LAB
-						--use loop to check for hazards against stages of the pipeline
+
 						for i in 0 to LAB_MAX - 1 loop
 							
 							if	(((ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 

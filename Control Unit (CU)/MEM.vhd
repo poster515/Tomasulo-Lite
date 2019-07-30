@@ -155,7 +155,7 @@ begin
 					MEM_out_mux_sel <= "00";
 					
 				--for all ALU (i.e., 0XXX) operations or LOGI (1100), need to forward ALU_out_1 data through MEM block to WB	
-				elsif ((IW_in(15) = '0') or (IW_in(15 downto 12) = "1100")) then
+				elsif (IW_in(15) = '0') or (IW_in(15 downto 13) = "110") then
 					MEM_wr_en	<= '0';	--don't want to enable writing to DM here
 					MEM_out_mux_sel <= "10";
 					

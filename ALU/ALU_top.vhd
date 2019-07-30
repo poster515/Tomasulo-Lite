@@ -131,7 +131,7 @@ begin
 			if ALU_fwd_data_out_en = '0' and ALU_out2_en = '1' then
 				ALU_out2_reg 	<= ALU_out_2;
 			elsif ALU_fwd_data_out_en = '1' and ALU_out2_en = '1' then
-				ALU_out2_reg 	<= RF_in_1; --forwarding data for stores, e.g.
+				ALU_out2_reg 	<= RF_in_1; --forwarding data for shift_immediates, stores, I2C writes, and GPIO writes
 			end if;
 			
 			ALU_SR_reg		<= ALU_status;
