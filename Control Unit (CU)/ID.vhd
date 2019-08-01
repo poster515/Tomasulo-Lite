@@ -12,10 +12,7 @@ entity ID is
 		--Input data and clock
 		reset_n, sys_clock	: in std_logic;	
 		IW_in						: in std_logic_vector(15 downto 0);
-		LAB_stall_in			: in std_logic;
-		WB_stall_in				: in std_logic;		--set high when an upstream CU block needs this 
-		MEM_stall_in			: in std_logic;
-		EX_stall_in				: in std_logic;
+		ID_stall_in					: in std_logic;
 		mem_addr_in				: in std_logic_vector(15 downto 0);
 		ALU_fwd_reg_1_in		: in std_logic;		--input to tell EX stage to forward MEM_out data in to ALU_in_1
 		ALU_fwd_reg_2_in		: in std_logic;		--input to tell EX stage to forward MEM_out data in to ALU_in_2
@@ -40,12 +37,9 @@ architecture behavioral of ID is
 
 	signal RF_out_1_mux_reg, RF_out_2_mux_reg	: std_logic_vector(4 downto 0)	:= "00000";
 	signal mem_addr_reg, immediate_val_reg		: std_logic_vector(15 downto 0);
-	signal stall_in									: std_logic := '0'; --combinationally calculated stall signal
 	signal reset_reg									: std_logic := '0';
 	
 begin
-
-	stall_in <= LAB_stall_in or WB_stall_in or MEM_stall_in or EX_stall_in; --'1' if any stall signal is '1', '0' if all stalls are '0'
 
 	process(reset_n, sys_clock)
 	begin
@@ -66,7 +60,7 @@ begin
 		
 			reset_reg <= '1';
 			
-			if stall_in = '0' then
+			if ID_stall_in = '0' then
 			
 				stall_out <= '0';
 				
@@ -86,21 +80,21 @@ begin
 						RF_out2_en <= '0';
 					
 					--for BNEZ (1010..00), loads (1000..00), stores (1000..11), GPIO/I2C writes (1011..X1), LOGI (1100), ADDI/SUBI/MULTI/DIVI (00XX...X1), 
-					--SLAI, SRAI, SLLI, SRLI (0101..1X, 0110..1X) only need 1 RF output
+					--SLAI, SRAI, SLLI, SRLI (0111..1X, 0110..1X) only need 1 RF output
 					elsif (IW_in(15 downto 12) = "1010" and IW_in(1 downto 0) = "00") or
 							(IW_in(15 downto 12) = "1000" and (IW_in(1 downto 0) = "00" or IW_in(1 downto 0) = "11")) or
-							(IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "X1") or IW_in(15 downto 12) = "1100" or
+							(IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "X1") or 
+							(IW_in(15 downto 12) = "1100") or
 							((not(IW_in(15)) and not(IW_in(14)) and IW_in(0)) = '1') or 
-							(IW_in(15 downto 12) = "0101" and IW_in(1 downto 0) = "1X") or
-							(IW_in(15 downto 12) = "0110" and IW_in(1 downto 0) = "1X") then
+							(IW_in(15 downto 13) = "011" and IW_in(1) = '1') then
 							
 						RF_out1_en <= '1'; 
 						RF_out2_en <= '0';
 					
-					--for COPY (1101..XX), need reg2 output only
-					elsif IW_in(15 downto 12) = "1101" then
-						RF_out1_en <= '0'; 
-						RF_out2_en <= '1';
+--					--for COPY (1101..XX), need reg2 output only
+--					elsif IW_in(15 downto 12) = "1101" then
+--						RF_out1_en <= '0'; 
+--						RF_out2_en <= '1';
 						
 					--for all other instructions, need both RF outputs
 					else
@@ -128,8 +122,7 @@ begin
 				--SLAI, SRAI, SLLI, SRLI (0101..1X, 0110..1X) 
 				elsif ((IW_in(15 downto 14) = "00" and IW_in(1 downto 0) = "10") or IW_in(15 downto 12) = "1100") or
 					((not(IW_in(15)) and not(IW_in(14)) and IW_in(0)) = '1') or
-					(IW_in(15 downto 12) = "0101" and IW_in(1 downto 0) = "1X") or 
-					(IW_in(15 downto 12) = "0110" and IW_in(1 downto 0) = "1X") then
+					(IW_in(15 downto 13) = "011" and IW_in(1) = '1') then
 						
 					immediate_val_reg <= "00000000000" & IW_in(6 downto 2);
 					
@@ -137,7 +130,7 @@ begin
 				
 				IW_out <= IW_in;	--forward IW to EX stage
 
-			elsif stall_in = '1' then
+			elsif ID_stall_in = '1' then
 				RF_out_1_mux_reg <= RF_out_1_mux_reg;	--if we get a stall signal, latch current value
 				RF_out_2_mux_reg <= RF_out_2_mux_reg;	--
 				

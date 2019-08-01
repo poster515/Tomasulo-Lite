@@ -12,8 +12,7 @@ entity MEM is
 		--Input data and clock
 		reset_n, sys_clock	: in std_logic;	
 		IW_in						: in std_logic_vector(15 downto 0);
-		LAB_stall_in			: in std_logic;
-		WB_stall_in				: in std_logic;		--set high when an upstream CU block needs this 
+		MEM_stall_in			: in std_logic;
 		I2C_error				: in std_logic;	--in case we can't write to slave after three attempts
 		I2C_op_run				: in std_logic;	--when high, lets CU know that there is a CU operation occurring
 		
@@ -45,8 +44,7 @@ architecture behavioral of MEM is
 	
 begin
 	--combinational logic to compute stall signals
-	stall_in 				<= LAB_stall_in or WB_stall_in;
-	stall_out 				<= I2C_stall or stall_in;
+	stall_out 				<= I2C_stall or MEM_stall_in;
 
 	--process to just handle I2C operations
 	I2C_operation : process(reset_n, sys_clock) 
@@ -140,7 +138,7 @@ begin
 
 		elsif rising_edge(sys_clock) then
 			
-			if stall_in = '0' then
+			if MEM_stall_in = '0' then
 			
 				IW_out <= IW_in;	--forward IW to WB stage
 				

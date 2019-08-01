@@ -219,7 +219,7 @@ package body LAB_functions is
 				
 					if address_updated = '0' then
 					
-						--report "LAB_func: At LAB spot " & integer'image(i + convert_SL(not(shift_LAB))) & " we can buffer PM_data_in";
+						report "LAB_func: At LAB spot " & integer'image(i + convert_SL(not(shift_LAB))) & " we can buffer PM_data_in";
 						LAB_temp(i + not_SL).inst 			:= PM_data_in;
 						LAB_temp(i + not_SL).inst_valid 	:= '1';
 						LAB_temp(i + not_SL).addr			:= (others => '0');
@@ -231,7 +231,7 @@ package body LAB_functions is
 						end if;
 						exit;
 					else
-						--report "LAB_func: 6. at " & Integer'image(i) & " shift entry from " & Integer'image(i + convert_SL(shift_LAB));
+						report "LAB_func: 6. at " & Integer'image(i) & " shift entry from " & Integer'image(i + convert_SL(shift_LAB));
 						LAB_temp(i) := LAB_temp(i + convert_SL(shift_LAB));
 						exit;
 						
@@ -239,7 +239,7 @@ package body LAB_functions is
 					
 				elsif i = LAB_MAX - 2 and LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '1' then
 				
-					--report "LAB_func: at end of LAB, buffer PM_data_in at last LAB spot.";
+					report "LAB_func: at end of LAB, buffer PM_data_in at last LAB spot.";
 					LAB_temp(i + not_SL).inst 			:= PM_data_in;
 					LAB_temp(i + not_SL).inst_valid 	:= '1';
 					LAB_temp(i + not_SL).addr			:= (others => '0');
@@ -262,7 +262,7 @@ package body LAB_functions is
 					exit;
 				
 				else
-					--report "LAB_func: 4. at " & Integer'image(i) & " shift entry from " & Integer'image(i + convert_SL(shift_LAB));
+					report "LAB_func: 4. at " & Integer'image(i) & " shift entry from " & Integer'image(i + convert_SL(shift_LAB));
 					LAB_temp(i) := LAB_temp(i + convert_SL(shift_LAB));
 				end if;
 			------------------------EXPERIMENTAL-----------------------------	
@@ -270,7 +270,7 @@ package body LAB_functions is
 		
 				if LAB_temp(i).inst(15 downto 12) = "1000" and LAB_temp(i).addr_valid = '0' and LAB_temp(i).inst_valid = '1' and address_updated = '0' then 
 					--((LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '0') or i = LAB_MAX - 1) then
-					--report "LAB_func: 78. At spot " & integer'image(i) & " buffer mem address";
+					report "LAB_func: 78. At spot " & integer'image(i) & " buffer mem address";
 					LAB_temp(i).inst 			:= LAB_temp(i).inst;
 					LAB_temp(i).inst_valid 	:= LAB_temp(i).inst_valid;
 					LAB_temp(i).addr 			:= PM_data_in;
@@ -279,7 +279,7 @@ package body LAB_functions is
 
 				elsif LAB_temp(i + 1).inst(15 downto 12) = "1000" and LAB_temp(i + 1).addr_valid = '0' and LAB_temp(i + 1).inst_valid = '1' and address_updated = '0' then
 					--if ld_st_reg = '1', we know PM_data_in is the address of the first load/store encountered with an invalid address field
-					--report "LAB_func: 76. encountered load/store. shifting instruction";
+					report "LAB_func: 76. encountered load/store. shifting instruction";
 					LAB_temp(i + not_SL).inst 			:= LAB_temp(i + 1).inst;
 					LAB_temp(i + not_SL).inst_valid 	:= LAB_temp(i + 1).inst_valid;
 					LAB_temp(i + not_SL).addr			:= PM_data_in;
@@ -288,7 +288,7 @@ package body LAB_functions is
 					
 					if i + 1 = LAB_MAX - 1 and shift_LAB = '1' then
 						--we're at the last spot in the LAB and need to provide zeros for last entry
-						--report "LAB_func: 234. at end of LAB, writing in 0s.";
+						report "LAB_func: 234. at end of LAB, writing in 0s.";
 						
 						LAB_temp(i + 1).inst				:= "0000000000000000";
 						LAB_temp(i + 1).inst_valid		:= '0';
@@ -300,7 +300,7 @@ package body LAB_functions is
 				else
 					if i + 1 = LAB_MAX - 1 and shift_LAB = '1' then
 						--we're at the last spot in the LAB and need to provide zeros for last entry
-						--report "LAB_func: 264. at end of LAB, writing in 0s.";
+						report "LAB_func: 264. at end of LAB, writing in 0s.";
 						LAB_temp(i + 1).inst				:= "0000000000000000";
 						LAB_temp(i + 1).inst_valid		:= '0';
 						LAB_temp(i + 1).addr				:= "0000000000000000";

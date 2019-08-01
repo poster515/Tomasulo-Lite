@@ -14,9 +14,7 @@ entity EX is
 		--Input data and clock
 		reset_n, sys_clock	: in std_logic;	
 		IW_in						: in std_logic_vector(15 downto 0);
-		LAB_stall_in			: in std_logic;
-		WB_stall_in				: in std_logic;		--set high when an upstream CU block needs this 
-		MEM_stall_in			: in std_logic;
+		EX_stall_in				: in std_logic;
 		mem_addr_in				: in std_logic_vector(15 downto 0); --memory address from ID stage
 		immediate_val_in		: in std_logic_vector(15 downto 0); --immediate value from ID stage
 		ALU_fwd_reg_1_in		: in std_logic;
@@ -40,7 +38,6 @@ end EX;
 
 architecture behavioral of EX is
 	signal reset_reg				: std_logic := '0';
-	signal stall_in				: std_logic := '0'; --'1' if either stall is '1', '0' if both stalls are '0'	
 	signal ALU_op_reg				: std_logic_vector(3 downto 0);
 	signal ALU_inst_sel_reg		: std_logic_vector(1 downto 0);
 	signal immediate_val_reg	: std_logic_vector(15 downto 0);
@@ -65,8 +62,6 @@ architecture behavioral of EX is
 
 begin
 
-	stall_in <= LAB_stall_in or WB_stall_in or MEM_stall_in;
-
 	process(reset_n, sys_clock)
 	begin
 		if reset_n = '0' then
@@ -87,7 +82,7 @@ begin
 		elsif rising_edge(sys_clock) then
 			reset_reg <= '1';
 		
-			if stall_in = '0' then
+			if EX_stall_in = '0' then
 			
 				immediate_val_reg 	<= immediate_val_in;
 				mem_addr_reg 			<= mem_addr_in;
@@ -140,7 +135,7 @@ begin
 				EX_stall_out <= '0';
 				IW_out <= IW_in;	--forward IW to MEM stage
 
-			elsif stall_in = '1' then
+			elsif EX_stall_in = '1' then
 				--propagate stall signal and keep immediate value
 				EX_stall_out <= '1';
 				

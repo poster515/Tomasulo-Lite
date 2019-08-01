@@ -323,7 +323,7 @@ begin
 								--check if there are any hazards within the LAB for the ith entry (for memory instructions)
 								if datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) = "1000" and LAB(i).addr_valid = '1' then
 								
-									--report "LAB: Issuing memory instruction and buffering PM_data_in";
+									report "LAB: Issuing memory instruction and buffering PM_data_in, i = " & integer'image(i);
 									--if so, we can issue the ith instruction
 									IW_reg 		<= LAB(i).inst;
 									MEM_reg 		<= LAB(i).addr;
@@ -337,7 +337,7 @@ begin
 								--check if there are any hazards within the LAB now for the ith entry (for non-memory instructions)
 								elsif datahaz_status(i) = '0' and LAB(i).inst(15 downto 12) /= "1000" then
 									
-									--report "LAB: Issuing non-memory instruction and buffering PM_data_in";
+									report "LAB: Issuing non-memory instruction and buffering PM_data_in, i = " & integer'image(i);
 									--if not, we can issue the ith instruction
 									IW_reg 	<= LAB(i).inst;
 									
@@ -350,7 +350,7 @@ begin
 								else
 	--								--can't do anything if there's a data hazard for this LAB instruction, keep moving on, buffer PM but DON'T SHIFT LAB
 	--								--just issue no-op by default
-									--report "LAB: Can't issue LAB instruction at slot: " & Integer'image(i);
+									report "LAB: Can't issue LAB instruction at slot: " & Integer'image(i);
 								end if; --datahaz_status
 								
 							elsif LAB(i).inst_valid = '0' and PM_datahaz_status = '1' and PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" and branch_reg = '0' and ld_st_reg = '0' then
@@ -463,7 +463,7 @@ begin
 				elsif branch_reg = '1' and results_available = '1' and condition_met = '0' then
 					--results are available and we can non-speculatively execute the next instructions. the "main" process will handle the rest. 
 					PC_reg 	<= std_logic_vector(unsigned(PC_reg) + 1);
-					
+
 				elsif branch_reg = '0' and results_available = '1' and condition_met = '1' and branch_exists = '1' then
 					--results are available and we can non-speculatively execute the branched instructions. the "main" process will handle the rest. 
 					PC_reg 	<= branches(0).addr_met(10 downto 0);
@@ -471,7 +471,11 @@ begin
 				elsif branch_reg = '0' and results_available = '1' and condition_met = '0' and branch_exists = '1' then
 					--results are available and we can non-speculatively execute the next instructions. the "main" process will handle the rest. 
 					--PC_reg 	<= std_logic_vector(unsigned(branches(0).addr_unmet(10 downto 0)) + 1);
-					PC_reg 	<= std_logic_vector(unsigned(PC_reg) + 1);
+					if jump = '1' then
+						PC_reg 	<= std_logic_vector(unsigned(PM_data_in(11 downto 1)));
+					else
+						PC_reg 	<= std_logic_vector(unsigned(PC_reg) + 1);
+					end if;
 					
 				elsif jump = '1' then
 					--for jumps, grab immediate value and update PC_reg
