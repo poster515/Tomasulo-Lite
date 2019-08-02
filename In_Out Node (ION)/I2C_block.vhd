@@ -107,6 +107,9 @@ begin
 			if (reset_n = '0') then
 				state_reg <= idle; --place back into idle state
 				data_from_slave <= "00000000";
+				r_wr_complete <= '0';
+				sda_o_reg	<= 'Z';
+				scl_o_reg	<= 'Z';
 				
 			elsif rising_edge(sys_clock) then
 				case state_reg is

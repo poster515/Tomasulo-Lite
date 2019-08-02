@@ -86,7 +86,7 @@ begin
 		if reset_n = '0' then
 			GPIO_out_reg 	<= "0000000000000000";
 			output_buffer	<= "0000000000000000";
-			
+			I2C_out_reg 	<= "0000000000000000";
 		elsif rising_edge(clk) then
 		
 			--prioritize GPIO reads first, then I2C reads
@@ -130,6 +130,7 @@ begin
 			read_begin 	<= '0';
 			I2C_error 	<= '0';
 			I2C_op_run 	<= '0';
+			I2C_op_complete <= '0';
 			--I2C_out_buffer <= (others => '0');
 
 		elsif rising_edge(clk) then
