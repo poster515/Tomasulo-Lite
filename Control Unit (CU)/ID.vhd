@@ -137,8 +137,6 @@ begin
 				RF_out1_en <= '0'; 
 				RF_out2_en <= '0'; 
 				
-				stall_out <= '1';
-				
 			end if; --stall_in
 		end if; --reset_n
 	end process;

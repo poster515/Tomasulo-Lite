@@ -35,16 +35,13 @@ end MEM;
 
 architecture behavioral of MEM is
 	signal reset_reg								: std_logic := '0';
-	signal stall_in								: std_logic := '0';
-	signal I2C_stall								: std_logic;
 	signal ION_results_ready_reg				: std_logic := '0'; --register tracking whether ION results are ready, make asynchronous
-
+	signal I2C_IW_reg								: std_logic_vector(15 downto 0); --tracks the last incoming IW for an I2C command
+	
 	type I2C_state is (idle, running, unknown);
 	signal I2C_machine : I2C_state := idle;
 	
 begin
-	--combinational logic to compute stall signals
-	stall_out 				<= I2C_stall or MEM_stall_in;
 
 	--process to just handle I2C operations
 	I2C_operation : process(reset_n, sys_clock) 
@@ -55,9 +52,9 @@ begin
 			I2C_r_en 		<= '0'; 	-- IW_in(1 downto 0) = "10"
 			I2C_wr_en 		<= '0'; 	-- IW_in(1 downto 0) = "11"
 			I2C_machine 	<= idle;
-			I2C_stall 		<= '0';
 			I2C_error_out 	<= '0';
 			slave_addr		<= "0000000";
+			I2C_IW_reg <= "0000000000000000";
 		
 		elsif rising_edge(sys_clock) then
 			
@@ -67,48 +64,32 @@ begin
 				
 				when idle => 
 				
-					I2C_stall 		<= '0';
 					I2C_error_out 	<= '0';
 				
 					if IW_in(15 downto 12) = "1011" and IW_in(1) = '1' then
-					
+						I2C_IW_reg		<= IW_in;
 						slave_addr		<= "00" & IW_in(6 downto 2);
 						I2C_r_en 		<= IW_in(1) and not(IW_in(0)); 		-- IW_in(1 downto 0) = "10"
 						I2C_wr_en 		<= IW_in(1) and IW_in(0); 				-- IW_in(1 downto 0) = "11"
 						I2C_machine 	<= running;
+						
+					else
+						I2C_r_en			<= '0';
+						I2C_wr_en		<= '0';
 					end if;
 				
 				when running => 
 				
-					if IW_in(15 downto 12) = "1011" and IW_in(1) = '1' then
-						--have a conflict here, since the I2C interface is already begin used.
-						--can either buffer instruction or stall pipeline. former is more preferable, but stall for now. 
-						I2C_stall <= '1';
-						
-					end if;
-					
 					if I2C_op_run = '1' then
 						I2C_machine 	<= running;
 						
 					elsif I2C_error = '1' then
 						I2C_error_out <= '1';
+						I2C_machine 	<= idle;
 						
 					elsif I2C_op_run = '0' then --I2C operation is complete, write results onto bus
 					
 						I2C_machine 	<= idle;
-						I2C_stall 		<= '0'; --since I2C operation is complete, can execute next command and there is no more stall
-						
-						if I2C_stall = '1' then --if there was a waiting I2C instruction, modify outputs here
-							
-							if IW_in(15 downto 12) = "1011" and IW_in(1) = '1' then
-					
-								slave_addr		<= "00" & IW_in(6 downto 2);
-								I2C_r_en 		<= IW_in(1) and not(IW_in(0)); 		-- IW_in(1 downto 0) = "10"
-								I2C_wr_en 		<= IW_in(1) and IW_in(0); 				-- IW_in(1 downto 0) = "11"
-								I2C_machine 	<= running;
-							end if;
-							
-						end if; --I2C_stall = '1'
 						
 					end if;
 
@@ -139,7 +120,7 @@ begin
 		elsif rising_edge(sys_clock) then
 			
 			if MEM_stall_in = '0' then
-			
+				
 				IW_out <= IW_in;	--forward IW to WB stage
 				
 				--loads (1000..0X), need to forward data from data memory
@@ -182,6 +163,9 @@ begin
 				GPIO_in_en	<= '0'; 	--
 				GPIO_wr_en 	<= '0'; 	--
 				MEM_wr_en	<= '0';	--
+				
+				--if we're stalled that means an I2C operation is complete
+				IW_out <= I2C_IW_reg;
 				
 			end if; --stall_in
 

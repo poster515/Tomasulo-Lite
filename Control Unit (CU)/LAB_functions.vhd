@@ -193,7 +193,6 @@ package body LAB_functions is
 	end function;
 	
 	--function to shift LAB down and buffer Program Memory input
-	--TODO: modify so we don't rearrange any branch instructions
 	function shiftLAB_and_bufferPM(	LAB_in		: in LAB_actual;
 												PM_data_in	: in std_logic_vector(15 downto 0);
 												issued_inst	: in integer; --location of instruction that was issued, start shift here
@@ -266,10 +265,10 @@ package body LAB_functions is
 					LAB_temp(i) := LAB_temp(i + convert_SL(shift_LAB));
 				end if;
 			------------------------EXPERIMENTAL-----------------------------	
-			elsif ld_st_reg = '1' then
+			elsif ld_st_reg = '1' and i >= issued_inst then
 		
 				if LAB_temp(i).inst(15 downto 12) = "1000" and LAB_temp(i).addr_valid = '0' and LAB_temp(i).inst_valid = '1' and address_updated = '0' then 
-					--((LAB_temp(i).inst_valid = '1' and LAB_temp(i + 1).inst_valid = '0') or i = LAB_MAX - 1) then
+					
 					report "LAB_func: 78. At spot " & integer'image(i) & " buffer mem address";
 					LAB_temp(i).inst 			:= LAB_temp(i).inst;
 					LAB_temp(i).inst_valid 	:= LAB_temp(i).inst_valid;
@@ -278,8 +277,8 @@ package body LAB_functions is
 					address_updated			:= '1';
 
 				elsif LAB_temp(i + 1).inst(15 downto 12) = "1000" and LAB_temp(i + 1).addr_valid = '0' and LAB_temp(i + 1).inst_valid = '1' and address_updated = '0' then
-					--if ld_st_reg = '1', we know PM_data_in is the address of the first load/store encountered with an invalid address field
-					report "LAB_func: 76. encountered load/store. shifting instruction";
+					
+					report "LAB_func: 76. encountered load/store. shifting instruction, i = " & integer'image(i);
 					LAB_temp(i + not_SL).inst 			:= LAB_temp(i + 1).inst;
 					LAB_temp(i + not_SL).inst_valid 	:= LAB_temp(i + 1).inst_valid;
 					LAB_temp(i + not_SL).addr			:= PM_data_in;
@@ -288,7 +287,7 @@ package body LAB_functions is
 					
 					if i + 1 = LAB_MAX - 1 and shift_LAB = '1' then
 						--we're at the last spot in the LAB and need to provide zeros for last entry
-						report "LAB_func: 234. at end of LAB, writing in 0s.";
+						report "LAB_func: 234. at end of LAB, writing in 0s, i = " & integer'image(i);
 						
 						LAB_temp(i + 1).inst				:= "0000000000000000";
 						LAB_temp(i + 1).inst_valid		:= '0';
@@ -298,9 +297,13 @@ package body LAB_functions is
 					end if;
 				
 				else
-					if i + 1 = LAB_MAX - 1 and shift_LAB = '1' then
+					if address_updated = '1' and i < LAB_MAX - 1 then
+						report "LAB_func: 12. just shift LAB entry as applicable, i = " & integer'image(i);
+						LAB_temp(i + not_SL) 			:= LAB_temp(i + 1);
+						
+					elsif i + 1 = LAB_MAX - 1 and shift_LAB = '1' then
 						--we're at the last spot in the LAB and need to provide zeros for last entry
-						report "LAB_func: 264. at end of LAB, writing in 0s.";
+						report "LAB_func: 264. at end of LAB, writing in 0s, i = " & integer'image(i);
 						LAB_temp(i + 1).inst				:= "0000000000000000";
 						LAB_temp(i + 1).inst_valid		:= '0';
 						LAB_temp(i + 1).addr				:= "0000000000000000";
@@ -316,8 +319,16 @@ package body LAB_functions is
 			--need to handle case where we don't want to buffer PM_data_in (i.e., jumps and branches) but still want to shift LAB down and issue LAB(0)
 			else
 				if i >= issued_inst then
-					--report "LAB_func: 2. at " & Integer'image(i + not_SL) & " shift entry from " & Integer'image(i + 1);
-					LAB_temp(i + not_SL)	:= LAB_temp(i + 1);
+					report "LAB_func: 2. at " & Integer'image(i + not_SL) & " shift entry from " & Integer'image(i + 1);
+					
+					if ld_st_reg = '1' then
+						LAB_temp(i + not_SL).inst			:= LAB_temp(i + 1).inst;
+						LAB_temp(i + not_SL).inst_valid	:= LAB_temp(i + 1).inst_valid;
+						LAB_temp(i + not_SL).addr			:= PM_data_in;
+						LAB_temp(i + not_SL).addr_valid	:= LAB_temp(i + 1).addr_valid;
+					else
+						LAB_temp(i + not_SL)					:= LAB_temp(i + 1);
+					end if;
 					
 					if i + 1 = LAB_MAX - 1 and shift_LAB = '1' then
 						--we're at the last spot in the LAB and need to provide zeros for last entry
@@ -328,8 +339,17 @@ package body LAB_functions is
 						exit;
 					end if;
 				else
-					--report "LAB_func: 3. at " & Integer'image(i + not_SL) & " shift entry from " & Integer'image(i + 1);
+					report "LAB_func: 3. at " & Integer'image(i) & " shift entry from " & Integer'image(i);
 					LAB_temp(i)	:= LAB_temp(i);
+					
+					if ld_st_reg = '1' then
+						LAB_temp(i).inst			:= LAB_temp(i).inst;
+						LAB_temp(i).inst_valid	:= LAB_temp(i).inst_valid;
+						LAB_temp(i).addr			:= PM_data_in;
+						LAB_temp(i).addr_valid	:= '1';
+					else
+						LAB_temp(i)					:= LAB_temp(i);
+					end if;
 					
 					if i + 1 = LAB_MAX - 1 and shift_LAB = '1' then
 						--we're at the last spot in the LAB and need to provide zeros for last entry
@@ -346,6 +366,92 @@ package body LAB_functions is
 		
 		return LAB_temp; --come here if there are no spots available
 	end function;
+--	
+--	function shiftLAB_and_bufferPM(	LAB_in		: in LAB_actual;
+--												PM_data_in	: in std_logic_vector(15 downto 0);
+--												issued_inst	: in integer; --location of instruction that was issued, start shift here
+--												LAB_MAX		: in integer;
+--												shift_LAB	: in std_logic;
+--												ld_st_reg	: in std_logic	)
+--		return LAB_actual is
+--								
+--		variable i 			: integer 		:= issued_inst;	
+--		variable LAB_temp	: LAB_actual	:= LAB_in;
+--		variable not_SL	: integer;
+--		variable address_updated : std_logic := '0';
+--		
+--	begin
+--		for i in 0 to 4 loop:
+--			target_index = i + convert_SL(shift_LAB) + convert_SL(gt_issued_inst(i, issued_inst));
+--			
+--			if target_index = i then
+--				actual_index := i;
+--			elsif results_avail = '1' then --TODO: evaluate whether FBI < i < SBI is a necessary condition here too.
+--				actual_index := i;
+--			else
+--				actual_index := i + convert_SL(not(shift_LAB));
+--			end if;
+--			
+--			if target_index < 5 then
+--				
+--				if results_avail = '1' and condition_met = '1' and loop_i_gtoet_FBI(i, frst_branch_idx) = '1' then
+--					--need to purge all instruction subsequent to first_branch_idx
+--					report "ROB_func: 2. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
+--					LAB_temp(actual_index)	:= ((others => '0'), '0', '0', (others => '0'), '0');
+--					
+--				elsif IW_in = LAB_temp(target_index).inst and IW_result_en = '1' and IW_updated = '0' then
+--					--report "ROB_func: 1. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
+--					LAB_temp(actual_index).inst		:= ROB_temp(target_index).inst;
+--					LAB_temp(actual_index).complete	:= '1';
+--					LAB_temp(actual_index).valid		:= ROB_temp(target_index).valid;
+--					LAB_temp(actual_index).result 	:= IW_result;
+--					LAB_temp(actual_index).specul		:= speculate;
+--
+--				elsif LAB_temp(target_index).valid = '0' and PM_buffer_en = '1' and PM_data_buffered = '0' then
+--					--report "ROB_func: 3. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
+--					LAB_temp(actual_index).inst		:= PM_data_in;
+--					LAB_temp(actual_index).valid		:= '1';
+--					LAB_temp(actual_index).complete	:= '0';
+--					LAB_temp(actual_index).result		:= "0000000000000000";
+--					
+--					if PM_data_in(15 downto 12) = "1010" then
+--						LAB_temp(actual_index).specul := '1';
+--					else
+--						LAB_temp(actual_index).specul	:= speculate;
+--					end if;
+--					
+--					PM_data_buffered := '1';
+--					
+--				else
+--					--report "ROB_func: 4. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
+--					LAB_temp(actual_index).inst		:= LAB_temp(target_index).inst;
+--					LAB_temp(actual_index).complete	:= LAB_temp(target_index).complete;
+--					LAB_temp(actual_index).valid		:= LAB_temp(target_index).valid;
+--					LAB_temp(actual_index).result 	:= LAB_temp(target_index).result;
+--					LAB_temp(actual_index).specul		:= LAB_temp(target_index).valid and speculate;
+--					
+--				end if;
+--			elsif (i = 8 and target_index = 10) or (i = 9 and target_index = 11) or (i = 9 and target_index = 10) then
+--				--clear_zero = '1' and these are instructions resolved due to being in the first branch.
+--				--either buffer PM_data_in or just write in zeros
+--				if PM_buffer_en = '1' and PM_data_buffered = '0' then
+--					--report "ROB_func: 5. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
+--					LAB_temp(i).inst		:= PM_data_in;
+--					LAB_temp(i).valid		:= '1';
+--					PM_data_buffered		:= '1';
+--				else
+--					--report "ROB_func: 6. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
+--					LAB_temp(i)				:= ((others => '0'), '0', '0', (others => '0'), '0');
+--				end if;
+--				
+--			else
+--				--report "ROB_func: 7. i = " & integer'image(i) & ", target_index = " & integer'image(target_index);
+--				ROB_temp(actual_index)	:= ROB_temp(target_index);
+--			end if;
+--			
+--		end loop;
+--	
+--	end process;
 	
 	--function to type convert std_logic to integer
 	function convert_SL ( shift_LAB : in std_logic )

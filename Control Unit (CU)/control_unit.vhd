@@ -26,6 +26,7 @@ entity control_unit is
 		
 		--MEM Feedback Signals
 		I2C_error, I2C_op_run			: in std_logic;	
+		I2C_complete						: in std_logic;
 		
 		--(ID) RF control signals
 		ID_RF_out_1_mux					: out std_logic_vector(4 downto 0);	--controls first output mux
@@ -237,7 +238,7 @@ architecture behavioral of control_unit is
 			reset_n, reset_MEM 	: in std_logic;
 			sys_clock				: in std_logic;	
 			IW_in, PM_data_in		: in std_logic_vector(15 downto 0); --IW from MEM and from PM, via LAB, respectively
-			WB_stall_in			: in std_logic;		--set high when an upstream CU block needs this 
+			WB_stall_in				: in std_logic;		--set high when an upstream CU block needs this 
 			MEM_out_top				: in std_logic_vector(15 downto 0);
 			GPIO_out					: in std_logic_vector(15 downto 0);
 			I2C_out					: in std_logic_vector(15 downto 0);
@@ -249,11 +250,11 @@ architecture behavioral of control_unit is
 			RF_wr_en					: out std_logic;	--
 						
 			--Outputs
-			stall_out		: out std_logic;
-			WB_data_out		: out std_logic_vector(15 downto 0);
-			ROB_out			: out ROB;
-			WB_IW_out		: out std_logic_vector(15 downto 0);
-			frst_branch_index	: inout integer
+			stall_out				: out std_logic;
+			WB_data_out				: out std_logic_vector(15 downto 0);
+			ROB_out					: out ROB;
+			WB_IW_out				: out std_logic_vector(15 downto 0);
+			frst_branch_index		: inout integer
 		);
 	end component;
 	
@@ -269,7 +270,7 @@ architecture behavioral of control_unit is
 	
 begin
 
-	LAB_stall <= ID_stall_out or EX_stall_out or MEM_stall_out or WB_stall_out;
+	LAB_stall <= ID_stall_out or EX_stall_out or MEM_stall_out or WB_stall_out or I2C_complete;
 
 	--currently using the LAB, ID, and EX feedback signals for data hazard checks, vice ID, EX, and MEM
 	LAB	: LAB_test
@@ -313,16 +314,14 @@ begin
 		clear_EX_IW_out	=> clear_EX_IW_out,
 		clear_MEM_IW_out	=> clear_MEM_IW_out
 	);
-	
-	--ID_stall_in  <= WB_stall_in or MEM_stall_in or EX_stall_in; --'1' if any stall signal is '1', '0' if all stalls are '0'
-	
+
 	ID_actual	: ID
 	port map ( 
 		--Input data and clock
 		reset_n			=> LAB_reset_out, 
 		sys_clock		=> sys_clock,	
 		IW_in				=> LAB_ID_IW,
-		ID_stall_in		=> '0',	
+		ID_stall_in		=> I2C_complete,	
 		mem_addr_in		=> LAB_mem_addr_out,
 		ALU_fwd_reg_1_in	=> LAB_ID_fwd_reg1,
 		ALU_fwd_reg_2_in	=> LAB_ID_fwd_reg2,
@@ -354,15 +353,13 @@ begin
 	
 	ID_EX_IW_actual <= ID_EX_mux_IW;
 	
-	--EX_stall <= LAB_stall_in or WB_stall_in or MEM_stall_in;
-	
 	EX_actual : EX
 	port map (
 		--Input data and clock
 		reset_n					=> ID_reset_out, 
 		sys_clock				=> sys_clock,	
 		IW_in						=> ID_EX_mux_IW,
-		EX_stall_in				=> '0',
+		EX_stall_in				=> I2C_complete,
 		mem_addr_in				=> ID_EX_mem_address,
 		immediate_val_in		=> ID_EX_immediate_val,
 		ALU_fwd_reg_1_in		=> ID_EX_fwd_reg1,
@@ -394,15 +391,13 @@ begin
 		result		=> EX_MEM_mux_IW
 	);
 	
-	--MEM_stall <= WB_stall_out;
-	
 	MEM_actual : MEM
 	port map ( 
 		--Input data and clock
 		reset_n						=> EX_reset_out, 
 		sys_clock					=> sys_clock,	
 		IW_in							=> EX_MEM_mux_IW,
-		MEM_stall_in				=> '0',
+		MEM_stall_in				=> I2C_complete,
 		I2C_error					=> I2C_error,
 		I2C_op_run					=> I2C_op_run,
 		

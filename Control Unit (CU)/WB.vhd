@@ -21,7 +21,7 @@ entity WB is
 		reset_n, reset_MEM 	: in std_logic;
 		sys_clock				: in std_logic;	
 		IW_in, PM_data_in		: in std_logic_vector(15 downto 0); --IW from MEM and from PM, via LAB, respectively
-		WB_stall_in				: in std_logic;		--set high when an upstream CU block needs this 
+		WB_stall_in				: in std_logic;		--ONLY HIGH WHEN AN I2C OPERATION COMPLETES
 		MEM_out_top				: in std_logic_vector(15 downto 0);
 		GPIO_out					: in std_logic_vector(15 downto 0);
 		I2C_out					: in std_logic_vector(15 downto 0);

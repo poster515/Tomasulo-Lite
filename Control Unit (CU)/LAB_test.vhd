@@ -410,7 +410,7 @@ begin
 									--TODO: fix this function to accommodate for the fact that the incoming PM_data_in may be an address for a load/store
 									--add next_IW_is_addr to function call?
 									--report "LAB: 2. can't issue any LAB inst/PM_data, so buffer PM_data.";
-									LAB 					<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '0', ld_st_reg);
+									LAB 					<= shiftLAB_and_bufferPM(LAB, PM_data_in, LAB_MAX, LAB_MAX, '0', ld_st_reg);
 									IW_reg 				<= "1111111111111111";
 									LAB_full 			<= LAB(LAB_MAX - 1).inst_valid;
 									ALU_fwd_reg_1 		<= '0';
@@ -427,7 +427,7 @@ begin
 					end if; --LAB(0).valid = '0' 
 			else
 				--if stalled, just issue noop
-				IW_reg 				<= "1111111111111111";
+				--IW_reg 				<= "1111111111111111";
 				--RF_revalidate		<= "00000000000000000000000000000000";
 			end if; --stall_pipeline
 					

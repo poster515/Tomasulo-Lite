@@ -135,9 +135,8 @@ begin
 				EX_stall_out <= '0';
 				IW_out <= IW_in;	--forward IW to MEM stage
 
-			elsif EX_stall_in = '1' then
-				--propagate stall signal and keep immediate value
-				EX_stall_out <= '1';
+			else
+				--do nothing
 				
 			end if; --stall_in
 

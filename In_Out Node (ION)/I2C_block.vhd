@@ -89,6 +89,11 @@ begin
 		if write_begin = '1' or read_begin = '1' then
 			data_reg <= data_to_slave;
 			addr_reg <= slave_address;
+			
+		else
+			data_reg <= data_reg;
+			addr_reg <= addr_reg;
+			
 		end if;
 		
 		sda_reg <= sda;
