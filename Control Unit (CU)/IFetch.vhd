@@ -7,7 +7,7 @@ use work.LAB_functions.all;
 use work.control_unit_types.all;
 
 ------------------------------------------------------------
-entity LAB_test is
+entity IFetch is
 	generic ( 	LAB_MAX		: integer	:= 5;
 					ROB_DEPTH 	: integer	:= 10	);
 	port (
@@ -47,7 +47,7 @@ entity LAB_test is
 		clear_EX_IW_out		: out std_logic;
 		clear_MEM_IW_out		: out std_logic
 	);
-end entity LAB_test;
+end entity IFetch;
 
 --need to finalize branch instruction capability
 --thinking that the LAB will need to tell WB stage ROB that subsequent instructions are being executed speculatively, if they are.
@@ -67,7 +67,7 @@ end entity LAB_test;
 
 ------------------------------------------------------------
 --since "1111" is an unused OpCode, use the instruction word "1111111111111111" as an EOP signal
-architecture arch of LAB_test is
+architecture arch of IFetch is
 	--initialize addr_valid as '1' for all instructions except load/stores, branches, etc., so that when the
 	--subsequent IW is issued on PM_data_in, we search for the only non-'1' addr_valid slot and establish the 
 	--memory address there
@@ -329,7 +329,7 @@ begin
 									MEM_reg 		<= LAB(i).addr;
 									
 									--shift LAB down and buffer PM_data_in
-									LAB 			<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg);
+									LAB 			<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg or branch_reg);
 									
 									--exit, we're done here
 									exit;
@@ -342,7 +342,7 @@ begin
 									IW_reg 	<= LAB(i).inst;
 									
 									--shift LAB down and buffer PM_data_in
-									LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg);
+									LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg or branch_reg);
 									
 									--exit here, we're done
 									exit;
@@ -358,7 +358,7 @@ begin
 								--just buffer PM_data_in
 								--report "LAB: Can't issue any valid LAB inst or PM_data, buffer PM_data";
 								IW_reg 				<= "1111111111111111";
-								LAB 					<= shiftLAB_and_bufferPM(LAB, PM_data_in, i - 1, LAB_MAX, '0', ld_st_reg);
+								LAB 					<= shiftLAB_and_bufferPM(LAB, PM_data_in, i - 1, LAB_MAX, '0', ld_st_reg or branch_reg);
 								exit;
 								
 							elsif i = LAB_MAX - 1 then 
@@ -410,7 +410,7 @@ begin
 									--TODO: fix this function to accommodate for the fact that the incoming PM_data_in may be an address for a load/store
 									--add next_IW_is_addr to function call?
 									--report "LAB: 2. can't issue any LAB inst/PM_data, so buffer PM_data.";
-									LAB 					<= shiftLAB_and_bufferPM(LAB, PM_data_in, LAB_MAX, LAB_MAX, '0', ld_st_reg);
+									LAB 					<= shiftLAB_and_bufferPM(LAB, PM_data_in, LAB_MAX, LAB_MAX, '0', ld_st_reg or branch_reg);
 									IW_reg 				<= "1111111111111111";
 									LAB_full 			<= LAB(LAB_MAX - 1).inst_valid;
 									ALU_fwd_reg_1 		<= '0';
@@ -562,7 +562,9 @@ begin
 	
 	reg2_used 		<= (not(PM_data_in(15)) and not(PM_data_in(1)) and not(PM_data_in(0))) or 
 							(not(PM_data_in(15)) and PM_data_in(14)) or
-							(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and not(PM_data_in(12)) and not(PM_data_in(0)));
+							(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and not(PM_data_in(12)) and not(PM_data_in(0))) or 
+							--account for CP command which needs the reg2 to be up-to-date
+							(PM_data_in(15) and PM_data_in(14) and not(PM_data_in(13)) and PM_data_in(12));
 	
 	--process to generate clocked registers for branch and data memory instructions
 	process(reset_n, sys_clock) 
@@ -588,7 +590,7 @@ begin
 	
 	--this process determines whether the PM_data_in poses a data hazard to any instruction in LAB or in pipeline
 	--PM_data_hazard_status	: process(reset_n, PM_data_in, ID_IW, EX_IW, MEM_IW, ID_reset, EX_reset, MEM_reset, reg2_used, LAB, branch_reg, ld_st_reg)
-	PM_data_hazard_status	: process(reset_n, PM_data_in, LAB, ld_st)
+	PM_data_hazard_status	: process(reset_n, PM_data_in, LAB, ld_st, reg2_used)
 		variable dh_ptr_outer 	: integer range 0 to LAB_MAX - 1;
 		--variable last_dh			: integer range 0 to LAB_MAX - 1 + 3; --adding three to account for pipeline instructions
 	begin	
