@@ -249,7 +249,7 @@ begin
 							if PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" and branch_reg = '0' and ld_st_reg = '0' and PM_datahaz_status = '0' then
 								
 								IW_reg <= PM_data_in;
-								
+								LAB_full <= '0';
 									if (((ID_IW(11 downto 7) = PM_data_in(11 downto 7)) or (ID_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and ID_reset = '1' and ID_IW(15 downto 12) /= "1111") or
 										(((MEM_IW(11 downto 7) = PM_data_in(11 downto 7)) or (MEM_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and MEM_reset = '1' and MEM_IW(15 downto 12) /= "1111")  then
 										
@@ -327,7 +327,7 @@ begin
 									--if so, we can issue the ith instruction
 									IW_reg 		<= LAB(i).inst;
 									MEM_reg 		<= LAB(i).addr;
-									
+									LAB_full <= '0';
 									--shift LAB down and buffer PM_data_in
 									LAB 			<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg or branch_reg);
 									
@@ -340,7 +340,7 @@ begin
 									report "LAB: Issuing non-memory instruction and buffering PM_data_in, i = " & integer'image(i);
 									--if not, we can issue the ith instruction
 									IW_reg 	<= LAB(i).inst;
-									
+									LAB_full <= '0';
 									--shift LAB down and buffer PM_data_in
 									LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg or branch_reg);
 									
@@ -356,9 +356,9 @@ begin
 							elsif LAB(i).inst_valid = '0' and PM_datahaz_status = '1' and PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" and branch_reg = '0' and ld_st_reg = '0' then
 								--now we're at the first spot we can buffer PM_data_in, since there's no valid instruction here and the PM_data_in has a hazard
 								--just buffer PM_data_in
-								--report "LAB: Can't issue any valid LAB inst or PM_data, buffer PM_data";
+								report "LAB: Can't issue any valid LAB inst or PM_data, buffer PM_data";
 								IW_reg 				<= "1111111111111111";
-								LAB 					<= shiftLAB_and_bufferPM(LAB, PM_data_in, i - 1, LAB_MAX, '0', ld_st_reg or branch_reg);
+								LAB 					<= shiftLAB_and_bufferPM(LAB, PM_data_in, LAB_MAX, LAB_MAX, '0', ld_st_reg or branch_reg);
 								exit;
 								
 							elsif i = LAB_MAX - 1 then 
@@ -409,10 +409,10 @@ begin
 									--can't issue any instruction in LAB and can't issue PM_data_in
 									--TODO: fix this function to accommodate for the fact that the incoming PM_data_in may be an address for a load/store
 									--add next_IW_is_addr to function call?
-									--report "LAB: 2. can't issue any LAB inst/PM_data, so buffer PM_data.";
+									report "LAB: 26. can't issue any LAB inst/PM_data, so buffer PM_data.";
 									LAB 					<= shiftLAB_and_bufferPM(LAB, PM_data_in, LAB_MAX, LAB_MAX, '0', ld_st_reg or branch_reg);
 									IW_reg 				<= "1111111111111111";
-									LAB_full 			<= LAB(LAB_MAX - 1).inst_valid;
+									LAB_full 			<= LAB(LAB_MAX - 1).inst_valid and not(ld_st_reg); --AND with ld_st_reg here since we can still buffer the memory address even if the LAB is full
 									ALU_fwd_reg_1 		<= '0';
 									ALU_fwd_reg_2		<= '0';
 									exit;
@@ -439,11 +439,13 @@ begin
 	begin
 	
 		if reset_n = '0' then
-		
 			PC_reg 	<= "00000000000";
 			
-		elsif LAB_full = '1' or stall_pipeline = '1' then --we have a stall condition and need to keep PC where it is
-			PC_reg <= PC_reg;
+		elsif LAB_full = '1' then
+			PC_reg <= std_logic_vector(unsigned(PC_reg) - 1);
+			
+		elsif stall_pipeline = '1' then --we have a stall condition and need to keep PC where it is
+			PC_reg <= PC_reg ;
 			
 		else
 			if rising_edge(sys_clock) then
