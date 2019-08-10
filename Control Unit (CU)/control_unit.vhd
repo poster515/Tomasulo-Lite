@@ -111,7 +111,7 @@ architecture behavioral of control_unit is
 	signal WB_IW_out				: std_logic_vector(15 downto 0);
 	signal frst_branch_index	: integer;
 	
-	component LAB_test is
+	component IFetch is
 		generic ( 	LAB_MAX		: integer	:= 5;
 						ROB_DEPTH 	: integer	:= 10	);
 		port (
@@ -270,10 +270,10 @@ architecture behavioral of control_unit is
 	
 begin
 
-	LAB_stall <= ID_stall_out or EX_stall_out or MEM_stall_out or WB_stall_out or I2C_complete;
+	LAB_stall <= I2C_complete;
 
 	--currently using the LAB, ID, and EX feedback signals for data hazard checks, vice ID, EX, and MEM
-	LAB	: LAB_test
+	LAB	: IFetch
 		port map(
 
 		reset_n			=> reset_n, 
