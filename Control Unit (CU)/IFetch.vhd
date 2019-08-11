@@ -77,9 +77,8 @@ architecture arch of IFetch is
 	--signal branches	: branch_addrs := (others => ((others => '0'), (others => '0'), '0'));
 	signal branches	: branch_addrs;
 	
-	--Program counter (PC) register and target PC register 
+	--Program counter (PC) register
 	signal PC_reg		: std_logic_vector(10 downto 0);
-	signal target_PC_reg	: std_logic_vector(10 downto 0);
 	
 	--signal to denote that LAB is full and we need to stall PM input clock
 	signal LAB_full	: std_logic := '0';
@@ -165,18 +164,14 @@ begin
 			LAB_reset_out 		<= '0';
 			results_available <= '0';
 			condition_met 		<= '0';
-			LAB_full 			<= '0';
+			--LAB_full 			<= '0';
 			ALU_fwd_reg_1 		<= '0';
 			ALU_fwd_reg_2		<= '0';
-			--RF_revalidate		<= "00000000000000000000000000000000";
-			--should clear_IW_outs be "111" instead to initialize everything to a no-op?
-			--clear_IW_outs 		<= "000";
 
 		elsif rising_edge(sys_clock) then
 			LAB_reset_out		<= '1';
 			LAB <= LAB;
-			--branches <= branches;
-			--jumps are easily handled with "program_counter" process below 
+			--jumps are handled with "program_counter" process below 
 			--ALU instructions are managed and re-ordered strictly between branches in ROB
 
 			--continually check for branch condition on PM_data_in
@@ -271,7 +266,7 @@ begin
 									--if so, we can issue the ith instruction
 									IW_reg 		<= LAB(i).inst;
 									MEM_reg 		<= LAB(i).addr;
-									LAB_full <= '0';
+									--LAB_full <= '0';
 									--shift LAB down and buffer PM_data_in
 									LAB 			<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg or branch_reg);
 									
@@ -284,7 +279,7 @@ begin
 									report "LAB: Issuing non-memory instruction and buffering PM_data_in, i = " & integer'image(i);
 									--if not, we can issue the ith instruction
 									IW_reg 	<= LAB(i).inst;
-									LAB_full <= '0';
+									--LAB_full <= '0';
 									--shift LAB down and buffer PM_data_in
 									LAB 		<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg or branch_reg);
 									
@@ -311,7 +306,7 @@ begin
 								if PM_data_in(15 downto 12) /= "1001" and PM_data_in(15 downto 12) /= "1010" and branch_reg = '0' and ld_st_reg = '0' and PM_datahaz_status = '0' then
 									--report "issuing PM_data_in to pipeline instead of buffering to LAB.";
 									IW_reg 			<= PM_data_in;
-									LAB_full 		<= '0';
+									--LAB_full 		<= '0';
 									
 									--next check for data forwarding opportunity
 									if (((ID_IW(11 downto 7) = PM_data_in(11 downto 7)) or (ID_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and ID_reset = '1' and ID_IW(15 downto 12) /= "1111") or
@@ -354,7 +349,7 @@ begin
 									report "LAB: 26. can't issue any LAB inst/PM_data, so buffer PM_data.";
 									LAB 					<= shiftLAB_and_bufferPM(LAB, PM_data_in, LAB_MAX, LAB_MAX, '0', ld_st_reg or branch_reg);
 									IW_reg 				<= "1111111111111111";
-									LAB_full 			<= LAB(LAB_MAX - 1).inst_valid and not(ld_st_reg); --AND with ld_st_reg here since we can still buffer the memory address even if the LAB is full
+									--LAB_full 			<= LAB(LAB_MAX - 1).inst_valid and not(ld_st_reg); --AND with ld_st_reg here since we can still buffer the memory address even if the LAB is full
 									ALU_fwd_reg_1 		<= '0';
 									ALU_fwd_reg_2		<= '0';
 									exit;
@@ -376,8 +371,14 @@ begin
 		end if; --reset_n
 	end process;
 	
+	LAB_full <= LAB(LAB_MAX - 1).inst_valid and LAB(LAB_MAX - 1).addr_valid and 
+						IW_reg(15)and IW_reg(14)and IW_reg(13)and IW_reg(12)and 
+						IW_reg(11)and IW_reg(10)and IW_reg(9)and IW_reg(8)and 
+						IW_reg(7)and IW_reg(6)and IW_reg(5)and IW_reg(4)and 
+						IW_reg(3)and IW_reg(2)and IW_reg(1)and IW_reg(0);
+	
 	--this process controls the program counter only
-	program_counter	: process(reset_n, LAB_full, sys_clock, stall_pipeline)
+	program_counter	: process(reset_n, sys_clock, stall_pipeline)
 	begin
 
 		if reset_n = '0' then
@@ -387,26 +388,44 @@ begin
 			
 		elsif stall_pipeline = '1' then --we have a stall condition and need to keep PC where it is
 			PC_reg <= PC_reg;
-		
-		elsif previous_LAB_full = '1' and LAB_full = '0' then
-			PC_reg <= std_logic_vector(unsigned(PC_reg) + 1);
-			PC_adjusted <= '0';
 			
-		elsif LAB_full = '1' then
-			if PC_adjusted = '0' then
-				PC_reg <= std_logic_vector(unsigned(PC_reg) - 1);
-				PC_adjusted <= '1';
-			else
-				PC_reg <= PC_reg;
-			end if;
 		else
 			if rising_edge(sys_clock) then
-			
+				report "LAB: previous_LAB_full = " & integer'image(convert_SL(previous_LAB_full)) & ", LAB_full = " & integer'image(convert_SL(LAB_full));
 				previous_LAB_full <= LAB_full;
-				
+
 				if stall_pipeline = '1' then
 					--if we're stalled, keep PC where its at
 					PC_reg 	<= PC_reg;
+					
+				elsif previous_LAB_full = '1' and LAB_full = '0' then
+					--catch falling edge of LAB_full so we can update PC_reg
+					report 	"LAB: 42. prev_LAB_full = " & integer'image(convert_SL(previous_LAB_full)) & 
+								", and LAB_full = " & integer'image(convert_SL(LAB_full));
+					PC_reg <= std_logic_vector(unsigned(PC_reg) + 1);
+					PC_adjusted <= '0';
+					
+				elsif previous_LAB_full = '0' and LAB_full = '1' then
+					--catch rising edge of LAB_full
+					if PC_adjusted = '0' and ld_st = '0' then
+						--if we haven't adjusted the PC yet on account of a full LAB and this isn't a LD/ST address, undo the PC_reg increment
+						PC_reg <= std_logic_vector(unsigned(PC_reg) - 1);
+						PC_adjusted <= '1';
+						report 	"LAB: 43. prev_LAB_full = " & integer'image(convert_SL(previous_LAB_full)) & 
+									", LAB_full = " & integer'image(convert_SL(LAB_full)) &
+									", PC_adjusted = " & integer'image(convert_SL(PC_adjusted)) &
+									", and ld_st = " & integer'image(convert_SL(ld_st));
+					else
+						PC_reg <= PC_reg;
+						report 	"LAB: 44. prev_LAB_full = " & integer'image(convert_SL(previous_LAB_full)) & 
+									", and LAB_full = " & integer'image(convert_SL(LAB_full));
+					end if;
+					
+				elsif previous_LAB_full = '1' and LAB_full = '1' then
+					--catch rising edge of LAB_full
+					report 	"LAB: 45. prev_LAB_full = " & integer'image(convert_SL(previous_LAB_full)) & 
+								", and LAB_full = " & integer'image(convert_SL(LAB_full));
+					PC_reg <= PC_reg;
 					
 				elsif branch_reg = '1' and results_available = '0' then
 					--speculatively execute the next instruction. the "main" process will handle the rest. 
@@ -438,10 +457,13 @@ begin
 					
 				else 
 					--otherwise increment PC to get next IW
-					PC_reg	<= target_PC_reg;
-					--PC_reg 	<= std_logic_vector(unsigned(PC_reg) + 1);
+					PC_reg 	<= std_logic_vector(unsigned(PC_reg) + 1);
 					
 				end if;
+			
+			else
+			
+				report "LAB: else statement."; 
 			end if; --sys_clock
 		end if; --reset_n
 	end process; --program_counter
