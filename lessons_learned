@@ -1,0 +1,19 @@
+1) When creating sequential logic blocks, be sure to clearly define the interface between them. This does not include just the signal names, but also:
+    a) What the signals actually represent, preferrably in a high-level instantiation of the block
+    b) Any applicable default or otherwise nnumerical behavior of the signals
+    c) Critical timing information (i.e., on what clock edge information is updated)
+    
+   The above should be especially considered for function-critical signals and combinational logic, which may be easier to drive asynchronously. 
+  
+2) Do not be afraid to utilize multiple processes in the same file to update various signals independently. Careful consideration should be taken for the following:
+    a) Interdependencies between signals should be a strict one-way dependency if at all possible. 
+    b) The sensitivity lists should be carefully reviewed to ensure the process is correctly sensitive to the correct signals.
+    c) The order of the sensitivity lists should be carefully reviewed to ensure the process is sensitive to signals in the correct order.
+    
+3) During development of the Instruction Set Architecture, document as early as possible in the design process the structure and function of each OpCode, register field(s), and any optional bit codes. These should be negotiated and established as early as possible so the design can solidify, and updated as needed to incorporate improvements/additions. 
+
+4) During the testing phase, be sure to test each lower level block to the extent possible. Consideration for the exact level of testing required based on the following:
+    a) The complexity of the lowest level block in the hierarchy in question. Complex algorithms should be tested as low as possible to ensure correctness and that all nuances are understood as you ascend your hierarchy.
+    b) The "signal density" of the highest level block in the hierarchy in question. More signals means more debugging; there should be a reasonable number of signals required to debug at a time.
+    c) The number of test cases that will bound worst case behavior of the lower level blocks. If you cannot reasonably bound lower level block behavior via various test cases, then exhaustively test the lower level blocks to the extent possible.
+    
