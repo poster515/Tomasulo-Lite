@@ -91,7 +91,8 @@ architecture arch of IFetch is
 	signal LAB_datahaz_status 	: std_logic_vector(LAB_MAX - 1 downto 0) := (others => '0');
 	
 	--std_logic_vector tracking if there are any data hazards between LAB instruction and PL instructions
-	signal PL_datahaz_status 	: std_logic_vector(LAB_MAX - 1 downto 0) := (others => '0');
+	signal PL_datahaz_status 						: std_logic_vector(LAB_MAX - 1 downto 0) := (others => '0');
+	signal ID_hazard, EX_hazard, MEM_hazard	: std_logic;
 	
 	--std_logic tracking if there are any data hazards between PM_data_in and pipeline and LAB instructions
 	signal PM_datahaz_status : std_logic;
@@ -164,6 +165,7 @@ begin
 			LAB 					<= init_LAB(LAB, LAB_MAX);
 			branches				<= init_branches(branches, ROB_DEPTH);
 			IW_reg 				<= "1111111111111111";
+			MEM_reg 				<= "0000000000000000";
 			LAB_reset_out 		<= '0';
 			results_available <= '0';
 			condition_met 		<= '0';
@@ -173,6 +175,7 @@ begin
 		elsif rising_edge(sys_clock) then
 			LAB_reset_out		<= '1';
 			LAB <= LAB;
+			
 			--jumps are handled with "program_counter" process below 
 			--ALU instructions are managed and re-ordered strictly between branches in ROB
 
@@ -323,17 +326,22 @@ begin
 	
 	--if the last entry in LAB is valid and conflicts with other LAB instructions and pipeline, as does PM_data, LAB is indeed FULL
 	--given that PM_datahaz_status updates with PM_data_in, this signal will be updated 1/2 clock cycle before it's needed
-	LAB_full <= LAB(4).inst_valid and LAB(4).addr_valid and PL_datahaz_status(4) and LAB_datahaz_status(4) and PM_datahaz_status;
+	LAB_full <= 	LAB(4).addr_valid and 
+						(PL_datahaz_status(4) or LAB_datahaz_status(4)) and 
+						(PL_datahaz_status(3) or LAB_datahaz_status(3)) and 
+						(PL_datahaz_status(2) or LAB_datahaz_status(2)) and 
+						(PL_datahaz_status(1) or LAB_datahaz_status(1)) and 
+						(PL_datahaz_status(0) or LAB_datahaz_status(0)) and 
+						PM_datahaz_status;
 	
-	pipeline_datahaz_status	: process(reset_n, LAB, ID_IW, EX_IW, MEM_IW)
+	pipeline_datahaz_status	: process(reset_n, sys_clock, LAB, ID_IW, EX_IW, MEM_IW)
 	begin
 		if reset_n = '0' then
-			PL_datahaz_status <= (others => '0');
-			
+			PL_datahaz_status 		<= (others => '0');
+			ID_hazard		<= '0';
+			EX_hazard		<= '0';
+			MEM_hazard		<= '0';
 		else
-			--for each LAB entry, determine whether there is a hazard in pipeline that prevents issuance of that instruction
-			--'0' = no pipeline hazard for that LAB entry, '1' = there is a hazard
-			
 			for i in 0 to LAB_MAX - 1 loop
 				
 				if	(((ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
@@ -345,31 +353,51 @@ begin
 					 ((ID_IW(6 downto 2) = LAB(i).inst(6 downto 2) and LAB(i).inst(15 downto 12) = "1000" and ID_IW(15 downto 12) = "1111") or
 					
 					not(ID_IW(6 downto 2) = LAB(i).inst(6 downto 2) and ID_IW(15 downto 12) = "1000" and ID_IW(1 downto 0) = "10" and LAB(i).inst(15 downto 12) = "1000" and LAB(i).inst(1 downto 0) = "00"))	
+					and ID_reset = '1') then
 					
-					and ID_reset = '1') and
+					ID_hazard		<= '0';
+						
+				elsif ID_reset = '0' then
+					ID_hazard		<= '0';
 					
-					(((EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
+				else
+					ID_hazard		<= '1';
+					
+				end if;
+				-------------------------
+				if (((EX_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and EX_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
 					 ((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_IW(15 downto 12) = "1111") or
 					 --allows a GPIO/W to be issued, followed by a GPIO/R to the same register
 					 ((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) and EX_IW(15 downto 12) = "1011" and EX_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00")) or
 					 (EX_IW(6 downto 2) = LAB(i).inst(6 downto 2) and EX_IW(15 downto 12) = "1000" and EX_IW(1 downto 0) = "10" and LAB(i).inst(15 downto 12) = "1000" and LAB(i).inst(1 downto 0) = "00")) 
-					 
-					 and EX_reset = '1') and
-					 
-					(((MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
+					and EX_reset = '1') then
+					
+					EX_hazard		<= '0';
+					
+				elsif EX_reset = '0' then
+					EX_hazard		<= '0';
+							
+				else
+					EX_hazard		<= '1';
+				end if;
+				--------- 
+				if	(((MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
 					 ((MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) or MEM_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and MEM_IW(15 downto 12) = "1111") or
 					 (MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) and MEM_IW(15 downto 12) = "1011" and MEM_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00") or
 					 (MEM_IW(6 downto 2) = LAB(i).inst(6 downto 2) and MEM_IW(15 downto 12) = "1000" and MEM_IW(1 downto 0) = "10" and LAB(i).inst(15 downto 12) = "1000" and LAB(i).inst(1 downto 0) = "00")) 
-					 
-					 and MEM_reset = '1') and LAB(i).inst_valid = '1' then 
+					 and MEM_reset = '1') then 
 					
-					PL_datahaz_status(i) <= '0';
+					MEM_hazard		<= '0';
 					
+				elsif MEM_reset = '0' then
+					MEM_hazard		<= '0';
+							
 				else
-					PL_datahaz_status(i) <= '1';
-					
+					MEM_hazard		<= '1';
 				end if;
-			
+				
+				PL_datahaz_status(i) <= (ID_hazard or EX_hazard or MEM_hazard) and LAB(i).inst_valid;
+				
 			end loop;
 		end if; --reset_n
 	
@@ -389,46 +417,17 @@ begin
 			
 		else
 			if rising_edge(sys_clock) then
-				report "LAB: previous_LAB_full = " & integer'image(convert_SL(previous_LAB_full)) & ", LAB_full = " & integer'image(convert_SL(LAB_full));
+				
 				previous_LAB_full <= LAB_full;
 
 				if stall_pipeline = '1' then
 					--if we're stalled, keep PC where its at
 					PC_reg 	<= PC_reg;
 					
-				elsif previous_LAB_full = '1' and LAB_full = '0' then
-					--catch falling edge of LAB_full so we can update PC_reg
-					report 	"LAB: 42. prev_LAB_full = " & integer'image(convert_SL(previous_LAB_full)) & 
-								", and LAB_full = " & integer'image(convert_SL(LAB_full));
-					PC_reg <= std_logic_vector(unsigned(PC_reg) + 1);
-					PC_adjusted <= '0';
-					
-				elsif previous_LAB_full = '0' and LAB_full = '1' then
-					--catch rising edge of LAB_full
-					if PC_adjusted = '0' and ld_st = '0' then
-						--if we haven't adjusted the PC yet on account of a full LAB and this isn't a LD/ST address, undo the PC_reg increment
-						PC_reg <= std_logic_vector(unsigned(PC_reg) - 1);
-						PC_adjusted <= '1';
-						report 	"LAB: 43. prev_LAB_full = " & integer'image(convert_SL(previous_LAB_full)) & 
-									", LAB_full = " & integer'image(convert_SL(LAB_full)) &
-									", PC_adjusted = " & integer'image(convert_SL(PC_adjusted)) &
-									", and ld_st = " & integer'image(convert_SL(ld_st));
-					else
-						PC_reg <= PC_reg;
-						report 	"LAB: 44. prev_LAB_full = " & integer'image(convert_SL(previous_LAB_full)) & 
-									", and LAB_full = " & integer'image(convert_SL(LAB_full));
-					end if;
-					
-				elsif previous_LAB_full = '1' and LAB_full = '1' then
-					--catch rising edge of LAB_full
-					report 	"LAB: 45. prev_LAB_full = " & integer'image(convert_SL(previous_LAB_full)) & 
-								", and LAB_full = " & integer'image(convert_SL(LAB_full));
-					PC_reg <= PC_reg;
-					
-				elsif branch_reg = '1' and results_available = '0' then
-					--speculatively execute the next instruction. the "main" process will handle the rest. 
-					PC_reg 	<= std_logic_vector(unsigned(PC_reg) + 1);
-					
+--				elsif branch_reg = '1' and results_available = '0' then
+--					--speculatively execute the next instruction. the "main" process will handle the rest. 
+--					PC_reg 	<= std_logic_vector(unsigned(PC_reg) + 1);
+--					
 				elsif branch_reg = '1' and results_available = '1' and condition_met = '1' then
 					--results are available and we can non-speculatively execute the branched instructions. the "main" process will handle the rest. 
 					PC_reg 	<= std_logic_vector(unsigned(PM_data_in(11 downto 1)));
@@ -453,15 +452,44 @@ begin
 					--for jumps, grab immediate value and update PC_reg
 					PC_reg 	<= std_logic_vector(unsigned(PM_data_in(11 downto 1)));
 					
+				elsif previous_LAB_full = '1' and LAB_full = '0' then
+					--catch falling edge of LAB_full so we can update PC_reg
+					report 	"LAB: 42. prev_LAB_full = " & integer'image(convert_SL(previous_LAB_full)) & 
+								", and LAB_full = " & integer'image(convert_SL(LAB_full));
+					PC_reg <= std_logic_vector(unsigned(PC_reg) + 1);
+					PC_adjusted <= '0';
+					
+				elsif previous_LAB_full = '0' and LAB_full = '1' then
+					--catch rising edge of LAB_full
+					if ld_st = '1' or branch = '1' then
+						--we can still increment PC_reg even if the LAB_full goes high to get branch addresses and load/store addresses
+						PC_reg <= std_logic_vector(unsigned(PC_reg) + 1);
+						report 	"LAB: 44. prev_LAB_full = " & integer'image(convert_SL(previous_LAB_full)) & 
+									", and LAB_full = " & integer'image(convert_SL(LAB_full));
+					
+					--elsif PC_adjusted = '0' and ld_st = '0' and branch = '0' then
+					else
+						--if we haven't adjusted the PC yet on account of a full LAB and this isn't a LD/ST address, undo the PC_reg increment
+						PC_reg <= PC_reg;
+						--PC_adjusted <= '1';
+						report 	"LAB: 43. prev_LAB_full = " & integer'image(convert_SL(previous_LAB_full)) & 
+									", LAB_full = " & integer'image(convert_SL(LAB_full)) &
+									", PC_adjusted = " & integer'image(convert_SL(PC_adjusted)) &
+									", and ld_st = " & integer'image(convert_SL(ld_st));
+
+					end if;
+					
+				elsif previous_LAB_full = '1' and LAB_full = '1' then
+					--catch rising edge of LAB_full
+					report 	"LAB: 45. prev_LAB_full = " & integer'image(convert_SL(previous_LAB_full)) & 
+								", and LAB_full = " & integer'image(convert_SL(LAB_full));
+					PC_reg <= PC_reg;
+					
 				else 
 					--otherwise increment PC to get next IW
 					PC_reg 	<= std_logic_vector(unsigned(PC_reg) + 1);
 					
 				end if;
-			
-			else
-			
-				report "LAB: else statement."; 
 			end if; --sys_clock
 		end if; --reset_n
 	end process; --program_counter
@@ -629,11 +657,9 @@ begin
 				for dh_ptr_inner in 0 to LAB_MAX - 2 loop
 			
 					if (
-							(LAB(dh_ptr_inner).inst(11 downto 7) 	= LAB(dh_ptr_outer).inst(11 downto 7) and 
-							 LAB(dh_ptr_outer).inst_valid 			= '1') or 
+							(LAB(dh_ptr_inner).inst(11 downto 7) 	= LAB(dh_ptr_outer).inst(11 downto 7)) or 
 							 
-							(LAB(dh_ptr_inner).inst(11 downto 7) 	= LAB(dh_ptr_outer).inst(6 downto 2) and 
-							 LAB(dh_ptr_outer).inst_valid 			= '1') or 
+							(LAB(dh_ptr_inner).inst(11 downto 7) 	= LAB(dh_ptr_outer).inst(6 downto 2)) or 
 							
 							(LAB(dh_ptr_inner).inst(6 downto 2) = LAB(dh_ptr_outer).inst(6 downto 2) and 
 							 LAB(dh_ptr_inner).inst(15 downto 12) 	= "1000" and 
@@ -642,7 +668,7 @@ begin
 							(LAB(dh_ptr_inner).inst(6 downto 2) = LAB(dh_ptr_outer).inst(11 downto 7) and 
 							 LAB(dh_ptr_inner).inst(15 downto 12) 	= "1000")
 							 
-						) and dh_ptr_inner < dh_ptr_outer then
+						) and dh_ptr_inner < dh_ptr_outer and LAB(dh_ptr_outer).inst_valid = '1' and LAB(dh_ptr_inner).inst_valid = '1' then
 						
 						LAB_datahaz_status(dh_ptr_outer) <= '1';
 						exit; --exit inner loop, there's a hazard at this dh_ptr_outer location
