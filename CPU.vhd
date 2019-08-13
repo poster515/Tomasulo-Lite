@@ -55,6 +55,8 @@ architecture structural of CPU is
 	signal ROB_out								: ROB;
 	signal MEM_instruction_word			: std_logic_vector(15 downto 0);
 	signal ID_IW_out							: std_logic_vector(15 downto 0);
+	signal I2C_complete						: std_logic;
+	signal MEM_out_top_reg					: std_logic_vector(15 downto 0);
 	
 	--anti-system clock for the program memory
 	signal n_sys_clock						: std_logic;
@@ -62,11 +64,8 @@ architecture structural of CPU is
 	component control_unit is
 	port(
 	
-		--TEST OUTPUT ONLY, REMOVE AFTER LAB INSTANTIATED (signal goes to LAB for arbitration)
 		I2C_error_out						: out std_logic; 	
-		
-		--END TEST INPUTS
-		
+
 		--Input data and clock
 		reset_n, sys_clock				: in std_logic;	
 		PM_data_in							: in std_logic_vector(15 downto 0);
@@ -76,7 +75,8 @@ architecture structural of CPU is
 		ALU_SR_in							: in std_logic_vector(3 downto 0);
 		
 		--MEM Feedback Signals
-		I2C_error, I2C_op_run			: in std_logic;	
+		I2C_error, I2C_op_run			: in std_logic;
+		I2C_complete						: in std_logic;
 		
 		--(ID) RF control signals
 		ID_RF_out_1_mux					: out std_logic_vector(4 downto 0);	--controls first output mux
@@ -191,7 +191,8 @@ architecture structural of CPU is
 		wr_en						: in std_logic; --write enable for data memory
 		
 		--Output
-		MEM_out_top				: out std_logic_vector(15 downto 0)
+		MEM_out_top				: out std_logic_vector(15 downto 0);
+		MEM_out_top_reg		: out std_logic_vector(15 downto 0)
 	
 	);
 	end component;
@@ -214,6 +215,7 @@ architecture structural of CPU is
 		I2C_error			: out	std_logic;	--in case we can't write to slave after three attempts
 		I2C_op_run			: out std_logic;	--when high, lets CU know that there is a CU operation occurring
 		GPIO_out, I2C_out	: out std_logic_vector(15 downto 0); --GPIO and I2C module outputs
+		I2C_complete		: out std_logic;
 		
 		--Input/Outputs
 		I2C_sda, I2C_scl	: inout std_logic --high level chip inputs/outputs
@@ -245,6 +247,7 @@ begin
 		--ION Feedback Signals
 		I2C_error							=> I2C_error, 
 		I2C_op_run							=> I2C_op_run,
+		I2C_complete						=> I2C_complete,
 		
 		--(ID) RF control Signals
 		ID_RF_out_1_mux					=> ID_RF_out_1_mux,		--MAPPED
@@ -336,7 +339,7 @@ begin
 		reset_n			=> reset_n,
 		RF_in_1			=> RF_out_1,
 		RF_in_2			=> RF_out_2,
-		MEM_in			=> MEM_out_top,
+		MEM_in			=> MEM_out_top_reg,
 		MEM_address		=> ALU_mem_addr_out,
 		value_immediate	=> ALU_immediate_val,
 		
@@ -371,7 +374,8 @@ begin
 		wr_en					=> MEM_MEM_wr_en,
 		
 		--Output
-		MEM_out_top			=> MEM_out_top
+		MEM_out_top			=> MEM_out_top,
+		MEM_out_top_reg	=> MEM_out_top_reg
 	
 	);
 	
@@ -395,7 +399,8 @@ begin
 	I2C_error		=> I2C_error, 
 	I2C_op_run		=> I2C_op_run,		
 	GPIO_out			=> GPIO_out,
-	I2C_out			=> I2C_out,
+	I2C_out			=> I2C_out, --data read from slave
+	I2C_complete	=> I2C_complete, --I2C operation is complete, only high for one clock cycle
 	
 	--Input/Outputs
 	I2C_sda			=> I2C_sda,

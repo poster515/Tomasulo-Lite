@@ -23,7 +23,8 @@ entity MEM_top is
 		wr_en						: in std_logic; --write enable for data memory
 		
 		--Output
-		MEM_out_top				: out std_logic_vector(15 downto 0)
+		MEM_out_top				: out std_logic_vector(15 downto 0);
+		MEM_out_top_reg		: out std_logic_vector(15 downto 0)
 	
 	);
 end MEM_top;
@@ -66,9 +67,9 @@ architecture behavioral of MEM_top is
 	signal DM_st_buff_addr													: std_logic_vector(10 downto 0);
 	signal DM_st_buff_data													: std_logic_vector(15 downto 0);
 	signal MEM_data, MEM_address, long_st_buff_addr					: std_logic_vector(15 downto 0);
-	signal data_in_reg, MEM_out_top_reg, data_out, MEM_mux_out	: std_logic_vector(15 downto 0);
+	signal data_in_reg, data_out, MEM_mux_out							: std_logic_vector(15 downto 0);
 	signal non_specul_out, st_buff_data, MEM_out_top_mux_out		: std_logic_vector(15 downto 0);
-	signal DM_st_buff_wren, wren_non_speculative 						: std_logic;
+	signal DM_st_buff_wren, wren_non_speculative 					: std_logic;
 	signal inst_is_specul													: std_logic;
 	signal MEM_out_top_mux_sel												: std_logic;
 	signal DM_data_in_mux_sel, DM_addr_in_mux_sel, DM_wren_in_mux_sel : std_logic;	--select signals that alternate data going to Data Memory
@@ -209,7 +210,9 @@ begin
 			if rising_edge(sys_clock) then
 					
 				st_buff				<= update_st_buff(st_buff, MEM_in_1(10 downto 0), MEM_in_2, buffer_st_in, DM_wren_in_mux_sel, ROB_in, instruction_word); 
-
+				
+				--need to have this signal clocked for the ALU to use for data forwarding
+				MEM_out_top_reg	<= MEM_out_top_mux_out;
 			end if; 
 		end if; --reset_n
 	end process;

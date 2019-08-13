@@ -49,11 +49,12 @@ package LAB_functions is
 									frst_branch_idx	: in integer	)
 		return LAB_actual;
 		
-	function check_ROB_for_wrongly_fetched_insts(ROB_in	: in ROB;
-																LAB_IW	: in std_logic_vector(15 downto 0);
-																ID_IW		: in std_logic_vector(15 downto 0);
-																EX_IW		: in std_logic_vector(15 downto 0);
-																MEM_IW	: in std_logic_vector(15 downto 0))
+	function check_ROB_for_wrongly_fetched_insts(ROB_in				: in ROB;
+																frst_branch_idx	: in integer;
+																LAB_IW				: in std_logic_vector(15 downto 0);
+																ID_IW					: in std_logic_vector(15 downto 0);
+																EX_IW					: in std_logic_vector(15 downto 0);
+																MEM_IW				: in std_logic_vector(15 downto 0))
 		return std_logic_vector;
 		
 	function revalidate_RF_regs(	ROB_in				: in ROB;
@@ -215,7 +216,7 @@ package body LAB_functions is
 		for i in 0 to LAB_MAX - 1 loop
 
 			target := i + gtoet_issued_inst(i, issued_inst);
-			report "LAB_func: target = " & integer'image(target) & ", i = " & integer'image(i);
+			--report "LAB_func: target = " & integer'image(target) & ", i = " & integer'image(i);
 			
 			if target < 5 then
 				if br_ld_st_reg = '1' and LAB_temp(target).addr_valid = '0' and address_updated = '0' then
@@ -328,11 +329,12 @@ package body LAB_functions is
 	--function to determine if incorrectly, speculatively fetched instructions are in pipeline 
 	--returns std_logic_vector(3 downto 0) = | LAB_IW | ID_IW | EX_IW | MEM_IW |
 	
-	function check_ROB_for_wrongly_fetched_insts(ROB_in	: in ROB;
-																LAB_IW	: in std_logic_vector(15 downto 0);
-																ID_IW		: in std_logic_vector(15 downto 0);
-																EX_IW		: in std_logic_vector(15 downto 0);
-																MEM_IW	: in std_logic_vector(15 downto 0))
+	function check_ROB_for_wrongly_fetched_insts(ROB_in				: in ROB;
+																frst_branch_idx	: in integer;
+																LAB_IW				: in std_logic_vector(15 downto 0);
+																ID_IW					: in std_logic_vector(15 downto 0);
+																EX_IW					: in std_logic_vector(15 downto 0);
+																MEM_IW				: in std_logic_vector(15 downto 0))
 		return std_logic_vector is
 		
 		variable i		: integer 	:= 0;	
@@ -341,18 +343,18 @@ package body LAB_functions is
 	begin 
 	
 		for i in 0 to 9 loop
-
-			if ROB_in(i).inst = ID_IW then
-				temp := temp or "100";
-				--report "LAB_func: LAB_IW_out matches " & integer'image(i) & "th ROB inst";
-			elsif ROB_in(i).inst = EX_IW then
-				temp := temp or "010";
-				--report "LAB_func: ID_IW_out matches " & integer'image(i) & "th ROB inst";
-			elsif ROB_in(i).inst = MEM_IW then
-				temp := temp or "001";
-				
+			if i >= frst_branch_idx then
+				if ROB_in(i).inst = ID_IW then
+					temp := temp or "100";
+					--report "LAB_func: LAB_IW_out matches " & integer'image(i) & "th ROB inst";
+				elsif ROB_in(i).inst = EX_IW then
+					temp := temp or "010";
+					--report "LAB_func: ID_IW_out matches " & integer'image(i) & "th ROB inst";
+				elsif ROB_in(i).inst = MEM_IW then
+					temp := temp or "001";
+					
+				end if;
 			end if;
-			
 		end loop;
 		
 		return temp;
@@ -458,7 +460,8 @@ package body LAB_functions is
 				elsif ROB_in(frst_branch_idx).inst(11 downto 7) = ROB_in(j).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and frst_branch_idx > j then	--
 					--its a BNEZ, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
 					report "LAB_func: reg1 condition resolved, j = " & integer'image(j);
-					reg1_resolved 		:= reg1_resolved and '1';
+					--probably don't need the redundant, below line
+					--reg1_resolved 		:= reg1_resolved and '1';
 					
 					if reg1_encountered = '0' then
 						report "LAB_func: reg1 located at slot " & integer'image(j);
@@ -471,7 +474,8 @@ package body LAB_functions is
 				elsif ROB_in(frst_branch_idx).inst(6 downto 2) = ROB_in(j).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and frst_branch_idx > j and bne = '1' then	--
 					--its a BNEZ, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
 					report "LAB_func: reg1 condition resolved, j = " & integer'image(j);
-					reg2_resolved 		:= reg1_resolved and '1';
+					--probably don't need the redundant, below line
+					--reg2_resolved 		:= reg1_resolved and '1';
 					
 					if reg2_encountered = '0' then
 						report "LAB_func: reg2 located at slot " & integer'image(j);
@@ -486,7 +490,7 @@ package body LAB_functions is
 					--since reg1_resolved and reg2_resolved have, thus far, only represented ROB entries, now we need to check WB_IW_out and RF entries
 					if reg1_resolved = '1' and reg2_resolved = '1' then
 						--then we have all necessary info in ROB - need to check ROB output though since it can be writing back a branch condition register this cycle
-						--report "LAB_func: reg1 and reg2 resolved.";
+						report "LAB_func: reg1 and reg2 resolved.";
 						
 						if WB_IW_out(11 downto 7) = ROB_in(frst_branch_idx).inst(11 downto 7) then	--
 						--WB is writing back to reg1 - evaluate now for condition
@@ -494,9 +498,12 @@ package body LAB_functions is
 							if WB_data_out /= "0000000000000000" and bnez = '1' then
 								condition_met		:= '1';
 								report "LAB_func: WB_data_out is not zero.";
-							elsif WB_data_out /= ROB_in(reg2_slot).result and bne = '1' then
+							elsif WB_data_out /= ROB_in(reg2_slot).result and bne = '1' and reg2_encountered = '1' then
 								condition_met 		:= '1';
-								report "LAB_func: WB_data_out is not equal to reg2.";
+								report "LAB_func: WB_data_out is not equal to reg2 (in ROB).";
+							elsif WB_data_out /= RF_in_4 and bne = '1' and reg2_encountered = '0' and RF_in_4_valid = '1' then
+								condition_met 		:= '1';
+								report "LAB_func: WB_data_out is not equal to reg2 (in RF).";
 							else
 								condition_met		:= '0';
 								report "LAB_func: WB_data_out is ???.";
@@ -507,16 +514,34 @@ package body LAB_functions is
 						elsif WB_IW_out(11 downto 7) = ROB_in(frst_branch_idx).inst(6 downto 2) and bne = '1' then	--
 						--WB is writing back to reg2 - evaluate now for condition
 							--report "LAB_func: WB IW matches ROB bne branch.";
-							if WB_data_out /= ROB_in(reg1_slot).result then
+							if WB_data_out /= ROB_in(reg1_slot).result and reg1_encountered = '1' then
 								condition_met 		:= '1';
 								report "LAB_func: WB_data_out is NOT equal to reg2.";
+							elsif WB_data_out /= RF_in_3 and reg1_encountered = '0' and RF_in_3_valid = '1' then
+								condition_met 		:= '1';
+								report "LAB_func: WB_data_out is not equal to reg2 (in RF).";
 							else
 								condition_met		:= '0';
 								report "LAB_func: WB_data_out is ??";
 							end if;
 							
 							exit;
-						
+							
+						else
+							--if we're here, we've got both registers valid in the register file
+							if RF_in_3 /= RF_in_4 and reg1_encountered = '0' and reg2_encountered = '0' and RF_in_3_valid = '1' and RF_in_4_valid = '1' and bne = '1' then
+								condition_met 		:= '1';
+								report "LAB_func: RF_in_3 is not equal to RF_in_4 (in RF).";
+							elsif RF_in_3 /= "0000000000000000" and reg1_encountered = '0' and RF_in_3_valid = '1' and bnez = '1' then
+								condition_met 		:= '1';
+								report "LAB_func: RF_in_3 is not equal to 0 (in RF).";
+							else
+								condition_met		:= '0';
+								report "LAB_func: WB_data_out is ??";
+							end if;
+							
+							exit;
+							
 						end if;
 						
 					elsif reg1_resolved = '0' then
@@ -531,55 +556,55 @@ package body LAB_functions is
 					
 					end if;
 				else
-					--report "LAB_func: Can't match a single LAB instruction to ROB?";
+					report "LAB_func: Can't match a single LAB instruction to ROB?";
 				
 				end if;
 			end loop;
 		else
-			--report "LAB_func: Can't find first branch?";
+			report "LAB_func: Can't find first branch?";
 		end if;
 	else
-	--there is no branch in ROB yet, just look at WB_data_out and RF.
-		--since reg1_resolved and reg2_resolved have, thus far, only represented ROB entries, now we need to check WB_IW_out and RF entries
-		if reg1_resolved = '1' and reg2_resolved = '1' then
-			if WB_IW_out(11 downto 7) = PM_data_in(11 downto 7) and RF_in_3_valid = '1' then	--
-			--WB is writing back to reg1 - evaluate now for condition given reg2 content from RF
-				report "LAB_func: reg1 and reg2 results ready";
-				if WB_data_out /= "0000000000000000" and bnez = '1' then
-					condition_met		:= '1';
-
-				elsif WB_data_out /= RF_in_4 and bne = '1' then
-					condition_met 		:= '1';
-
-				else
-					condition_met		:= '0';
-
-				end if;
-
-			elsif WB_IW_out(11 downto 7) = PM_data_in(6 downto 2) and bne = '1' and RF_in_3_valid = '1' and RF_in_4_valid = '1' then	--
-			--WB is writing back to reg2 - evaluate now for condition given reg1 content from RF
-				report "LAB_func: reg1 and reg2 results ready";
-				if WB_data_out /= RF_in_3 then
-					condition_met 		:= '1';
-				else
-					condition_met		:= '0';
-				end if;
-				
-			else
-				report "LAB_func: unsure. marking as not ready.";
-				reg1_resolved 	:= '0';
-				reg2_resolved 	:= '0';
-				condition_met	:= '0';
-				
-			end if;
-
-		else
-			report "LAB_func: unsure. marking as not ready.";
-			reg1_resolved 	:= '0';
-			reg2_resolved 	:= '0';
-			condition_met	:= '0';
-			
-		end if;
+--	--there is no branch in ROB yet, just look at WB_data_out and RF.
+--		--since reg1_resolved and reg2_resolved have, thus far, only represented ROB entries, now we need to check WB_IW_out and RF entries
+--		if reg1_resolved = '1' and reg2_resolved = '1' then
+--			if WB_IW_out(11 downto 7) = PM_data_in(11 downto 7) and RF_in_3_valid = '1' then	--
+--			--WB is writing back to reg1 - evaluate now for condition given reg2 content from RF
+--				report "LAB_func: reg1 and reg2 results ready";
+--				if WB_data_out /= "0000000000000000" and bnez = '1' then
+--					condition_met		:= '1';
+--
+--				elsif WB_data_out /= RF_in_4 and bne = '1' then
+--					condition_met 		:= '1';
+--
+--				else
+--					condition_met		:= '0';
+--
+--				end if;
+--
+--			elsif WB_IW_out(11 downto 7) = PM_data_in(6 downto 2) and bne = '1' and RF_in_3_valid = '1' and RF_in_4_valid = '1' then	--
+--			--WB is writing back to reg2 - evaluate now for condition given reg1 content from RF
+--				report "LAB_func: reg1 and reg2 results ready";
+--				if WB_data_out /= RF_in_3 then
+--					condition_met 		:= '1';
+--				else
+--					condition_met		:= '0';
+--				end if;
+--			
+--			else
+--				report "LAB_func: unsure. marking as not ready.";
+--				reg1_resolved 	:= '0';
+--				reg2_resolved 	:= '0';
+--				condition_met	:= '0';
+--				
+--			end if;
+--
+--		else
+--			report "LAB_func: unsure. marking as not ready.";
+--			reg1_resolved 	:= '0';
+--			reg2_resolved 	:= '0';
+--			condition_met	:= '0';
+--			
+--		end if;
 	end if;
 
 	--simple combinational logic for values to return

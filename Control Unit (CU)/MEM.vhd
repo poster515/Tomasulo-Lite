@@ -168,7 +168,6 @@ begin
 				IW_out <= I2C_IW_reg;
 				
 			end if; --stall_in
-
 		end if; --reset_n
 	end process;
 	
