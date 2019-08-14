@@ -126,8 +126,8 @@ architecture arch of IFetch is
 	--signal to help determine when the LAB isn't full anymore so we can adjust PC_reg accordingly
 	signal previous_LAB_full : std_logic;
 	
-	--signals storing information that the PM_data_in, if issued, will require data forwarded from MEM_out stage
---	signal ALU_fwd_reg_1_reg, ALU_fwd_reg_2_reg	: std_logic;
+	--signal representing that the ith LAB instruction requires use of the second register (used in data forwarding scheme)
+	signal LAB_i_reg2_used	: std_logic;
 	
 	--TODO: figure out what to do with I2C_error signal from MEM block, which goes high when there are three mistries to 
 		--read/write from I2C slave
@@ -171,6 +171,7 @@ begin
 			condition_met 		<= '0';
 			ALU_fwd_reg_1 		<= '0';
 			ALU_fwd_reg_2		<= '0';
+			LAB_i_reg2_used	<= '0';
 
 		elsif rising_edge(sys_clock) then
 			LAB_reset_out		<= '1';
@@ -178,19 +179,6 @@ begin
 			
 			--jumps are handled with "program_counter" process below 
 			--ALU instructions are managed and re-ordered strictly between branches in ROB
-
-			--continually check for branch condition on PM_data_in
---			if branch = '1' then
---				--do initial check to see if results are available
---				--report "LAB: detected branch in PM_data_in.";
---				
---				results_available 	<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, PM_data_in, frst_branch_idx)(0); --'0' = not available, '1' = available
---				condition_met 			<= results_ready(bne_from_ROB, bnez_from_ROB, RF_in_3_valid, RF_in_4_valid, RF_in_3, RF_in_4, ROB_in, WB_IW_out, WB_data_out, PM_data_in, frst_branch_idx)(1); --'0' = not met, '1' = met
---
---			--this "elsif" handles other branches that currently exist in the ROB that have not been resolved yet. should continually monitor those, as determined by "ROB_branch" process below. 
---			--need this additional if case because the data sent to "results_result" differ from the above if case. 
---			
---			els
 			
 			if results_available = '1' then
 				results_available <= '0';
@@ -236,7 +224,11 @@ begin
 				else
 
 					for i in 0 to LAB_MAX - 1 loop
-						
+						LAB_i_reg2_used 		<= (not(LAB(i).inst(15)) and not(LAB(i).inst(1)) and not(LAB(i).inst(0))) or 
+														(not(LAB(i).inst(15)) and LAB(i).inst(14)) or
+														(LAB(i).inst(15) and not(LAB(i).inst(14)) and not(LAB(i).inst(13)) and not(LAB(i).inst(12)) and not(LAB(i).inst(0))) or 
+														(LAB(i).inst(15) and LAB(i).inst(14) and not(LAB(i).inst(13)) and LAB(i).inst(12));
+							
 						if	PL_datahaz_status(i) = '0' and LAB_datahaz_status(i) = '0' and LAB(i).addr_valid = '1' and LAB(i).inst_valid = '1' then --we don't have any conflict in pipeline and LAB instruction is valid
 							
 							report "LAB: Issuing instruction and buffering LAB(i).inst, i = " & integer'image(i);
@@ -251,7 +243,7 @@ begin
 								--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_1
 								ALU_fwd_reg_1 		<= '1';
 								
-								if (EX_IW(11 downto 7) = LAB(i).inst(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111") then 
+								if (EX_IW(11 downto 7) = LAB(i).inst(6 downto 2) and LAB_i_reg2_used = '1') then 
 									--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
 									ALU_fwd_reg_2 	<= '1';
 									report "LAB: LAB(i).inst reg1 and reg2 match ID stage output IW, setting ALU_fwd_reg_1_reg and ALU_fwd_reg_2_reg.";
@@ -260,7 +252,7 @@ begin
 									report "LAB: LAB(i).inst reg1 matches ID stage output IW, setting ALU_fwd_reg_1_reg.";
 								end if;
 								
-							elsif (EX_IW(11 downto 7) = LAB(i).inst(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111") then 
+							elsif (EX_IW(11 downto 7) = LAB(i).inst(6 downto 2) and LAB_i_reg2_used = '1') then 
 								--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
 								ALU_fwd_reg_2 	<= '1';
 								ALU_fwd_reg_1 	<= '0';
@@ -294,7 +286,7 @@ begin
 									--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_1
 									ALU_fwd_reg_1 		<= '1';
 									
-									if (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111") then 
+									if (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1') then 
 										--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
 										ALU_fwd_reg_2 	<= '1';
 										report "LAB: PM_data_in reg1 and reg2 match ID stage output IW, setting ALU_fwd_reg_1_reg and ALU_fwd_reg_2_reg.";
@@ -303,7 +295,7 @@ begin
 										report "LAB: PM_data_in reg1 matches ID stage output IW, setting ALU_fwd_reg_1_reg.";
 									end if;
 									
-								elsif (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1' and EX_reset = '1' and EX_IW(15 downto 12) /= "1111") then 
+								elsif (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1') then 
 									--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
 									ALU_fwd_reg_2 	<= '1';
 									ALU_fwd_reg_1 	<= '0';
@@ -358,7 +350,7 @@ begin
 		if reset_n = '0' then
 			PL_datahaz_status 		<= (others => '0');
 			ID_hazard		<= '0';
-			--EX_hazard		<= '0';
+			EX_hazard		<= '0';
 			MEM_hazard		<= '0';
 		else
 			for i in 0 to LAB_MAX - 1 loop
@@ -384,6 +376,13 @@ begin
 					
 				end if;
 				
+				if not(EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) and EX_IW(15 downto 12) = "1011" and EX_IW(1 downto 0) = "00" and LAB(i).inst(15 downto 12) = "1011" and ID_reset = '1') then
+					
+					EX_hazard		<= '0';
+				else
+					EX_hazard		<= '1';
+				end if;
+				
 				if	(((MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
 					 ((MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) or MEM_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and MEM_IW(15 downto 12) = "1111") or
 					 (MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) and MEM_IW(15 downto 12) = "1011" and MEM_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00") or
@@ -399,8 +398,8 @@ begin
 					MEM_hazard		<= '1';
 				end if;
 				
-				--PL_datahaz_status(i) <= (ID_hazard or EX_hazard or MEM_hazard) and LAB(i).inst_valid;
-				PL_datahaz_status(i) <= (ID_hazard or MEM_hazard) and LAB(i).inst_valid;
+				PL_datahaz_status(i) <= (ID_hazard or EX_hazard or MEM_hazard) and LAB(i).inst_valid;
+				--PL_datahaz_status(i) <= (ID_hazard or MEM_hazard) and LAB(i).inst_valid;
 				
 			end loop;
 		end if; --reset_n

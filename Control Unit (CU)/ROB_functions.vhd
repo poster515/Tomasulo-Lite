@@ -34,14 +34,26 @@ package ROB_functions is
 
 		return ROB;
 		
+--	--function to determine whether a given loop index, i, is greater than or equal to the first branch index of the ROB
+--	function loop_i_gtoet_FBI(	i			: integer;
+--										branch	: integer)
+--		return std_logic;
+	
 	--function to determine whether a given loop index, i, is greater than or equal to the first branch index of the ROB
 	function loop_i_gtoet_FBI(	i			: integer;
-										branch	: integer)
-		return std_logic;
+										branch	: integer;
+										offset	: integer	)
+		return std_logic;	
 	
+--	--function to determine whether a given loop index, i, is less than the second branch index of the ROB
+--	function loop_i_lt_SBI(	i			: integer;
+--									branch	: integer)
+--		return std_logic;
+
 	--function to determine whether a given loop index, i, is less than the second branch index of the ROB
 	function loop_i_lt_SBI(	i			: integer;
-									branch	: integer)
+									branch	: integer;
+									offset	: integer	)
 		return std_logic;
 		
 end ROB_functions; 
@@ -135,32 +147,24 @@ package body ROB_functions is
 		n_clear_zero 	:= convert_CZ(not(clear_zero));
 		
 		for i in 0 to ROB_DEPTH - 1 loop
-			--target_index 	:= i + convert_CZ(clear_zero) + convert_CZ(loop_i_gtoet_FBI(i, frst_branch_idx) and results_avail and not(condition_met) and loop_i_lt_SBI(i, scnd_branch_idx));
-			target_index 	:= i + convert_CZ(clear_zero) + convert_CZ(loop_i_gtoet_FBI(i, frst_branch_idx) and results_avail);
-			
-			--speculate		:= not(loop_i_gtoet_FBI(i, frst_branch_idx) and results_avail and not(condition_met) and loop_i_lt_SBI(i, scnd_branch_idx));
-			
-			if target_index = i then
-				actual_index := i;
-			elsif results_avail = '1' then --TODO: evaluate whether FBI < i < SBI is a necessary condition here too.
-				actual_index := i;
-			else
-				actual_index := i + n_clear_zero;
-			end if;
-			
-			if loop_i_gtoet_FBI(i, frst_branch_idx) = '1' and target_index > actual_index and loop_i_lt_SBI(i, scnd_branch_idx) = '1' then
-				--need to evaluate based on location WRT branch location
-				speculate		:= not(results_avail and not(condition_met));
-			else
-				--just use current speculative value
-				speculate		:= ROB_temp(target_index).specul;
-			end if;
-			
-			--report "ROB_func: speculate = " & integer'image(convert_CZ(speculate)) & ", clear_zero = " & integer'image(convert_CZ(clear_zero)) & ", target_index = " & integer'image(target_index);
+		
+			target_index 	:= i + convert_CZ(clear_zero) + convert_CZ(loop_i_gtoet_FBI(i, frst_branch_idx, convert_CZ(clear_zero)) and results_avail);
+			actual_index	:= i;
 			
 			if target_index < 10 then
+			
+				if target_index >= scnd_branch_idx  then
+					--maintain speculative value
+					speculate		:= '1';
+				elsif loop_i_gtoet_FBI(i, frst_branch_idx, convert_CZ(clear_zero)) = '1' then
+					--need to evaluate based on location WRT branch location
+					speculate		:= not(results_avail and not(condition_met));
+				else
+					--just use current speculative value
+					speculate		:= ROB_temp(target_index).specul;
+				end if;
 				
-				if results_avail = '1' and condition_met = '1' and loop_i_gtoet_FBI(i, frst_branch_idx) = '1' then
+				if results_avail = '1' and condition_met = '1' and loop_i_gtoet_FBI(i, frst_branch_idx, convert_CZ(clear_zero)) = '1' then
 					--need to purge all instruction subsequent to first_branch_idx, since these were incorrectly buffered
 					report "ROB_func: 2. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
 					--first check if we need to/can buffer PM_data_in
@@ -203,11 +207,12 @@ package body ROB_functions is
 				--either buffer PM_data_in or just write in zeros
 				if PM_buffer_en = '1' and PM_data_buffered = '0' then
 				
-					if results_avail = '1' and condition_met = '0' and loop_i_gtoet_FBI(i, frst_branch_idx) = '1' then
+					if results_avail = '1' and condition_met = '0' and loop_i_gtoet_FBI(i, frst_branch_idx, convert_CZ(clear_zero)) = '1' then
 					
 						report "ROB_func: 5. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
 						ROB_temp(actual_index).inst		:= PM_data_in;
 						ROB_temp(actual_index).valid		:= '1';
+						ROB_temp(actual_index).specul		:= not(loop_i_lt_SBI(i, scnd_branch_idx, convert_CZ(clear_zero)));
 						PM_data_buffered						:= '1';
 						
 					else
@@ -220,37 +225,39 @@ package body ROB_functions is
 				end if;
 				
 			else
-				report "ROB_func: 7. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
+				report "ROB_func: 8. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
 				ROB_temp(actual_index)	:= ROB_temp(target_index);
 			end if;
 		end loop;
 		
 		return ROB_temp;
 	end;
-	
+
 	--function to determine whether a given loop index, i, is greater than or equal to the first branch index of the ROB
 	function loop_i_gtoet_FBI(	i			: integer;
-										branch	: integer)
+										branch	: integer;
+										offset	: integer	)
 		return std_logic is
 		
 	begin
 		if i = 0 and branch = 0 then
 			return '1';
-		elsif i >= branch - 1 then
+		elsif i >= branch - offset then
 			return '1';
 		else 
 			return '0';
 		end if;
 			
 	end;
-	
+
 	--function to determine whether a given loop index, i, is less than the second branch index of the ROB
 	function loop_i_lt_SBI(	i			: integer;
-									branch	: integer)
+									branch	: integer;
+									offset	: integer 	)
 		return std_logic is
 		
 	begin
-		if i < branch then
+		if i <= branch - offset then
 			return '1';
 		else 
 			return '0';
