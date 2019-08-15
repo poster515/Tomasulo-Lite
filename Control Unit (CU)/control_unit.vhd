@@ -131,6 +131,7 @@ architecture behavioral of control_unit is
 			ROB_in					: in ROB;
 			ALU_SR_in				: in std_logic_vector(3 downto 0);
 			frst_branch_idx		: in integer;
+			I2C_op_run				: in std_logic;
 			
 			PC							: out std_logic_vector(10 downto 0);
 			IW							: out std_logic_vector(15 downto 0);
@@ -296,6 +297,7 @@ begin
 		ROB_in			=>	ROB_in,
 		ALU_SR_in		=> ALU_SR_in,
 		frst_branch_idx => frst_branch_index,
+		I2C_op_run		=> I2C_op_run,
 		PC					=> PC_CU_out,
 		IW					=> LAB_ID_IW,
 		MEM				=> LAB_mem_addr_out,

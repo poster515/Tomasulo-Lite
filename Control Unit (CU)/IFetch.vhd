@@ -27,6 +27,7 @@ entity IFetch is
 		ROB_in					: in ROB;
 		ALU_SR_in				: in std_logic_vector(3 downto 0);
 		frst_branch_idx		: in integer;
+		I2C_op_run				: in std_logic;
 		
 		PC							: out std_logic_vector(10 downto 0);
 		IW							: out std_logic_vector(15 downto 0);
@@ -91,8 +92,8 @@ architecture arch of IFetch is
 	signal LAB_datahaz_status 	: std_logic_vector(LAB_MAX - 1 downto 0) := (others => '0');
 	
 	--std_logic_vector tracking if there are any data hazards between LAB instruction and PL instructions
-	signal PL_datahaz_status 						: std_logic_vector(LAB_MAX - 1 downto 0) := (others => '0');
-	signal ID_hazard, EX_hazard, MEM_hazard	: std_logic;
+	signal PL_datahaz_status 										: std_logic_vector(LAB_MAX - 1 downto 0) := (others => '0');
+	signal ID_hazard, EX_hazard, MEM_hazard, I2C_hazard	: std_logic;
 	
 	--std_logic tracking if there are any data hazards between PM_data_in and pipeline and LAB instructions
 	signal PM_datahaz_status : std_logic;
@@ -128,7 +129,7 @@ architecture arch of IFetch is
 	
 	--signal representing that the ith LAB instruction requires use of the second register (used in data forwarding scheme)
 	signal LAB_i_reg2_used	: std_logic;
-	
+
 	--TODO: figure out what to do with I2C_error signal from MEM block, which goes high when there are three mistries to 
 		--read/write from I2C slave
 		
@@ -212,9 +213,7 @@ begin
 			if stall_pipeline = '0' then 
 
 				if results_available = '1' and condition_met = '1' then
-					--purge speculative instructions in ROB since some (or all) were erroneously fetched from PM
-					--additionally, don't want to buffer PM_data_in
-					
+
 					--clear all speculatively fetched instructions from LAB
 					LAB <= purge_insts(LAB, ROB_in, frst_branch_idx);
 					
@@ -345,26 +344,29 @@ begin
 						(PL_datahaz_status(0) or LAB_datahaz_status(0)) and LAB(0).addr_valid and LAB(0).inst_valid and 
 						PM_datahaz_status;
 	
-	pipeline_datahaz_status	: process(reset_n, sys_clock, LAB, ID_IW, MEM_IW, PM_data_in)
+	pipeline_datahaz_status	: process(reset_n, sys_clock, LAB, ID_IW, MEM_IW)
 	begin
 		if reset_n = '0' then
 			PL_datahaz_status 		<= (others => '0');
 			ID_hazard		<= '0';
 			EX_hazard		<= '0';
 			MEM_hazard		<= '0';
+			I2C_hazard		<= '0';
 		else
 			for i in 0 to LAB_MAX - 1 loop
 				
-				if	(((ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
+				if	((ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
 					--accounts for data hazards due to no-ops
 					 ((ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) or ID_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and ID_IW(15 downto 12) = "1111") or
 					--allows a GPIO/W to be issued, immediately followed by a GPIO/R to the same register
-					 (ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00")) and
+					 --(ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00")) and
+					 (ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "01")) and
 					 
 					 ((ID_IW(6 downto 2) = LAB(i).inst(6 downto 2) and LAB(i).inst(15 downto 12) = "1000" and ID_IW(15 downto 12) = "1111") or
-					
+					--prevent store from being issued immediately by a load if the reg2 field is the same. this is needed because the DM address will be updated after an additional clock cycle. 
 					not(ID_IW(6 downto 2) = LAB(i).inst(6 downto 2) and ID_IW(15 downto 12) = "1000" and ID_IW(1 downto 0) = "10" and LAB(i).inst(15 downto 12) = "1000" and LAB(i).inst(1 downto 0) = "00"))	
-					and ID_reset = '1') then
+					
+					and ID_reset = '1' then
 					
 					ID_hazard		<= '0';
 						
@@ -373,7 +375,7 @@ begin
 					
 				else
 					ID_hazard		<= '1';
-					
+
 				end if;
 				
 				if not(EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) and EX_IW(15 downto 12) = "1011" and EX_IW(1 downto 0) = "00" and LAB(i).inst(15 downto 12) = "1011" and ID_reset = '1') then
@@ -398,9 +400,11 @@ begin
 					MEM_hazard		<= '1';
 				end if;
 				
-				PL_datahaz_status(i) <= (ID_hazard or EX_hazard or MEM_hazard) and LAB(i).inst_valid;
-				--PL_datahaz_status(i) <= (ID_hazard or MEM_hazard) and LAB(i).inst_valid;
-				
+				--can't issue an I2C instruction if there is another I2C operation currently happening
+				I2C_hazard <= LAB(i).inst(15) and not(LAB(i).inst(14)) and LAB(i).inst(13) and LAB(i).inst(12) and I2C_op_run;
+									
+				PL_datahaz_status(i) <= (I2C_hazard or ID_hazard or EX_hazard or MEM_hazard or GPIO_write_specul(ROB_in, LAB(i).inst, frst_branch_idx)) and LAB(i).inst_valid;
+
 			end loop;
 		end if; --reset_n
 	
@@ -538,11 +542,16 @@ begin
 				else
 					if dh_ptr_outer = LAB_MAX - 1 then 
 						if (((ID_IW(11 downto 7) = PM_data_in(11 downto 7)) or (ID_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and ID_reset = '1' and ID_IW(15 downto 12) /= "1111") or
-							(((MEM_IW(11 downto 7) = PM_data_in(11 downto 7)) or (MEM_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and MEM_reset = '1' and MEM_IW(15 downto 12) /= "1111") then
+							(((MEM_IW(11 downto 7) = PM_data_in(11 downto 7)) or (MEM_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1')) and MEM_reset = '1' and MEM_IW(15 downto 12) /= "1111") or
+							--prevent speculative I2C and GPIO writes from being issued
+							(PM_data_in(15 downto 12) = "1011" and PM_data_in(0) = '1' and frst_branch_idx < 10) or
+							--prevent issuance of I2C operation while another is currently mid-operation
+							(PM_data_In(15 downto 12) = "1011" and PM_data_in(1) = '1' and I2C_op_run = '1') then
 							
 							report "LAB: setting PM_data_hazard because of pipeline hazards.";
 							PM_datahaz_status 	<= '1';
 							exit;
+						
 						else
 							PM_datahaz_status 	<= '0';
 							exit;

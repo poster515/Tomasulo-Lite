@@ -80,6 +80,12 @@ package LAB_functions is
 									frst_branch_idx: in integer	) 
 		return std_logic_vector; --std_logic_vector([[condition met]], [[results ready]])
 		
+	--function to determine whether the given LAB instruction is 1) a GPIO or I2C write and 2) speculative, so it doesn't get issued to pipeline
+	function GPIO_write_specul(ROB_in				: in ROB;
+										LAB_i_inst 			: in std_logic_vector(15 downto 0);
+										frst_branch_idx	: in integer)
+		return std_logic;
+		
 end LAB_functions; 
 
 package body LAB_functions is
@@ -220,7 +226,7 @@ package body LAB_functions is
 			
 			if target < 5 then
 				if br_ld_st_reg = '1' and LAB_temp(target).addr_valid = '0' and address_updated = '0' then
-					report "LAB_func: 1. i = " & integer'image(i) & ", target = " & integer'image(target);
+					--report "LAB_func: 1. i = " & integer'image(i) & ", target = " & integer'image(target);
 					address_updated			:= '1';
 					LAB_temp(i).addr 			:= PM_data_in;
 					LAB_temp(i).addr_valid 	:= '1';
@@ -230,32 +236,35 @@ package body LAB_functions is
 				elsif address_updated = '0' then
 					
 					if LAB_temp(target).inst_valid = '0' and PM_data_in(15 downto 12) /= "1010" and PM_data_in(15 downto 12) /= "1001" and br_ld_st_reg = '0'then
-						report "LAB_func: 2. i = " & integer'image(i) & ", target = " & integer'image(target);
+						--report "LAB_func: 2. i = " & integer'image(i) & ", target = " & integer'image(target);
 						LAB_temp(i).inst 			:= PM_data_in;
 						LAB_temp(i).inst_valid 	:= '1';
 						LAB_temp(i).addr 			:= (others => '0');
 						LAB_temp(i).addr_valid 	:= not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and not(PM_data_in(12)));
 						address_updated			:= '1';
 					else
-						report "LAB_func: 3. i = " & integer'image(i) & ", target = " & integer'image(target);
+						--report "LAB_func: 3. i = " & integer'image(i) & ", target = " & integer'image(target);
 						LAB_temp(i)					:= LAB_temp(target);
 					end if;
 				
 				else
-					report "LAB_func: 4. i = " & integer'image(i) & ", target = " & integer'image(target);
+					--report "LAB_func: 4. i = " & integer'image(i) & ", target = " & integer'image(target);
 					LAB_temp(i)						:= LAB_temp(target);
 					
 				end if;
 			elsif target = 5 then
 				if address_updated = '0' and PM_data_in(15 downto 12) /= "1010" and PM_data_in(15 downto 12) /= "1001" and br_ld_st_reg = '0' then
-					report "LAB_func: 5. i = " & integer'image(i) & ", target = " & integer'image(target);
+					--report "LAB_func: 5. i = " & integer'image(i) & ", target = " & integer'image(target);
 					LAB_temp(4).inst 			:= PM_data_in;
 					LAB_temp(4).inst_valid 	:= '1';
 					LAB_temp(4).addr 			:= (others => '0');
 					LAB_temp(4).addr_valid 	:= not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and not(PM_data_in(12)));
 					address_updated 			:= '1' ;
+				elsif shift_LAB = '1' then
+					--report "LAB_func: 7. i = " & integer'image(i) & ", target = " & integer'image(target);
+					LAB_temp(4)					:= ((others => '0'), '0', (others => '0'), '1');
 				else
-					report "LAB_func: 6. i = " & integer'image(i) & ", target = " & integer'image(target);
+					--report "LAB_func: 6. i = " & integer'image(i) & ", target = " & integer'image(target);
 					LAB_temp(4)					:= LAB_temp(4);
 				end if;
 			end if;
@@ -586,6 +595,29 @@ package body LAB_functions is
 	--simple combinational logic for values to return
 	return ((bne and reg1_resolved and reg2_resolved) or (bnez and reg1_resolved)) & condition_met;
 	
+	end function;
+	
+	--function to determine whether the given LAB instruction is 1) a GPIO or I2C write and 2) speculative, so it doesn't get issued to pipeline
+	function GPIO_write_specul(ROB_in				: in ROB;
+										LAB_i_inst 			: in std_logic_vector(15 downto 0);
+										frst_branch_idx	: in integer)
+		return std_logic is
+		
+		variable i	: integer	:= 0;
+	begin
+		for i in 0 to 9 loop
+			if ROB_in(i).inst = LAB_i_inst and LAB_i_inst(15 downto 12) = "1011" and LAB_i_inst(0) = '1' then
+				if i > frst_branch_idx then
+					--if we're above the branch location (i.e., speculative area), and that's where this LAB instruction is, and it's a GPIO or I2C write, then we can't issue it
+					return '1';
+				else
+					return '0';
+				end if;
+			end if;
+		end loop;
+		
+		return '0';
+		
 	end function;
 	
 end package body LAB_functions;
