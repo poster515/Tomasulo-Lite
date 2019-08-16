@@ -100,6 +100,7 @@ begin
 					ALU_d1_in_sel(0) <= not(IW_in(15)) or (IW_in(15) and not(IW_in(12)) and (IW_in(14) xor IW_in(13))) or (IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12)));
 					--Updated 7/29 for SLAI, SRAI, SLLI, SRLI and CP								
 					ALU_d1_in_sel(1) <= IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12));
+					
 				else
 					--report "Defaulting to '11' for ALU_d1_in_sel.";
 					ALU_d1_in_sel <= "11";
@@ -107,13 +108,22 @@ begin
 				
 				if ALU_fwd_reg_2_in = '0' then
 					--report "Setting ALU_d2_in_sel based on IW_in.";
-					--Updated 7/29 for SLAI, SRAI, SLLI, SRLI and CP
-					ALU_d2_in_sel(0) <= (not(IW_in(15)) and ((IW_in(14) and (not(IW_in(13)) or not(IW_in(1)))) or (not(IW_in(1)) and not(IW_in(0))))) or
-												(IW_in(15) and not(IW_in(14)) and ((not(IW_in(13)) and not(IW_in(12)) and not(IW_in(1)) and IW_in(0)) or (not(IW_in(13)) and not(IW_in(12)) and not(IW_in(0))))) or
-												(IW_in(14) and not(IW_in(13)) and IW_in(12));
-					--Updated 7/29 for SLAI, SRAI, SLLI, SRLI	and CP						
+					--Updated 8/15 for SLAI, SRAI, SLLI, SRLI, RTLI, RTRI, and CP
+--					ALU_d2_in_sel(0) <= (not(IW_in(15)) and ((IW_in(14) and (not(IW_in(13)) or not(IW_in(1)))) or (not(IW_in(1)) and not(IW_in(0))))) or
+--												(IW_in(15) and not(IW_in(14)) and ((not(IW_in(13)) and not(IW_in(12)) and not(IW_in(1)) and IW_in(0)) or (not(IW_in(13)) and not(IW_in(12)) and not(IW_in(0))))) or
+--												(IW_in(14) and not(IW_in(13)) and IW_in(12));
+					ALU_d2_in_sel(0) <= (not(IW_in(15)) and not(IW_in(1)) and not(IW_in(0))) or (not(IW_in(15)) and IW_in(14) and not(IW_in(13)) and not(IW_in(12))) or 
+												(not(IW_in(15)) and IW_in(14) and IW_in(1)) or (IW_in(15) and IW_in(14) and not(IW_in(1)) and IW_in(0)) or
+												(IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and not(IW_in(0))) or 
+												(IW_in(15) and not(IW_in(14)) and IW_in(13) and not(IW_in(12)) and not(IW_in(1)) and IW_in(0));
+												
+					--Updated 8/15 for SLAI, SRAI, SLLI, SRLI, RTLI, RTRI, and CP		
+--					ALU_d2_in_sel(1) <= (IW_in(15) and not(IW_in(13)) and not(IW_in(12)) and IW_in(0)) or (not(IW_in(15)) and not(IW_in(14)) and not(IW_in(1)) and IW_in(0)) or
+--												(IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12))) or (not(IW_in(15)) and IW_in(14) and IW_in(13) and IW_in(1))				
 					ALU_d2_in_sel(1) <= (IW_in(15) and not(IW_in(13)) and not(IW_in(12)) and IW_in(0)) or (not(IW_in(15)) and not(IW_in(14)) and not(IW_in(1)) and IW_in(0)) or
-												(IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12))) or (not(IW_in(15)) and IW_in(14) and IW_in(13) and IW_in(1));
+												(IW_in(15) and IW_in(14) and not(IW_in(13)) and not(IW_in(12))) or (not(IW_in(15)) and IW_in(14) and IW_in(13) and IW_in(1)) or
+												(not(IW_in(15)) and IW_in(14) and IW_in(12) and IW_in(1));
+												
 				else
 					--report "Defaulting to '11' for ALU_d2_in_sel.";
 					ALU_d2_in_sel <= "11";

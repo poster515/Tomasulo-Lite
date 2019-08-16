@@ -86,15 +86,11 @@ begin
 							(IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "X1") or 
 							(IW_in(15 downto 12) = "1100") or
 							((not(IW_in(15)) and not(IW_in(14)) and IW_in(0)) = '1') or 
-							(IW_in(15 downto 13) = "011" and IW_in(1) = '1') then
+							(IW_in(15 downto 13) = "011" and IW_in(1) = '1') or
+							(IW_in(15 downto 12) = "0101" and IW_in(1) = '1') then
 							
 						RF_out1_en <= '1'; 
 						RF_out2_en <= '0';
-					
---					--for COPY (1101..XX), need reg2 output only
---					elsif IW_in(15 downto 12) = "1101" then
---						RF_out1_en <= '0'; 
---						RF_out2_en <= '1';
 						
 					--for all other instructions, need both RF outputs
 					else
@@ -119,10 +115,11 @@ begin
 					immediate_val_reg <= "000000" & IW_in(11 downto 2);
 					
 				--ADDI (0000..10), SUBI (0001..10), MULTI (0010..10), DIVI (0011..10), LOGI (1100),
-				--SLAI, SRAI, SLLI, SRLI (0101..1X, 0110..1X) 
+				--SLAI, SRAI, SLLI, SRLI, RTLI, RTRI (0111..1X, 0110..1X, 0101..1X) 
 				elsif ((IW_in(15 downto 14) = "00" and IW_in(1 downto 0) = "10") or IW_in(15 downto 12) = "1100") or
 					((not(IW_in(15)) and not(IW_in(14)) and IW_in(0)) = '1') or
-					(IW_in(15 downto 13) = "011" and IW_in(1) = '1') then
+					(IW_in(15 downto 13) = "011" and IW_in(1) = '1') or
+					(IW_in(15 downto 12) = "0101" and IW_in(1) = '1') then
 						
 					immediate_val_reg <= "00000000000" & IW_in(6 downto 2);
 					
