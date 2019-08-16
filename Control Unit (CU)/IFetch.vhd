@@ -109,9 +109,9 @@ architecture arch of IFetch is
 	signal branch			: std_logic := '0';
 	signal branch_reg		: std_logic := '0'; --this will be '1' so long as there is a branch instruction in ROB
 	
-	--signals to represent the applicable branch selection, whether the condition was met or not, and whether the result of a branch is available
-	signal bne, bnez		: std_logic;
-	
+--	--signals to represent the applicable branch selection, whether the condition was met or not, and whether the result of a branch is available
+--	signal bne, bnez		: std_logic;
+--	
 	--signals for intra-ROB branch status determination, set in "ROB_branch" process
 	signal branch_exists, is_unresolved, bne_from_ROB, bnez_from_ROB	: std_logic;
 	
@@ -353,14 +353,15 @@ begin
 			MEM_hazard		<= '0';
 			I2C_hazard		<= '0';
 		else
+		
 			for i in 0 to LAB_MAX - 1 loop
 				
 				if	((ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
 					--accounts for data hazards due to no-ops
 					 ((ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) or ID_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and ID_IW(15 downto 12) = "1111") or
 					--allows a GPIO/W to be issued, immediately followed by a GPIO/R to the same register
-					 --(ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00")) and
-					 (ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "01")) and
+					 (ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00")) and
+					 --(ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "01")) and
 					 
 					 ((ID_IW(6 downto 2) = LAB(i).inst(6 downto 2) and LAB(i).inst(15 downto 12) = "1000" and ID_IW(15 downto 12) = "1111") or
 					--prevent store from being issued immediately by a load if the reg2 field is the same. this is needed because the DM address will be updated after an additional clock cycle. 
@@ -377,10 +378,18 @@ begin
 					ID_hazard		<= '1';
 
 				end if;
-				
-				if not(EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) and EX_IW(15 downto 12) = "1011" and EX_IW(1 downto 0) = "00" and LAB(i).inst(15 downto 12) = "1011" and ID_reset = '1') then
+				--don't want to enable GPIO reads to be data forwarded because that capability isn't in CPU
+				if not((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_IW(15 downto 12) = "1011" and EX_IW(1 downto 0) = "00" and EX_reset = '1') and
+					--don't allow data forwarding for I2C operations since these will not provide actual data when needed by the ID stage
+					not((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_IW(15 downto 12) = "1011" and EX_IW(1) = '1' and EX_reset = '1') and
+					--don't allow data memory stores since this data won't be reflected in MEM_out_top_mux_out 
+					not((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_IW(15 downto 12) = "1000" and EX_IW(1) = '1' and EX_reset = '1') then
 					
 					EX_hazard		<= '0';
+					
+				elsif EX_reset = '0' then
+					EX_hazard 		<= '0';
+					
 				else
 					EX_hazard		<= '1';
 				end if;
@@ -505,9 +514,9 @@ begin
 	branch <= PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
 	
 	
-	--establish the applicable branch type when the branch instruction is received
-	bnez				<= not(PM_data_in(1)) and not(PM_data_in(0)) and PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
-	bne				<= not(PM_data_in(1)) and PM_data_in(0) and PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
+--	--establish the applicable branch type when the branch instruction is received
+--	bnez				<= not(PM_data_in(1)) and not(PM_data_in(0)) and PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
+--	bne				<= not(PM_data_in(1)) and PM_data_in(0) and PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
 	
 	reg2_used 		<= (not(PM_data_in(15)) and not(PM_data_in(1)) and not(PM_data_in(0))) or 
 							(not(PM_data_in(15)) and PM_data_in(14)) or
