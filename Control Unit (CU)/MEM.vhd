@@ -131,7 +131,8 @@ begin
 				--stores (1000..1X)
 				elsif IW_in(15 downto 12) = "1000" and IW_in(1) = '1' then
 					MEM_wr_en	<= '1';		--
-					MEM_out_mux_sel <= "00";
+					--MEM_out_mux_sel <= "00";
+					MEM_out_mux_sel <= "11";
 					
 				--for all ALU (i.e., 0XXX) operations or LOGI (1100), need to forward ALU_out_1 data through MEM block to WB	
 				elsif (IW_in(15) = '0') or (IW_in(15 downto 13) = "110") then

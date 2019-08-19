@@ -27,7 +27,7 @@ package ROB_functions is
 		clear_zero			: in std_logic;			--this remains '0' if the ROB(0).specul = '1'
 		results_avail		: in std_logic;
 		condition_met		: in std_logic;
-		speculate_res		: in std_logic;			--ONLY FOR PM_data_in (this is set upon receiving a branch, to let ROB know that subsequent instructions are speculative)
+		--speculate_res		: in std_logic;			--ONLY FOR PM_data_in (this is set upon receiving a branch, to let ROB know that subsequent instructions are speculative)
 		frst_branch_idx	: in integer;
 		scnd_branch_idx	: in integer;
 		ROB_DEPTH			: in integer)
@@ -125,7 +125,7 @@ package body ROB_functions is
 		clear_zero			: in std_logic;			--this remains '0' if the ROB(0).specul = '1'
 		results_avail		: in std_logic;
 		condition_met		: in std_logic;
-		speculate_res		: in std_logic;			--ONLY FOR PM_data_in (this is set upon receiving a branch, to let ROB know that subsequent instructions are speculative)
+		--speculate_res		: in std_logic;			--ONLY FOR PM_data_in (this is set upon receiving a branch, to let ROB know that subsequent instructions are speculative)
 		frst_branch_idx	: in integer;
 		scnd_branch_idx	: in integer;
 		ROB_DEPTH			: in integer
@@ -156,8 +156,8 @@ package body ROB_functions is
 				if target_index >= scnd_branch_idx  then
 					--maintain speculative value
 					speculate		:= '1';
-				elsif loop_i_gtoet_FBI(i, frst_branch_idx, convert_CZ(clear_zero)) = '1' then
-					--need to evaluate based on location WRT branch location
+				elsif loop_i_gtoet_FBI(i, frst_branch_idx, convert_CZ(clear_zero)) = '1' and frst_branch_idx < 10 then
+					--need to evaluate based on location WRT branch location, if there is in fact a buffered branch
 					speculate		:= not(results_avail and not(condition_met));
 				else
 					--just use current speculative value
@@ -207,12 +207,14 @@ package body ROB_functions is
 				--either buffer PM_data_in or just write in zeros
 				if PM_buffer_en = '1' and PM_data_buffered = '0' then
 				
-					if results_avail = '1' and condition_met = '0' and loop_i_gtoet_FBI(i, frst_branch_idx, convert_CZ(clear_zero)) = '1' then
+					if (results_avail = '1' and condition_met = '0' and loop_i_gtoet_FBI(i, frst_branch_idx, convert_CZ(clear_zero)) = '1') or clear_zero = '1' then
 					
 						report "ROB_func: 5. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
 						ROB_temp(actual_index).inst		:= PM_data_in;
 						ROB_temp(actual_index).valid		:= '1';
-						ROB_temp(actual_index).specul		:= not(loop_i_lt_SBI(i, scnd_branch_idx, convert_CZ(clear_zero)));
+						--ROB_temp(actual_index).specul		:= not(loop_i_lt_SBI(i, scnd_branch_idx, convert_CZ(clear_zero)));
+						--updated this line to account for an instruction that may be above the second branch instruction (and is therefore still speculative)
+						ROB_temp(actual_index).specul		:= speculate;
 						PM_data_buffered						:= '1';
 						
 					else

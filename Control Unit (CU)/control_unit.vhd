@@ -271,7 +271,7 @@ architecture behavioral of control_unit is
 	
 begin
 
-	LAB_stall <= I2C_complete;
+	LAB_stall <= I2C_complete or LAB_stall_out;
 
 	--currently using the LAB, ID, and EX feedback signals for data hazard checks, vice ID, EX, and MEM
 	LAB	: IFetch

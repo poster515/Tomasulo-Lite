@@ -13,10 +13,10 @@ entity IFetch is
 	port (
 		reset_n, sys_clock  	: in std_logic;
 		stall_pipeline			: in std_logic; --needed when waiting for certain commands, should be formulated in top level CU module
-		ID_IW						: in std_logic_vector(15 downto 0); --source registers for instruction in ID stage (results available)
-		EX_IW						: in std_logic_vector(15 downto 0); --source registers for instruction in EX stage (results available)
-		MEM_IW					: in std_logic_vector(15 downto 0); --source registers for instruction in MEM stage (results available)
-		WB_IW_in					: in std_logic_vector(15 downto 0); --source registers for instruction in MEM stage (results available)
+		ID_IW						: in std_logic_vector(15 downto 0); 
+		EX_IW						: in std_logic_vector(15 downto 0);
+		MEM_IW					: in std_logic_vector(15 downto 0); 
+		WB_IW_in					: in std_logic_vector(15 downto 0); 
 		ID_reset, EX_reset, MEM_reset	: in std_logic;
 		PM_data_in				: in std_logic_vector(15 downto 0);
 		RF_in_3, RF_in_4		: in std_logic_vector(15 downto 0);
@@ -93,7 +93,7 @@ architecture arch of IFetch is
 	
 	--std_logic_vector tracking if there are any data hazards between LAB instruction and PL instructions
 	signal PL_datahaz_status 										: std_logic_vector(LAB_MAX - 1 downto 0) := (others => '0');
-	signal ID_hazard, EX_hazard, MEM_hazard, I2C_hazard	: std_logic;
+--	signal ID_hazard, EX_hazard, MEM_hazard, I2C_hazard	: std_logic;
 	
 	--std_logic tracking if there are any data hazards between PM_data_in and pipeline and LAB instructions
 	signal PM_datahaz_status : std_logic;
@@ -109,9 +109,6 @@ architecture arch of IFetch is
 	signal branch			: std_logic := '0';
 	signal branch_reg		: std_logic := '0'; --this will be '1' so long as there is a branch instruction in ROB
 	
---	--signals to represent the applicable branch selection, whether the condition was met or not, and whether the result of a branch is available
---	signal bne, bnez		: std_logic;
---	
 	--signals for intra-ROB branch status determination, set in "ROB_branch" process
 	signal branch_exists, is_unresolved, bne_from_ROB, bnez_from_ROB	: std_logic;
 	
@@ -129,6 +126,11 @@ architecture arch of IFetch is
 	
 	--signal representing that the ith LAB instruction requires use of the second register (used in data forwarding scheme)
 	signal LAB_i_reg2_used	: std_logic;
+	
+	--need a signal, duplicated from ROB for readability, that signifies that the zeroth ROB entry can be committed to RF
+	signal zero_inst_match	: std_logic;
+	
+	signal ROB_full	: std_logic;
 
 	--TODO: figure out what to do with I2C_error signal from MEM block, which goes high when there are three mistries to 
 		--read/write from I2C slave
@@ -173,6 +175,8 @@ begin
 			ALU_fwd_reg_1 		<= '0';
 			ALU_fwd_reg_2		<= '0';
 			LAB_i_reg2_used	<= '0';
+			PL_datahaz_status 	<= "00000";
+			LAB_datahaz_status 	<= "00000";
 
 		elsif rising_edge(sys_clock) then
 			LAB_reset_out		<= '1';
@@ -223,12 +227,18 @@ begin
 				else
 
 					for i in 0 to LAB_MAX - 1 loop
+						--first, determine whether the reg2 field represents an actual register or just used/unused data
 						LAB_i_reg2_used 		<= (not(LAB(i).inst(15)) and not(LAB(i).inst(1)) and not(LAB(i).inst(0))) or 
-														(not(LAB(i).inst(15)) and LAB(i).inst(14)) or
+														(not(LAB(i).inst(15)) and LAB(i).inst(14) and not(LAB(i).inst(1))) or
 														(LAB(i).inst(15) and not(LAB(i).inst(14)) and not(LAB(i).inst(13)) and not(LAB(i).inst(12)) and not(LAB(i).inst(0))) or 
 														(LAB(i).inst(15) and LAB(i).inst(14) and not(LAB(i).inst(13)) and LAB(i).inst(12));
+														
+						PL_datahaz_status(i) 	<= PL_datahaz(LAB(i).inst, ID_IW, EX_IW, MEM_IW, ID_reset, EX_reset, MEM_reset, reg2_used, ROB_in, frst_branch_idx, LAB_MAX);
+						LAB_datahaz_status(i) 	<= LAB_datahaz(LAB, i, LAB_MAX);
+			
+						if	PL_datahaz(LAB(i).inst, ID_IW, EX_IW, MEM_IW, ID_reset, EX_reset, MEM_reset, reg2_used, ROB_in, frst_branch_idx, LAB_MAX) = '0' and LAB_datahaz(LAB, i, LAB_MAX) = '0' and 
 							
-						if	PL_datahaz_status(i) = '0' and LAB_datahaz_status(i) = '0' and LAB(i).addr_valid = '1' and LAB(i).inst_valid = '1' then --we don't have any conflict in pipeline and LAB instruction is valid
+							LAB(i).addr_valid = '1' and LAB(i).inst_valid = '1' then --we don't have any conflict in pipeline and LAB instruction is valid
 							
 							report "LAB: Issuing instruction and buffering LAB(i).inst, i = " & integer'image(i);
 							--if so, we can issue the ith instruction
@@ -327,8 +337,8 @@ begin
 
 				end if; --LAB(0).valid = '0' 
 			else
-				--if stall_pipeline = '1', then we have a complete I2C op. aka do nothing here.
-
+				--if stall_pipeline = '1', then we have a complete I2C op or the ROB is full, aka do nothing here.
+				IW_reg <= "1111111111111111";
 			end if; --stall_pipeline
 					
 		end if; --reset_n
@@ -344,79 +354,28 @@ begin
 						(PL_datahaz_status(0) or LAB_datahaz_status(0)) and LAB(0).addr_valid and LAB(0).inst_valid and 
 						PM_datahaz_status;
 	
-	pipeline_datahaz_status	: process(reset_n, sys_clock, LAB, ID_IW, MEM_IW)
-	begin
-		if reset_n = '0' then
-			PL_datahaz_status 		<= (others => '0');
-			ID_hazard		<= '0';
-			EX_hazard		<= '0';
-			MEM_hazard		<= '0';
-			I2C_hazard		<= '0';
-		else
-		
-			for i in 0 to LAB_MAX - 1 loop
-				
-				if	((ID_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and ID_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
-					--accounts for data hazards due to no-ops
-					 ((ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) or ID_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and ID_IW(15 downto 12) = "1111") or
-					--allows a GPIO/W to be issued, immediately followed by a GPIO/R to the same register
-					 (ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00")) and
-					 --(ID_IW(11 downto 7) = LAB(i).inst(11 downto 7) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "01")) and
-					 
-					 ((ID_IW(6 downto 2) = LAB(i).inst(6 downto 2) and LAB(i).inst(15 downto 12) = "1000" and ID_IW(15 downto 12) = "1111") or
-					--prevent store from being issued immediately by a load if the reg2 field is the same. this is needed because the DM address will be updated after an additional clock cycle. 
-					not(ID_IW(6 downto 2) = LAB(i).inst(6 downto 2) and ID_IW(15 downto 12) = "1000" and ID_IW(1 downto 0) = "10" and LAB(i).inst(15 downto 12) = "1000" and LAB(i).inst(1 downto 0) = "00"))	
-					
-					and ID_reset = '1' then
-					
-					ID_hazard		<= '0';
+	--if all ROB entries are valid, PM_data_in is not a (branch address, load/store address, or jump), and can't commit zeroth ROB instruction, then the ROB is full	
+	ROB_full <= 	ROB_in(9).valid and ROB_in(8).valid and ROB_in(7).valid and ROB_in(6).valid and ROB_in(5).valid and 
+						ROB_in(4).valid and ROB_in(3).valid and ROB_in(2).valid and ROB_in(1).valid and ROB_in(0).valid and 
+						not(branch_reg or ld_st_reg or jump) and not(zero_inst_match);
 						
-				elsif ID_reset = '0' then
-					ID_hazard		<= '0';
-					
-				else
-					ID_hazard		<= '1';
-
-				end if;
-				--don't want to enable GPIO reads to be data forwarded because that capability isn't in CPU
-				if not((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_IW(15 downto 12) = "1011" and EX_IW(1 downto 0) = "00" and EX_reset = '1') and
-					--don't allow data forwarding for I2C operations since these will not provide actual data when needed by the ID stage
-					not((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_IW(15 downto 12) = "1011" and EX_IW(1) = '1' and EX_reset = '1') and
-					--don't allow data memory stores since this data won't be reflected in MEM_out_top_mux_out 
-					not((EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) or EX_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and EX_IW(15 downto 12) = "1000" and EX_IW(1) = '1' and EX_reset = '1') then
-					
-					EX_hazard		<= '0';
-					
-				elsif EX_reset = '0' then
-					EX_hazard 		<= '0';
-					
-				else
-					EX_hazard		<= '1';
-				end if;
-				
-				if	(((MEM_IW(11 downto 7) /= LAB(i).inst(11 downto 7) and MEM_IW(11 downto 7) /= LAB(i).inst(6 downto 2)) or 
-					 ((MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) or MEM_IW(11 downto 7) = LAB(i).inst(6 downto 2)) and MEM_IW(15 downto 12) = "1111") or
-					 (MEM_IW(11 downto 7) = LAB(i).inst(11 downto 7) and MEM_IW(15 downto 12) = "1011" and MEM_IW(1 downto 0) = "01" and LAB(i).inst(15 downto 12) = "1011" and LAB(i).inst(1 downto 0) = "00") or
-					 (MEM_IW(6 downto 2) = LAB(i).inst(6 downto 2) and MEM_IW(15 downto 12) = "1000" and MEM_IW(1 downto 0) = "10" and LAB(i).inst(15 downto 12) = "1000" and LAB(i).inst(1 downto 0) = "00")) 
-					 and MEM_reset = '1') then 
-					
-					MEM_hazard		<= '0';
-					
-				elsif MEM_reset = '0' then
-					MEM_hazard		<= '0';
-							
-				else
-					MEM_hazard		<= '1';
-				end if;
-				
-				--can't issue an I2C instruction if there is another I2C operation currently happening
-				I2C_hazard <= LAB(i).inst(15) and not(LAB(i).inst(14)) and LAB(i).inst(13) and LAB(i).inst(12) and I2C_op_run;
-									
-				PL_datahaz_status(i) <= (I2C_hazard or ID_hazard or EX_hazard or MEM_hazard or GPIO_write_specul(ROB_in, LAB(i).inst, frst_branch_idx)) and LAB(i).inst_valid;
-
-			end loop;
-		end if; --reset_n
-	
+	--update whether ROB zeroth instruction matches the new WB_IW_in, does not depend on ROB(0).inst itself since it won't change
+	process(WB_IW_in, ROB_in, results_available, condition_met)
+	begin
+		--if ROB_in(0).inst = IW_in and ROB_in(0).valid = '1' and zero_inst_match = '0' then
+		if ROB_in(0).inst = WB_IW_in and ROB_in(0).valid = '1' then
+			zero_inst_match <= '1';
+		
+		elsif ROB_in(1).inst = WB_IW_in and ROB_in(1).valid = '1' and zero_inst_match = '1' then
+			zero_inst_match <= '1';
+			
+		elsif ROB_in(0).inst(15 downto 12) = "1010" and (ROB_in(0).specul = '0' or (results_available = '1' and condition_met = '1')) then
+			zero_inst_match <= '1';
+			
+		else
+			zero_inst_match <= '0';
+		end if;
+		
 	end process;
 	
 	--this process controls the program counter only
@@ -512,16 +471,11 @@ begin
 	
 	--set branch indicator ("1010") and associated control signals 
 	branch <= PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
-	
-	
---	--establish the applicable branch type when the branch instruction is received
---	bnez				<= not(PM_data_in(1)) and not(PM_data_in(0)) and PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
---	bne				<= not(PM_data_in(1)) and PM_data_in(0) and PM_data_in(15) and not(PM_data_in(14)) and PM_data_in(13) and not(PM_data_in(12)) and not(branch_reg);
-	
+
+	--establish whether the PM_data_in reg2 field is actually a register or an immediate value, for example
 	reg2_used 		<= (not(PM_data_in(15)) and not(PM_data_in(1)) and not(PM_data_in(0))) or 
 							(not(PM_data_in(15)) and PM_data_in(14)) or
 							(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and not(PM_data_in(12)) and not(PM_data_in(0))) or 
-							--account for CP command which needs the reg2 to be up-to-date
 							(PM_data_in(15) and PM_data_in(14) and not(PM_data_in(13)) and PM_data_in(12));
 	
 	
@@ -578,49 +532,6 @@ begin
 		else
 			PM_datahaz_status <= '0';
 		end if; --reset_n
-	end process;
-	
-	--this process updates the dh_ptr_outer std_logic_vector to represent whether the ith instruction 
-	--poses a data hazard from any instruction below it
-	data_hazard_status_update	: process(reset_n, LAB)
-		variable dh_ptr_outer, dh_ptr_inner : integer range 0 to LAB_MAX - 1;
-	begin	
-		if reset_n = '0' then
-		
-			LAB_datahaz_status <= (others => '0');
-			
-		else 
-		
-			for dh_ptr_outer in 1 to LAB_MAX - 1 loop
-			
-				for dh_ptr_inner in 0 to LAB_MAX - 2 loop
-			
-					if (
-							(LAB(dh_ptr_inner).inst(11 downto 7) 	= LAB(dh_ptr_outer).inst(11 downto 7)) or 
-							 
-							(LAB(dh_ptr_inner).inst(11 downto 7) 	= LAB(dh_ptr_outer).inst(6 downto 2)) or 
-							
-							(LAB(dh_ptr_inner).inst(6 downto 2) = LAB(dh_ptr_outer).inst(6 downto 2) and 
-							 LAB(dh_ptr_inner).inst(15 downto 12) 	= "1000" and 
-							 LAB(dh_ptr_outer).inst(15 downto 12) 	= "1000") or
-							 
-							(LAB(dh_ptr_inner).inst(6 downto 2) = LAB(dh_ptr_outer).inst(11 downto 7) and 
-							 LAB(dh_ptr_inner).inst(15 downto 12) 	= "1000")
-							 
-						) and dh_ptr_inner < dh_ptr_outer and LAB(dh_ptr_outer).inst_valid = '1' and LAB(dh_ptr_inner).inst_valid = '1' then
-						
-						LAB_datahaz_status(dh_ptr_outer) <= '1';
-						exit; --exit inner loop, there's a hazard at this dh_ptr_outer location
-					else
-						LAB_datahaz_status(dh_ptr_outer) <= '0';
-						--LAB_datahaz_status(dh_ptr_outer) <= '0';
-						--don't exit here, need to evaluate all dh_ptr_inner locations
-					end if;
-				end loop; --dh_ptr_inner 
-			end loop; --dh_ptr_outer 
-			
-		end if; --reset_n
-		
 	end process;
 	
 	--process to determine whether an unresolved branch instruction exists in the ROB, this is used to then confirm if the results are ready
@@ -705,7 +616,7 @@ begin
 		PC 	<= PC_reg;
 		IW 	<= IW_reg;
 		MEM 	<= MEM_reg;
-		LAB_stall <= LAB_full;
+		LAB_stall <= ROB_full;
 
 		clear_ID_IW_out	<= clear_IW_outs(0);
 		clear_EX_IW_out	<= clear_IW_outs(1);

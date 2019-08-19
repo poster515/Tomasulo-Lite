@@ -136,7 +136,8 @@ begin
 	DM_data_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
 	DM_addr_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
 	DM_wren_in_mux_sel 	<= (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) or (not(load_inst) and (not(store_inst) or inst_is_specul))) and st_buff(0).valid and not(st_buff(0).specul);
-	MEM_out_top_mux_sel 	<= check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) and (load_inst or store_inst);
+	--MEM_out_top_mux_sel 	<= check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) and (load_inst or store_inst);
+	MEM_out_top_mux_sel 	<= check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) and load_inst;
 	
 	--process to multiplex wr_en to Data Memory in lieu of instantiating a single bit mux	
 	process(DM_wren_in_mux_sel, wr_en, DM_st_buff_wren)
@@ -167,44 +168,31 @@ begin
 			DM_st_buff_data		<= "0000000000000000";
 			DM_st_buff_addr		<= "00000000000";
 			DM_st_buff_wren 		<= '0';
-			
 			st_buff_data			<= "0000000000000000";
-
 			buffer_st_in			<= '0';
-			
 			MEM_out_top_reg 		<= "0000000000000000";
+			
 		else
 			--buffer_st_in denotes that the incoming instruction/data must be buffered in st_buff since it is a store and either 1) speculative or 2) existing in st_buff under another address
 			buffer_st_in			<= store_inst and (inst_is_specul or check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)));
 
-			--this first if statement is entered every time we cannot use the DM for the purpose of loading or storing, as dictated by the incoming IW
-			--if (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) = '1') or ((not(load_inst) and (not(store_inst) or inst_is_specul)) = '1') then
-			if (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) = '1') and ((load_inst or store_inst) = '1') then
-				--have an address match in st_buff - need to add to st_buff instead
-				--determine if we can execute another, non-speculative store first though
-				if st_buff(0).valid = '1' and st_buff(0).specul = '0' then
-					DM_st_buff_wren 	<= '1';					--wr_en signal for storing in DM from st_buff
-					DM_st_buff_data 	<= st_buff(0).data;	--data for storing back to DM from st_buff
-					DM_st_buff_addr 	<= st_buff(0).addr;	--address for storing back to DM from st_buff
-					
-					--report "MEM_top: Can't use DM for ld/st, writing back st_buff data to DM";
-				else
-					--can neither write to DM from ALU nor write to DM from st_buff - just buffer ALU outputs in st_buff
-					DM_st_buff_wren 	<= '0';
-					DM_st_buff_addr	<= "00000000000";
-					
-					--report "MEM_top: Can't use DM for ld/st or write back st_buff data to DM";
-				end if;
+			if st_buff(0).valid = '1' and st_buff(0).specul = '0' then
+				DM_st_buff_wren 	<= '1';					--wr_en signal for storing in DM from st_buff
+				DM_st_buff_data 	<= st_buff(0).data;	--data for storing back to DM from st_buff
+				DM_st_buff_addr 	<= st_buff(0).addr;	--address for storing back to DM from st_buff
 				
-				if load_inst = '1' then
-					st_buff_data	<= fetch_st_buff_data(st_buff, MEM_in_1(10 downto 0));
-					--report "MEM_top: Have address match in st_buff, loading data from st_buff";
-				end if;
+				report "MEM_top: 1. Can't use DM for ld/st, writing back st_buff data to DM";
 			else
-				--include as a catch-all for this clock cycle
+				--can neither write to DM from ALU nor write to DM from st_buff - just buffer ALU outputs in st_buff
 				DM_st_buff_wren 	<= '0';
 				DM_st_buff_addr	<= "00000000000";
-				--report "MEM_top: Hit else statement, do nothing with DM";
+				DM_st_buff_data 	<= "0000000000000000";
+				report "MEM_top: 2. Can't use DM for ld/st or write back st_buff data to DM";
+			end if;
+			
+			if load_inst = '1' and (check_st_buff_for_address(st_buff, MEM_in_1(10 downto 0)) = '1') then
+				st_buff_data	<= fetch_st_buff_data(st_buff, MEM_in_1(10 downto 0));
+				report "MEM_top: 3. Have address match in st_buff, loading data from st_buff";
 			end if;
 			
 			if rising_edge(sys_clock) then

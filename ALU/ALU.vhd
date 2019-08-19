@@ -22,22 +22,22 @@ end ALU;
 
 	--Instruction Set Architecture--
 	
---ADD(I)		Add (immediate) 		0000	
---SUB(I)		Subtract (immediate)	0001	--immediate value will be direct input from CU
---MULT(I)	Multiply (immediate)	0010	
---DIV(I)		Divide (immediate)	0011	
---LOG			Logical ops				0100	
---ROT(C)		Rotate (with carry)	0101	
---SFTL		Shift logical			0110	--shift value is from another register
---SFTA		Shift arithmetic		0111	--shift value is from another register
---LD/ST		Load/Store from DM	1000  --compute address 
---JMP			Jump						1001
---BNE(Z)		Branch if not zero	1010
---IO			R/W input/outputs		1011
---LOGI		Logic w immediate		1100
---(unused)	N/A						1101
---(unused)	N/A						1110
---(unused)	N/A						1111
+--ADD(I)				Add (immediate) 					0000	
+--SUB(I)				Subtract (immediate)				0001	--immediate value will be direct input from CU
+--MULT(I)			Multiply (immediate)				0010	
+--DIV(I)				Divide (immediate)				0011	
+--LOG					Logical ops							0100	
+--RT(L:R)(I)		Rotate (immedate)					0101	
+--S(L:R)L(I)		Shift logical (immedate)		0110	--shift value is from another register
+--S(L:R)A(I)		Shift arithmetic (immedate)	0111	--shift value is from another register
+--LD/ST				Load/Store from DM				1000  --compute address 
+--JMP					Jump									1001
+--BNE(Z)				Branch if not zero				1010
+--IO					R/W input/outputs					1011
+--LOGI				Logic w immediate					1100
+--CP					Copy reg2 to reg1					1101
+--(unused)			N/A									1110
+--(unused)			N/A									1111
 
 architecture behavioral of ALU is
 	
@@ -204,9 +204,9 @@ architecture behavioral of ALU is
 	
 	--Rotate unit signals
 	signal rotate_result				: std_logic_vector(15 downto 0);
-	signal rotate_result_final		: std_logic_vector(15 downto 0); --signal fed from both normal and carry results
-	signal rotate_c_result			: std_logic_vector(16 downto 0);
-	signal rotate_c_in				: std_logic_vector(16 downto 0);
+	--signal rotate_result_final		: std_logic_vector(15 downto 0); --signal fed from both normal and carry results
+	--signal rotate_c_result			: std_logic_vector(16 downto 0);
+	--signal rotate_c_in				: std_logic_vector(16 downto 0);
 	--signal rotate_final_sel			: std_logic; --selects final rotate result for ALU_out_1
 	signal rot_SR						: std_logic_vector(3 downto 0);
 	signal rotate_in_left, rotate_in_right : std_logic_vector(16 downto 0);
@@ -281,13 +281,13 @@ begin
 			result		=> rotate_result
 		);
 		
-	rotate_c_inst	: rotate_c
-	port map (
-			data			=> rotate_c_in,
-			direction	=> ALU_inst_sel(0), --'0' = left, '1' = right
-			distance		=> data_in_2(4 downto 0),
-			result		=> rotate_c_result
-		);
+--	rotate_c_inst	: rotate_c
+--	port map (
+--			data			=> rotate_c_in,
+--			direction	=> ALU_inst_sel(0), --'0' = left, '1' = right
+--			distance		=> data_in_2(4 downto 0),
+--			result		=> rotate_c_result
+--		);
 	
 	shift_logic_inst	: shift_logic 
 		port map (
@@ -315,7 +315,8 @@ begin
 			data2x		=> mult_LSB,
 			data3x		=> divide_result,
 			data4x		=> logic_result,
-			data5x		=> rotate_result_final,
+			--data5x		=> rotate_result_final,
+			data5x		=> rotate_result,
 			data6x		=> shift_logic_result,
 			data7x		=> shift_arith_result,
 			sel			=> ALU_op(2 downto 0),
@@ -353,23 +354,23 @@ begin
 			result		=> ALU_status
 		);
 		
-		rotate_final : mux_2_new 
-		PORT MAP
-		(
-			data0x		=> rotate_result,
-			data1x		=> rotate_c_result(15 downto 0),
-			sel			=> ALU_inst_sel(1), --rotate_final_sel,
-			result		=> rotate_result_final
-		);
-		
-		rotate_c_in_mux : mux_2_width_17
-		PORT MAP
-		(
-			data0x		=> rotate_in_right,
-			data1x		=> rotate_in_left,
-			sel			=> ALU_inst_sel(0),
-			result		=> rotate_c_in
-		);
+--		rotate_final : mux_2_new 
+--		PORT MAP
+--		(
+--			data0x		=> rotate_result,
+--			data1x		=> rotate_c_result(15 downto 0),
+--			sel			=> ALU_inst_sel(1), --rotate_final_sel,
+--			result		=> rotate_result_final
+--		);
+--		
+--		rotate_c_in_mux : mux_2_width_17
+--		PORT MAP
+--		(
+--			data0x		=> rotate_in_right,
+--			data1x		=> rotate_in_left,
+--			sel			=> ALU_inst_sel(0),
+--			result		=> rotate_c_in
+--		);
 		
 	process(add_sub_v, add_sub_c, mult_result, shift_logic_overflow, shift_arith_overflow, add_sub_result, mult_LSB, mult_MSB, 
 				divide_result, divide_remainder, logic_zero, logic_neg, rotate_result, shift_logic_result, shift_arith_result, data_in_1, carry_in)

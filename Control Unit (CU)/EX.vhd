@@ -112,8 +112,9 @@ begin
 --					ALU_d2_in_sel(0) <= (not(IW_in(15)) and ((IW_in(14) and (not(IW_in(13)) or not(IW_in(1)))) or (not(IW_in(1)) and not(IW_in(0))))) or
 --												(IW_in(15) and not(IW_in(14)) and ((not(IW_in(13)) and not(IW_in(12)) and not(IW_in(1)) and IW_in(0)) or (not(IW_in(13)) and not(IW_in(12)) and not(IW_in(0))))) or
 --												(IW_in(14) and not(IW_in(13)) and IW_in(12));
+
 					ALU_d2_in_sel(0) <= (not(IW_in(15)) and not(IW_in(1)) and not(IW_in(0))) or (not(IW_in(15)) and IW_in(14) and not(IW_in(13)) and not(IW_in(12))) or 
-												(not(IW_in(15)) and IW_in(14) and IW_in(1)) or (IW_in(15) and IW_in(14) and not(IW_in(1)) and IW_in(0)) or
+												(not(IW_in(15)) and IW_in(14) and not(IW_in(1))) or (IW_in(15) and IW_in(14) and not(IW_in(13)) and IW_in(12)) or
 												(IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and not(IW_in(0))) or 
 												(IW_in(15) and not(IW_in(14)) and IW_in(13) and not(IW_in(12)) and not(IW_in(1)) and IW_in(0));
 												
@@ -125,7 +126,7 @@ begin
 												(not(IW_in(15)) and IW_in(14) and IW_in(12) and IW_in(1));
 												
 				else
-					--report "Defaulting to '11' for ALU_d2_in_sel.";
+					report "EX: Defaulting to '11' for ALU_d2_in_sel.";
 					ALU_d2_in_sel <= "11";
 				end if;
 				
