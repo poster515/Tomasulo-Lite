@@ -32,6 +32,7 @@ entity EX is
 		IW_out			: out std_logic_vector(15 downto 0); -- forwarding to MEM control unit
 		mem_addr_out	: out std_logic_vector(15 downto 0); -- memory address directly to ALU
 		immediate_val	: out	std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
+		data_fwd_from_MEM_out	: out std_logic;
 		reset_out		: out std_logic
 	);
 end EX;
@@ -78,6 +79,7 @@ begin
 			ALU_d2_in_sel 				<= "00";
 			IW_out 						<= "0000000000000000";
 			reset_reg					<= '0';
+			data_fwd_from_MEM_out	<= '0';
 			
 		elsif rising_edge(sys_clock) then
 			reset_reg <= '1';
@@ -103,7 +105,14 @@ begin
 					
 				else
 					--report "Defaulting to '11' for ALU_d1_in_sel.";
-					ALU_d1_in_sel <= "11";
+					if IW_in(15 downto 12) = "1000" then
+						--for loads and stores, we need to calculate the effective memory address, which is based on mem_addr + immediate_val
+						ALU_d1_in_sel 				<= "10";
+						data_fwd_from_MEM_out	<= '1';
+					else
+						ALU_d1_in_sel <= "11";
+						data_fwd_from_MEM_out	<= '0';
+					end if;
 				end if;
 				
 				if ALU_fwd_reg_2_in = '0' then

@@ -81,11 +81,36 @@ package LAB_functions is
 		return std_logic_vector; --std_logic_vector([[condition met]], [[results ready]])
 		
 	--function to determine whether the given LAB instruction is 1) a GPIO or I2C write and 2) speculative, so it doesn't get issued to pipeline
-	function GPIO_write_specul(ROB_in				: in ROB;
+	function ION_write_specul(	ROB_in				: in ROB;
 										LAB_i_inst 			: in std_logic_vector(15 downto 0);
 										frst_branch_idx	: in integer)
 		return std_logic;
 		
+	--function to determine whether the given LAB instruction requires result of any I2C read instruction
+	function ION_read_hazard( 	ROB_in				: in ROB;
+										LAB_i_inst 			: in std_logic_vector(15 downto 0)	)
+		return std_logic;
+		
+	--function to determine whether a LAB instruction conflicts with instructions below it
+	function LAB_datahaz(	LAB	: in LAB_actual;
+									index	: in integer;
+									LAB_MAX	: in integer	)
+		return std_logic;
+	
+	--function to determine whether a LAB instruction conflicts with instructions in pipeline
+	function PL_datahaz(	LAB_inst		: in std_logic_vector(15 downto 0);
+								ID_IW			: in std_logic_vector(15 downto 0);
+								EX_IW 		: in std_logic_vector(15 downto 0);
+								MEM_IW 		: in std_logic_vector(15 downto 0);
+								ID_reset		: in std_logic;
+								EX_reset 	: in std_logic;
+								MEM_reset 	: in std_logic;
+								reg2_used 	: in std_logic;
+								ROB_in		: in ROB;
+								frst_branch_idx : in integer;
+								LAB_MAX		: in integer)
+		return std_logic;
+	
 end LAB_functions; 
 
 package body LAB_functions is
@@ -394,22 +419,22 @@ package body LAB_functions is
 			if i > frst_branch_idx then
 				if ROB_in(i).inst = LAB_IW then
 					temp_L := shift_left(one, to_integer(unsigned(LAB_IW(11 downto 7))));
-					report "LAB_func: revalidating reg " & integer'image(to_integer(unsigned(LAB_IW(11 downto 7))));
+					--report "LAB_func: revalidating reg " & integer'image(to_integer(unsigned(LAB_IW(11 downto 7))));
 				elsif ROB_in(i).inst = ID_IW then
 					temp_I := shift_left(one, to_integer(unsigned(ID_IW(11 downto 7))));
-					report "LAB_func: revalidating reg " & integer'image(to_integer(unsigned(ID_IW(11 downto 7))));
+					--report "LAB_func: revalidating reg " & integer'image(to_integer(unsigned(ID_IW(11 downto 7))));
 				elsif ROB_in(i).inst = EX_IW then
 					temp_E := shift_left(one, to_integer(unsigned(EX_IW(11 downto 7))));
-					report "LAB_func: revalidating reg " & integer'image(to_integer(unsigned(EX_IW(11 downto 7))));
+					--report "LAB_func: revalidating reg " & integer'image(to_integer(unsigned(EX_IW(11 downto 7))));
 				elsif ROB_in(i).inst = MEM_IW then
 					temp_M := shift_left(one, to_integer(unsigned(MEM_IW(11 downto 7))));
-					report "LAB_func: revalidating reg " & integer'image(to_integer(unsigned(MEM_IW(11 downto 7))));
+					--report "LAB_func: revalidating reg " & integer'image(to_integer(unsigned(MEM_IW(11 downto 7))));
 				elsif ROB_in(i).inst = WB_IW_in then
 					temp_W := shift_left(one, to_integer(unsigned(WB_IW_in(11 downto 7))));
-					report "LAB_func: revalidating reg " & integer'image(to_integer(unsigned(WB_IW_in(11 downto 7))));
+					--report "LAB_func: revalidating reg " & integer'image(to_integer(unsigned(WB_IW_in(11 downto 7))));
 				elsif i > frst_branch_idx and ROB_in(i).valid = '1' then --need to revalidate complete, speculative registers in ROB
 					temp_R := temp_R or shift_left(one, to_integer(unsigned(ROB_in(i).inst(11 downto 7))));
-					report "LAB_func: revalidating reg " & integer'image(to_integer(unsigned(ROB_in(i).inst(11 downto 7))));
+					--report "LAB_func: revalidating reg " & integer'image(to_integer(unsigned(ROB_in(i).inst(11 downto 7))));
 				end if;
 			end if;
 		end loop;	--i
@@ -457,21 +482,21 @@ package body LAB_functions is
 				if ROB_in(frst_branch_idx).inst(11 downto 7) = ROB_in(j).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '0' and frst_branch_idx > j then
 					reg1_resolved		:= '0';
 					condition_met		:= '0';
-					report "LAB_func: reg1 results not ready - exiting. j = " & integer'image(j);
+					--report "LAB_func: reg1 results not ready - exiting. j = " & integer'image(j);
 					exit; --exit here since the operand dependency closest to branch isn't complete - therefore we can't know outcome of evaluation
 					
 				elsif ROB_in(frst_branch_idx).inst(6 downto 2) = ROB_in(j).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '0' and frst_branch_idx > j and bne = '1' then
 					reg2_resolved		:= '0';
 					condition_met		:= '0';
-					report "LAB_func: reg2 results not ready - exiting. j = " & integer'image(j);
+					--report "LAB_func: reg2 results not ready - exiting. j = " & integer'image(j);
 					exit; --exit here since the operand dependency closest to branch isn't complete - therefore we can't know outcome of evaluation
 				
 				elsif ROB_in(frst_branch_idx).inst(11 downto 7) = ROB_in(j).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and frst_branch_idx > j then	--
 					--the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
-					report "LAB_func: reg1 condition resolved, j = " & integer'image(j);
+					--report "LAB_func: reg1 condition resolved, j = " & integer'image(j);
 					
 					if reg1_encountered = '0' then
-						report "LAB_func: reg1 located at slot " & integer'image(j);
+						--report "LAB_func: reg1 located at slot " & integer'image(j);
 						reg1_slot			:= j;
 						reg1_encountered	:= '1';
 					else
@@ -481,10 +506,10 @@ package body LAB_functions is
 					--in the rare case that the instruction in the ROB is a BNE using the same register...
 					if ROB_in(frst_branch_idx).inst(6 downto 2) = ROB_in(j).inst(11 downto 7) and bne = '1'then	--
 						--its a BNEZ, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
-						report "LAB_func: reg2 condition also resolved, j = " & integer'image(j);
+						--report "LAB_func: reg2 condition also resolved, j = " & integer'image(j);
 						
 						if reg2_encountered = '0' then
-							report "LAB_func: reg2 located at slot " & integer'image(j);
+							--report "LAB_func: reg2 located at slot " & integer'image(j);
 							reg2_slot			:= j;
 							reg2_encountered	:= '1';
 						else
@@ -494,12 +519,12 @@ package body LAB_functions is
 					
 				elsif ROB_in(frst_branch_idx).inst(6 downto 2) = ROB_in(j).inst(11 downto 7) and ROB_in(j).valid = '1' and ROB_in(j).complete = '1' and frst_branch_idx > j and bne = '1' then	--
 					--its a BNEZ, the instruction dest_reg matches the branch register, the instruction results are "complete", and was issued just prior to the branch
-					report "LAB_func: reg1 condition resolved, j = " & integer'image(j);
+					--report "LAB_func: reg1 condition resolved, j = " & integer'image(j);
 					--probably don't need the redundant, below line
 					--reg2_resolved 		:= reg1_resolved and '1';
 					
 					if reg2_encountered = '0' then
-						report "LAB_func: reg2 located at slot " & integer'image(j);
+						--report "LAB_func: reg2 located at slot " & integer'image(j);
 						reg2_slot			:= j;
 						reg2_encountered	:= '1';
 					else
@@ -511,7 +536,7 @@ package body LAB_functions is
 					--since reg1_resolved and reg2_resolved have, thus far, only represented ROB entries, now we need to check WB_IW_out and RF entries
 					if reg1_resolved = '1' and reg2_resolved = '1' then
 						--then we have all necessary info in ROB - need to check ROB output though since it can be writing back a branch condition register this cycle
-						report "LAB_func: reg1 and reg2 resolved.";
+						--report "LAB_func: reg1 and reg2 resolved.";
 						
 						if WB_IW_out(11 downto 7) = ROB_in(frst_branch_idx).inst(11 downto 7) then	--
 						--WB is writing back to reg1 - evaluate now for condition
@@ -571,22 +596,22 @@ package body LAB_functions is
 						
 					elsif reg1_resolved = '0' then
 						--shouldn't be able to get here, but just exit.
-						report "LAB_func: reg2 results not ready - exiting. j = " & integer'image(j);
+						--report "LAB_func: reg2 results not ready - exiting. j = " & integer'image(j);
 						exit; --exit here since the operand dependency closest to branch isn't complete - therefore we can't know outcome of evaluation
 						
 					elsif reg2_resolved = '0' and bne = '1' then
 						--shouldn't be able to get here, but just exit.
-						report "LAB_func: reg2 results not ready - exiting. j = " & integer'image(j);
+						--report "LAB_func: reg2 results not ready - exiting. j = " & integer'image(j);
 						exit; --exit here since the operand dependency closest to branch isn't complete - therefore we can't know outcome of evaluation
 					
 					end if;
 				else
-					report "LAB_func: Can't match a single LAB instruction to ROB? j = " & integer'image(j);
+					--report "LAB_func: Can't match a single LAB instruction to ROB? j = " & integer'image(j);
 				
 				end if;
 			end loop;
 		else
-			report "LAB_func: Can't find first branch?";
+			--report "LAB_func: Can't find first branch?";
 		end if;
 	else
 
@@ -598,7 +623,7 @@ package body LAB_functions is
 	end function;
 	
 	--function to determine whether the given LAB instruction is 1) a GPIO or I2C write and 2) speculative, so it doesn't get issued to pipeline
-	function GPIO_write_specul(ROB_in				: in ROB;
+	function ION_write_specul( ROB_in				: in ROB;
 										LAB_i_inst 			: in std_logic_vector(15 downto 0);
 										frst_branch_idx	: in integer)
 		return std_logic is
@@ -620,4 +645,153 @@ package body LAB_functions is
 		
 	end function;
 	
+	--function to determine whether the given LAB instruction requires result of any I2C read instruction
+	function ION_read_hazard( 	ROB_in				: in ROB;
+										LAB_i_inst 			: in std_logic_vector(15 downto 0)	)
+		return std_logic is
+		
+		variable i	: integer	:= 0;
+	begin
+		for i in 0 to 9 loop
+			if ROB_in(i).inst(15 downto 12) = "1011" and ROB_in(i).inst(1 downto 0) = "10" and 
+				(ROB_in(i).inst(11 downto 7) = LAB_i_inst(11 downto 7) or ROB_in(i).inst(11 downto 7) = LAB_i_inst(6 downto 2)) then
+				
+				return '1';
+			else
+				return '0';
+			end if;
+		end loop;
+		
+		return '0';
+		
+	end function;
+	
+	--function to determine whether a LAB instruction conflicts with instructions below it
+	function LAB_datahaz(	LAB		: in LAB_actual;
+									index		: in integer;
+									LAB_MAX	: in integer)
+		return std_logic is
+		
+		variable dh_ptr_outer, dh_ptr_inner	: integer := 0;
+		
+	begin
+	
+		dh_ptr_outer := index; 
+		if index = 0 then
+			return '0';
+		else
+			for dh_ptr_inner in 0 to LAB_MAX - 2 loop
+		
+				if (
+						(LAB(dh_ptr_inner).inst(11 downto 7) 	= LAB(dh_ptr_outer).inst(11 downto 7)) or 
+						 
+						(LAB(dh_ptr_inner).inst(11 downto 7) 	= LAB(dh_ptr_outer).inst(6 downto 2)) or 
+						
+						(LAB(dh_ptr_inner).inst(6 downto 2) = LAB(dh_ptr_outer).inst(6 downto 2) and 
+						 LAB(dh_ptr_inner).inst(15 downto 12) 	= "1000" and 
+						 LAB(dh_ptr_outer).inst(15 downto 12) 	= "1000") or
+						 
+						(LAB(dh_ptr_inner).inst(6 downto 2) = LAB(dh_ptr_outer).inst(11 downto 7) and 
+						 LAB(dh_ptr_inner).inst(15 downto 12) 	= "1000")
+						 
+					) and dh_ptr_inner < dh_ptr_outer and LAB(dh_ptr_outer).inst_valid = '1' and LAB(dh_ptr_inner).inst_valid = '1' then
+					
+					return '1';
+				end if;
+			end loop; --dh_ptr_inner 
+		end if;
+	
+		return '0';
+	end function;
+	
+	--function to determine whether a LAB instruction conflicts with instructions in pipeline
+	function PL_datahaz(	LAB_inst		: in std_logic_vector(15 downto 0);
+								ID_IW			: in std_logic_vector(15 downto 0);
+								EX_IW 		: in std_logic_vector(15 downto 0);
+								MEM_IW 		: in std_logic_vector(15 downto 0);
+								ID_reset		: in std_logic;
+								EX_reset 	: in std_logic;
+								MEM_reset 	: in std_logic;
+								reg2_used 	: in std_logic;
+								ROB_in		: in ROB;
+								frst_branch_idx : in integer;
+								LAB_MAX		: in integer)
+		return std_logic is
+		
+		variable i	: integer := 0;
+		variable I2C_hazard, ID_hazard, EX_hazard, MEM_hazard : std_logic	:= '0';
+	begin
+		report "LAB_func: ID_IW = " & integer'image(convert_SL(ID_IW(15))) & integer'image(convert_SL(ID_IW(14))) & integer'image(convert_SL(ID_IW(13))) & integer'image(convert_SL(ID_IW(12))) &
+					", EX_IW = " & integer'image(convert_SL(EX_IW(15))) & integer'image(convert_SL(EX_IW(14))) & integer'image(convert_SL(EX_IW(13))) & integer'image(convert_SL(EX_IW(12))) & 
+					", MEM_IW = " & integer'image(convert_SL(MEM_IW(15))) & integer'image(convert_SL(MEM_IW(14))) & integer'image(convert_SL(MEM_IW(13))) & integer'image(convert_SL(MEM_IW(12)));
+		for i in 0 to LAB_MAX - 1 loop
+			report "LAB_func: i = " & integer'image(i) & ", opcode = " & integer'image(convert_SL(LAB_inst(15))) & integer'image(convert_SL(LAB_inst(14))) & integer'image(convert_SL(LAB_inst(13))) & integer'image(convert_SL(LAB_inst(12)));
+			
+--			if	((ID_IW(11 downto 7) /= LAB_inst(11 downto 7) and ID_IW(11 downto 7) /= LAB_inst(6 downto 2)) or 
+--				--accounts for data hazards due to no-ops
+--				 ((ID_IW(11 downto 7) = LAB_inst(11 downto 7) or ID_IW(11 downto 7) = LAB_inst(6 downto 2)) and ID_IW(15 downto 12) = "1111") or
+--				--allows a GPIO/W to be issued, immediately followed by a GPIO/R to the same register
+--				 (ID_IW(11 downto 7) = LAB_inst(11 downto 7) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "01" and LAB_inst(15 downto 12) = "1011" and LAB_inst(1 downto 0) = "00")) and
+--				 
+--				 ((ID_IW(6 downto 2) = LAB_inst(6 downto 2) and LAB_inst(15 downto 12) = "1000" and ID_IW(15 downto 12) = "1111") or
+--				--prevent store from being issued immediately by a load if the reg2 field is the same. this is needed because the DM address will be updated after an additional clock cycle. 
+--				not(ID_IW(6 downto 2) = LAB_inst(6 downto 2) and ID_IW(15 downto 12) = "1000" and ID_IW(1 downto 0) = "10" and LAB_inst(15 downto 12) = "1000" and LAB_inst(1 downto 0) = "00"))	
+--				
+--				and ID_reset = '1' then
+--				
+--				ID_hazard		:= '0';
+--					
+--			elsif ID_reset = '0' then
+--				ID_hazard		:= '0';
+--				
+--			else
+--				ID_hazard		:= '1';
+--
+--			end if;
+			
+			if (((ID_IW(11 downto 7) = LAB_inst(11 downto 7) or (ID_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and ID_IW(15 downto 12) /= "1111") or
+				(ID_IW(6 downto 2) = LAB_inst(6 downto 2) and ID_IW(15 downto 12) = "1000" and ID_IW(1 downto 0) = "10" and LAB_inst(15 downto 12) = "1000" and LAB_inst(1 downto 0) = "00")) 
+				and ID_reset = '1' then	
+				
+				ID_hazard		:= '1';
+			else
+				ID_hazard		:= '0';
+			end if;
+			
+			--don't enable GPIO or I2C reads to be data forwarded because that functionality isn't available
+			if (EX_IW(11 downto 7) = LAB_inst(11 downto 7) or (EX_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and 
+				EX_IW(15 downto 12) = "1011" and EX_IW(0) = '0' and EX_reset = '1' then	
+				
+				EX_hazard		:= '1';
+			else
+				EX_hazard		:= '0';
+			end if;
+			
+			--if either registers match, as appropriate, raise MEM_hazard
+			if (MEM_IW(11 downto 7) = LAB_inst(11 downto 7) or (MEM_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and 
+				MEM_IW(15 downto 12) /= "1111" and MEM_reset = '1' then
+				
+				MEM_hazard := '1';
+			else
+				MEM_hazard := '0';
+			end if;
+			
+			--section below handles I2C hazards. if there is an issued I2C read, or there is currently an I2C op running 
+			if ((ID_IW(11 downto 7) = LAB_inst(11 downto 7) or (ID_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "10" and ID_reset = '1') or
+				((EX_IW(11 downto 7) = LAB_inst(11 downto 7) or (EX_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and EX_IW(15 downto 12) = "1011" and EX_IW(1 downto 0) = "10" and EX_reset = '1') or
+				((MEM_IW(11 downto 7) = LAB_inst(11 downto 7) or (MEM_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and MEM_IW(15 downto 12) = "1011" and MEM_IW(1 downto 0) = "10" and MEM_reset = '1') then
+				
+				--can't issue an I2C instruction if there is another I2C operation currently in pipeline
+				I2C_hazard := '1';
+			else
+				--since IW may not be in pipeline (running in ION), need to determine if this LAB instruction is a speculative I2C read
+				I2C_hazard := ION_read_hazard(ROB_in, LAB_inst);
+			end if;
+			report "LAB_func: I2C_h = " & integer'image(convert_SL(I2C_hazard)) & ", ID_h = " & integer'image(convert_SL(ID_hazard)) & ", EX_h = " & integer'image(convert_SL(EX_hazard))
+						 & ", MEM_h = " & integer'image(convert_SL(MEM_hazard)) & ", GPIO_h = " & integer'image(convert_SL(ION_write_specul(ROB_in, LAB_inst, frst_branch_idx))); 
+						 
+			return (I2C_hazard or ID_hazard or EX_hazard or MEM_hazard or ION_write_specul(ROB_in, LAB_inst, frst_branch_idx));
+
+		end loop;
+	end function;
 end package body LAB_functions;

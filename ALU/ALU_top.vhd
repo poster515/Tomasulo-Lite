@@ -19,7 +19,8 @@ entity ALU_top is
 		ALU_d1_in_sel 			: in std_logic_vector(1 downto 0); 	--(EX) control which input to send to ALU input 1
 		
 		ALU_out1_en, ALU_out2_en	: in std_logic; --enables latching ALU results into ALU_outX_reg
-		ALU_fwd_data_out_en			: in std_logic; --(EX) selects fwd reg to output data onto A, B, or C bus (EX)
+		ALU_fwd_data_out_en			: in std_logic; --enables forwarding nominal RF_in_1 data to ALU_out_2 for data memory ops
+		data_fwd_from_MEM_out		: in std_logic; --enables data forwarding from MEM_in for data memory ops
 		
 		--Outputs
 		ALU_SR 					: out std_logic_vector(3 downto 0); --provides | Zero (Z) | Overflow (V) | Negative (N) | Carry (C) |
@@ -130,6 +131,8 @@ begin
 			
 			if ALU_fwd_data_out_en = '0' and ALU_out2_en = '1' then
 				ALU_out2_reg 	<= ALU_out_2;
+			elsif ALU_fwd_data_out_en = '1' and ALU_out2_en = '1' and data_fwd_from_MEM_out = '1' then
+				ALU_out2_reg 	<= MEM_in; --forwarding data for shift_immediates, stores, I2C writes, and GPIO writes
 			elsif ALU_fwd_data_out_en = '1' and ALU_out2_en = '1' then
 				ALU_out2_reg 	<= RF_in_1; --forwarding data for shift_immediates, stores, I2C writes, and GPIO writes
 			end if;

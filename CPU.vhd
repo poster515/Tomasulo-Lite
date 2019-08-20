@@ -57,6 +57,7 @@ architecture structural of CPU is
 	signal ID_IW_out							: std_logic_vector(15 downto 0);
 	signal I2C_complete						: std_logic;
 	signal MEM_out_top_reg					: std_logic_vector(15 downto 0);
+	signal data_fwd_from_MEM_out			: std_logic;
 	
 	--anti-system clock for the program memory
 	signal n_sys_clock						: std_logic;
@@ -97,6 +98,7 @@ architecture structural of CPU is
 		ALU_inst_sel						: out std_logic_vector(1 downto 0);
 		ALU_mem_addr_out					: out std_logic_vector(15 downto 0); -- memory address directly to ALU
 		ALU_immediate_val					: out	std_logic_vector(15 downto 0);	 --represents various immediate values from various OpCodes
+		data_fwd_from_MEM_out			: out std_logic;
 		
 		--(MEM) MEM control Signals
 		MEM_MEM_out_mux_sel				: out std_logic_vector(1 downto 0); --
@@ -170,6 +172,7 @@ architecture structural of CPU is
 		
 		ALU_out1_en, ALU_out2_en	: in std_logic; --enables latching ALU results into ALU_outX_reg
 		ALU_fwd_data_out_en			: in std_logic; --(EX) selects fwd reg to output data onto A, B, or C bus (EX)
+		data_fwd_from_MEM_out		: in std_logic;
 		
 		--Outputs
 		ALU_SR 					: out std_logic_vector(3 downto 0); --provides | Zero (Z) | Overflow (V) | Negative (N) | Carry (C) |
@@ -183,9 +186,7 @@ architecture structural of CPU is
 		--Input data and clock
 		reset_n, sys_clock	: in std_logic;	
 		MEM_in_1, MEM_in_2 	: in std_logic_vector(15 downto 0);
-		instruction_word		: in std_logic_vector(15 downto 0);	--so we can store in the st_buff with the other information to check against entry in ROB. 
-		ROB_in					: in ROB;			--directly from ROB.
-		
+
 		--Control 
 		MEM_out_mux_sel		: in std_logic_vector(1 downto 0);
 		wr_en						: in std_logic; --write enable for data memory
@@ -272,6 +273,7 @@ begin
 		ALU_inst_sel						=> ALU_inst_sel,			--MAPPED
 		ALU_mem_addr_out					=> ALU_mem_addr_out,		--MAPPED
 		ALU_immediate_val					=> ALU_immediate_val,	--MAPPED
+		data_fwd_from_MEM_out			=> data_fwd_from_MEM_out,
 		
 		--(MEM) MEM control Signals
 		MEM_MEM_out_mux_sel				=> MEM_MEM_out_mux_sel,	--MAPPED
@@ -352,6 +354,7 @@ begin
 		ALU_out1_en		=> ALU_out1_en, 
 		ALU_out2_en		=> ALU_out2_en,
 		ALU_fwd_data_out_en		=> ALU_fwd_data_out_en,
+		data_fwd_from_MEM_out	=> data_fwd_from_MEM_out,
 		
 		--Outputs
 		ALU_SR 			=> ALU_SR,
@@ -366,9 +369,7 @@ begin
 		reset_n				=> reset_n,
 		MEM_in_1				=> ALU_top_out_1, --data output from ALU operations
 		MEM_in_2 			=> ALU_top_out_2,	--data forwarded through ALU
-		instruction_word	=> MEM_instruction_word,
-		ROB_in				=> ROB_out,
-		
+
 		--Control 
 		MEM_out_mux_sel	=> MEM_MEM_out_mux_sel,
 		wr_en					=> MEM_MEM_wr_en,

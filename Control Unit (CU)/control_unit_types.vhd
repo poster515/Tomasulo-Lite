@@ -20,7 +20,6 @@ package control_unit_types is
 			addr  		: std_logic_vector(10 downto 0);		--address
 			valid			: std_logic;								--denotes whether this entry contains valid data
 			specul		: std_logic;								--denotes whether this entry contains speculative data (i.e., can't write back)
-			in_zone		: std_logic;								--denotes whether this entry is in the first branch of ROB or not 
 		end record;
 		
 	type store_buffer is array (9 downto 0) of store_buffer_entry;

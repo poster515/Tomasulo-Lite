@@ -47,6 +47,7 @@ entity control_unit is
 		ALU_inst_sel						: out std_logic_vector(1 downto 0);
 		ALU_mem_addr_out					: out std_logic_vector(15 downto 0); -- memory address directly to ALU
 		ALU_immediate_val					: out	std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
+		data_fwd_from_MEM_out			: out std_logic;
 		
 		--(MEM) MEM control Signals
 		MEM_MEM_out_mux_sel				: out std_logic_vector(1 downto 0); --
@@ -202,6 +203,7 @@ architecture behavioral of control_unit is
 			IW_out						: out std_logic_vector(15 downto 0); -- forwarding to MEM control unit
 			mem_addr_out				: out std_logic_vector(15 downto 0); -- memory address directly to ALU
 			immediate_val				: out	std_logic_vector(15 downto 0);	 --represents various immediate values from various OpCodes
+			data_fwd_from_MEM_out	: out std_logic;
 			reset_out					: out std_logic
 		);
 	end component;
@@ -381,6 +383,7 @@ begin
 		IW_out					=> EX_MEM_IW,	
 		mem_addr_out			=> ALU_mem_addr_out,
 		immediate_val			=> ALU_immediate_val,
+		data_fwd_from_MEM_out=> data_fwd_from_MEM_out,
 		reset_out				=>	EX_reset_out
 	);
 	
