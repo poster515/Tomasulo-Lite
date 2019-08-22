@@ -46,6 +46,7 @@ architecture structural of CPU is
 	signal MEM_MEM_out_mux_sel				: std_logic_vector(1 downto 0); --
 	signal MEM_MEM_wr_en						: std_logic; --write enable for data memory
 	signal ALU_top_out_1, ALU_top_out_2	: std_logic_vector(15 downto 0);
+	signal ALU_out_1							: std_logic_vector(15 downto 0);
 	signal MEM_slave_addr					: std_logic_vector(6 downto 0);
 	signal MEM_GPIO_in_en, MEM_GPIO_wr_en 	: std_logic; --enables read/write for GPIO (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
 	signal MEM_I2C_r_en, MEM_I2C_wr_en		: std_logic; --initiates reads/writes for I2C (NEEDS TO BE HIGH UNTIL RESULTS ARE RECEIVED AT CU)
@@ -58,6 +59,7 @@ architecture structural of CPU is
 	signal I2C_complete						: std_logic;
 	signal MEM_out_top_reg					: std_logic_vector(15 downto 0);
 	signal data_fwd_from_MEM_out			: std_logic;
+	signal mem_addr_sel						: std_logic;	
 	
 	--anti-system clock for the program memory
 	signal n_sys_clock						: std_logic;
@@ -99,6 +101,7 @@ architecture structural of CPU is
 		ALU_mem_addr_out					: out std_logic_vector(15 downto 0); -- memory address directly to ALU
 		ALU_immediate_val					: out	std_logic_vector(15 downto 0);	 --represents various immediate values from various OpCodes
 		data_fwd_from_MEM_out			: out std_logic;
+		mem_addr_sel						: out std_logic;
 		
 		--(MEM) MEM control Signals
 		MEM_MEM_out_mux_sel				: out std_logic_vector(1 downto 0); --
@@ -135,6 +138,7 @@ architecture structural of CPU is
 		clk 			: in std_logic;
 		WB_data_in	: in std_logic_vector(15 downto 0);
 		IW_in			: in std_logic_vector(15 downto 0);
+		ROB_in		: in ROB;
 
 		--Control signals
 		reset_n			: in std_logic; --all registers reset to 0 when this goes low
@@ -177,7 +181,8 @@ architecture structural of CPU is
 		--Outputs
 		ALU_SR 					: out std_logic_vector(3 downto 0); --provides | Zero (Z) | Overflow (V) | Negative (N) | Carry (C) |
 		ALU_top_out_1			: out std_logic_vector(15 downto 0); --
-		ALU_top_out_2			: out std_logic_vector(15 downto 0) --
+		ALU_top_out_2			: out std_logic_vector(15 downto 0);
+		ALU_out_1				: inout std_logic_vector(15 downto 0)--
 	);
 	end component;
 	
@@ -186,10 +191,12 @@ architecture structural of CPU is
 		--Input data and clock
 		reset_n, sys_clock	: in std_logic;	
 		MEM_in_1, MEM_in_2 	: in std_logic_vector(15 downto 0);
-
+		ALU_out_1				: in std_logic_vector(15 downto 0); --from ALU_out_1, this is the memory address for loads
+		
 		--Control 
 		MEM_out_mux_sel		: in std_logic_vector(1 downto 0);
 		wr_en						: in std_logic; --write enable for data memory
+		mem_addr_sel			: in std_logic; --selects the memory address to use for loads/stores					: in std_logic; --write enable for data memory
 		
 		--Output
 		MEM_out_top				: out std_logic_vector(15 downto 0);
@@ -274,6 +281,7 @@ begin
 		ALU_mem_addr_out					=> ALU_mem_addr_out,		--MAPPED
 		ALU_immediate_val					=> ALU_immediate_val,	--MAPPED
 		data_fwd_from_MEM_out			=> data_fwd_from_MEM_out,
+		mem_addr_sel						=> mem_addr_sel,			
 		
 		--(MEM) MEM control Signals
 		MEM_MEM_out_mux_sel				=> MEM_MEM_out_mux_sel,	--MAPPED
@@ -310,6 +318,7 @@ begin
 		clk 					=> sys_clock,		
 		WB_data_in			=> WB_data,
 		IW_in					=> ID_IW_out,
+		ROB_in				=> ROB_out,
 
 		--Control signals
 		reset_n				=> reset_n,
@@ -359,7 +368,8 @@ begin
 		--Outputs
 		ALU_SR 			=> ALU_SR,
 		ALU_top_out_1	=> ALU_top_out_1,
-		ALU_top_out_2	=> ALU_top_out_2
+		ALU_top_out_2	=> ALU_top_out_2,
+		ALU_out_1		=> ALU_out_1
 	);
 	
 	MEM	: MEM_top
@@ -369,10 +379,12 @@ begin
 		reset_n				=> reset_n,
 		MEM_in_1				=> ALU_top_out_1, --data output from ALU operations
 		MEM_in_2 			=> ALU_top_out_2,	--data forwarded through ALU
-
+		ALU_out_1			=> ALU_out_1, --from ALU_out_1, this is the memory address for loads
+		
 		--Control 
 		MEM_out_mux_sel	=> MEM_MEM_out_mux_sel,
 		wr_en					=> MEM_MEM_wr_en,
+		mem_addr_sel		=> mem_addr_sel,
 		
 		--Output
 		MEM_out_top			=> MEM_out_top,

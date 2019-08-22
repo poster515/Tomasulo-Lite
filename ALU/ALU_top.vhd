@@ -25,7 +25,8 @@ entity ALU_top is
 		--Outputs
 		ALU_SR 					: out std_logic_vector(3 downto 0); --provides | Zero (Z) | Overflow (V) | Negative (N) | Carry (C) |
 		ALU_top_out_1			: out std_logic_vector(15 downto 0); --
-		ALU_top_out_2			: out std_logic_vector(15 downto 0) --
+		ALU_top_out_2			: out std_logic_vector(15 downto 0);
+		ALU_out_1				: inout std_logic_vector(15 downto 0)--
    );
 end ALU_top; 
 
@@ -71,7 +72,7 @@ architecture behavioral of ALU_top is
 	);
 	end component mux_2_new;
 
-	signal ALU_out_1, ALU_out_2	 			: std_logic_vector(15 downto 0); --output signals from the ALU
+	signal ALU_out_2	 							: std_logic_vector(15 downto 0); --output signals from the ALU
 	signal ALU_out1_reg, ALU_out2_reg		: std_logic_vector(15 downto 0); --output registers for ALU_top
 	signal ALU_SR_reg								: std_logic_vector(3 downto 0); --
 	signal ALU_data_in_1, ALU_data_in_2		: std_logic_vector(15 downto 0); --signal between data_in_2_mux and data_in_2 input of ALU

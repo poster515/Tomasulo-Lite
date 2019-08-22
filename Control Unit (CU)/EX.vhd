@@ -24,6 +24,7 @@ entity EX is
 		ALU_out1_en, ALU_out2_en		: out std_logic; --(CSAM) enables ALU_outX on A, B, or C bus
 		ALU_d1_in_sel, ALU_d2_in_sel	: out std_logic_vector(1 downto 0); --(ALU_top) 1 = select from a bus, 0 = don't.
 		ALU_fwd_data_out_en				: out std_logic; -- (ALU_top) ALU forwarding register out enable
+		mem_addr_sel						: out std_logic;
 		
 		--Outputs
 		ALU_op			: out std_logic_vector(3 downto 0);
@@ -85,6 +86,8 @@ begin
 			reset_reg <= '1';
 		
 			if EX_stall_in = '0' then
+			
+				mem_addr_sel			<= IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and not(IW_in(1));
 			
 				immediate_val_reg 	<= immediate_val_in;
 				mem_addr_reg 			<= mem_addr_in;

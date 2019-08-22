@@ -46,8 +46,9 @@ entity control_unit is
 		ALU_op								: out std_logic_vector(3 downto 0);
 		ALU_inst_sel						: out std_logic_vector(1 downto 0);
 		ALU_mem_addr_out					: out std_logic_vector(15 downto 0); -- memory address directly to ALU
-		ALU_immediate_val					: out	std_logic_vector(15 downto 0); --represents various immediate values from various OpCodes
+		ALU_immediate_val					: out	std_logic_vector;
 		data_fwd_from_MEM_out			: out std_logic;
+		mem_addr_sel						: out std_logic;
 		
 		--(MEM) MEM control Signals
 		MEM_MEM_out_mux_sel				: out std_logic_vector(1 downto 0); --
@@ -195,6 +196,7 @@ architecture behavioral of control_unit is
 			ALU_out1_en, ALU_out2_en		: out std_logic; --(EX) enables ALU_outX on A, B, or C bus
 			ALU_d1_in_sel, ALU_d2_in_sel	: out std_logic_vector(1 downto 0); --(ALU_top) 1 = select from a bus, 0 = don't.
 			ALU_fwd_data_out_en				: out std_logic; -- (ALU_top) ALU forwarding register out enable
+			mem_addr_sel						: out std_logic;
 			
 			--Outputs
 			ALU_op						: out std_logic_vector(3 downto 0);
@@ -375,6 +377,7 @@ begin
 		ALU_d1_in_sel			=> ALU_d1_in_sel, 
 		ALU_d2_in_sel			=> ALU_d2_in_sel,
 		ALU_fwd_data_out_en	=> ALU_fwd_data_out_en,
+		mem_addr_sel			=> mem_addr_sel,
 		
 		--Outputs
 		ALU_op					=> ALU_op,

@@ -2,7 +2,7 @@ library ieee;
 use ieee.std_logic_1164.all; 
 use ieee.numeric_std.all; 
 use work.control_unit_types.all;
---use work.ROB_functions.all;
+use work.RF_top_functions.all;
  
 package LAB_functions is 
 
@@ -81,7 +81,7 @@ package LAB_functions is
 		return std_logic_vector; --std_logic_vector([[condition met]], [[results ready]])
 		
 	--function to determine whether the given LAB instruction is 1) a GPIO or I2C write and 2) speculative, so it doesn't get issued to pipeline
-	function ION_write_specul(	ROB_in				: in ROB;
+	function specul_write_haz(	ROB_in				: in ROB;
 										LAB_i_inst 			: in std_logic_vector(15 downto 0);
 										frst_branch_idx	: in integer)
 		return std_logic;
@@ -623,7 +623,7 @@ package body LAB_functions is
 	end function;
 	
 	--function to determine whether the given LAB instruction is 1) a GPIO or I2C write and 2) speculative, so it doesn't get issued to pipeline
-	function ION_write_specul( ROB_in				: in ROB;
+	function specul_write_haz( ROB_in				: in ROB;
 										LAB_i_inst 			: in std_logic_vector(15 downto 0);
 										frst_branch_idx	: in integer)
 		return std_logic is
@@ -631,7 +631,7 @@ package body LAB_functions is
 		variable i	: integer	:= 0;
 	begin
 		for i in 0 to 9 loop
-			if ROB_in(i).inst = LAB_i_inst and LAB_i_inst(15 downto 12) = "1011" and LAB_i_inst(0) = '1' then
+			if (ROB_in(i).inst = LAB_i_inst and ((LAB_i_inst(15 downto 12) = "1011" and LAB_i_inst(0) = '1') or (LAB_i_inst(15 downto 12) = "1000" and LAB_i_inst(1) = '1'))) then
 				if i > frst_branch_idx then
 					--if we're above the branch location (i.e., speculative area), and that's where this LAB instruction is, and it's a GPIO or I2C write, then we can't issue it
 					return '1';
@@ -718,80 +718,68 @@ package body LAB_functions is
 								LAB_MAX		: in integer)
 		return std_logic is
 		
-		variable i	: integer := 0;
 		variable I2C_hazard, ID_hazard, EX_hazard, MEM_hazard : std_logic	:= '0';
 	begin
-		report "LAB_func: ID_IW = " & integer'image(convert_SL(ID_IW(15))) & integer'image(convert_SL(ID_IW(14))) & integer'image(convert_SL(ID_IW(13))) & integer'image(convert_SL(ID_IW(12))) &
-					", EX_IW = " & integer'image(convert_SL(EX_IW(15))) & integer'image(convert_SL(EX_IW(14))) & integer'image(convert_SL(EX_IW(13))) & integer'image(convert_SL(EX_IW(12))) & 
-					", MEM_IW = " & integer'image(convert_SL(MEM_IW(15))) & integer'image(convert_SL(MEM_IW(14))) & integer'image(convert_SL(MEM_IW(13))) & integer'image(convert_SL(MEM_IW(12)));
-		for i in 0 to LAB_MAX - 1 loop
-			report "LAB_func: i = " & integer'image(i) & ", opcode = " & integer'image(convert_SL(LAB_inst(15))) & integer'image(convert_SL(LAB_inst(14))) & integer'image(convert_SL(LAB_inst(13))) & integer'image(convert_SL(LAB_inst(12)));
-			
---			if	((ID_IW(11 downto 7) /= LAB_inst(11 downto 7) and ID_IW(11 downto 7) /= LAB_inst(6 downto 2)) or 
---				--accounts for data hazards due to no-ops
---				 ((ID_IW(11 downto 7) = LAB_inst(11 downto 7) or ID_IW(11 downto 7) = LAB_inst(6 downto 2)) and ID_IW(15 downto 12) = "1111") or
---				--allows a GPIO/W to be issued, immediately followed by a GPIO/R to the same register
---				 (ID_IW(11 downto 7) = LAB_inst(11 downto 7) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "01" and LAB_inst(15 downto 12) = "1011" and LAB_inst(1 downto 0) = "00")) and
---				 
---				 ((ID_IW(6 downto 2) = LAB_inst(6 downto 2) and LAB_inst(15 downto 12) = "1000" and ID_IW(15 downto 12) = "1111") or
---				--prevent store from being issued immediately by a load if the reg2 field is the same. this is needed because the DM address will be updated after an additional clock cycle. 
---				not(ID_IW(6 downto 2) = LAB_inst(6 downto 2) and ID_IW(15 downto 12) = "1000" and ID_IW(1 downto 0) = "10" and LAB_inst(15 downto 12) = "1000" and LAB_inst(1 downto 0) = "00"))	
---				
---				and ID_reset = '1' then
---				
---				ID_hazard		:= '0';
---					
---			elsif ID_reset = '0' then
---				ID_hazard		:= '0';
---				
---			else
---				ID_hazard		:= '1';
---
---			end if;
-			
-			if (((ID_IW(11 downto 7) = LAB_inst(11 downto 7) or (ID_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and ID_IW(15 downto 12) /= "1111") or
+--		report "LAB_func: ID_IW = " & integer'image(convert_SL(ID_IW(15))) & integer'image(convert_SL(ID_IW(14))) & integer'image(convert_SL(ID_IW(13))) & integer'image(convert_SL(ID_IW(12))) &
+--					", EX_IW = " & integer'image(convert_SL(EX_IW(15))) & integer'image(convert_SL(EX_IW(14))) & integer'image(convert_SL(EX_IW(13))) & integer'image(convert_SL(EX_IW(12))) & 
+--					", MEM_IW = " & integer'image(convert_SL(MEM_IW(15))) & integer'image(convert_SL(MEM_IW(14))) & integer'image(convert_SL(MEM_IW(13))) & integer'image(convert_SL(MEM_IW(12)));
+		
+		if (  ((ID_IW(11 downto 7) = LAB_inst(11 downto 7) or (ID_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and ID_IW(15 downto 12) /= "1111" and not(ID_IW(15 downto 12) = "1000" and ID_IW(1) = '1')) or
+				--if reg1 = reg1 or reg1 = reg2 and it's a valid IW and it's not a store											
 				(ID_IW(6 downto 2) = LAB_inst(6 downto 2) and ID_IW(15 downto 12) = "1000" and ID_IW(1 downto 0) = "10" and LAB_inst(15 downto 12) = "1000" and LAB_inst(1 downto 0) = "00")) 
-				and ID_reset = '1' then	
-				
-				ID_hazard		:= '1';
-			else
-				ID_hazard		:= '0';
-			end if;
+				--if reg2 = reg2 and its a store followed by a load
+--			
+--			(
+--				(ID_IW(11 downto 7) = LAB_inst(11 downto 7)) or 
+--				 
+--				(ID_IW(11 downto 7) = LAB_inst(6 downto 2)) or 
+--				
+--				(ID_IW(6 downto 2) = LAB_inst(6 downto 2) and ID_IW(15 downto 12) = "1000" and LAB_inst(15 downto 12) = "1000" and ID_IW(1 downto 0) = "10" and LAB_inst(1 downto 0) = "00") or
+--				 
+--				(ID_IW(6 downto 2) = LAB_inst(11 downto 7) and ID_IW(15 downto 12) = "1000")
+--				 
+--			)
 			
-			--don't enable GPIO or I2C reads to be data forwarded because that functionality isn't available
-			if (EX_IW(11 downto 7) = LAB_inst(11 downto 7) or (EX_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and 
-				EX_IW(15 downto 12) = "1011" and EX_IW(0) = '0' and EX_reset = '1' then	
-				
-				EX_hazard		:= '1';
-			else
-				EX_hazard		:= '0';
-			end if;
+			and ID_reset = '1' then	
 			
-			--if either registers match, as appropriate, raise MEM_hazard
-			if (MEM_IW(11 downto 7) = LAB_inst(11 downto 7) or (MEM_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and 
-				MEM_IW(15 downto 12) /= "1111" and MEM_reset = '1' then
-				
-				MEM_hazard := '1';
-			else
-				MEM_hazard := '0';
-			end if;
+			ID_hazard		:= '1';
+		else
+			ID_hazard		:= '0';
+		end if;
+		
+		--don't enable GPIO or I2C reads to be data forwarded because that functionality isn't available
+		if (EX_IW(11 downto 7) = LAB_inst(11 downto 7) or (EX_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and 
+			EX_IW(15 downto 12) = "1011" and EX_IW(0) = '0' and EX_reset = '1' then	
 			
-			--section below handles I2C hazards. if there is an issued I2C read, or there is currently an I2C op running 
-			if ((ID_IW(11 downto 7) = LAB_inst(11 downto 7) or (ID_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "10" and ID_reset = '1') or
-				((EX_IW(11 downto 7) = LAB_inst(11 downto 7) or (EX_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and EX_IW(15 downto 12) = "1011" and EX_IW(1 downto 0) = "10" and EX_reset = '1') or
-				((MEM_IW(11 downto 7) = LAB_inst(11 downto 7) or (MEM_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and MEM_IW(15 downto 12) = "1011" and MEM_IW(1 downto 0) = "10" and MEM_reset = '1') then
-				
-				--can't issue an I2C instruction if there is another I2C operation currently in pipeline
-				I2C_hazard := '1';
-			else
-				--since IW may not be in pipeline (running in ION), need to determine if this LAB instruction is a speculative I2C read
-				I2C_hazard := ION_read_hazard(ROB_in, LAB_inst);
-			end if;
-			report "LAB_func: I2C_h = " & integer'image(convert_SL(I2C_hazard)) & ", ID_h = " & integer'image(convert_SL(ID_hazard)) & ", EX_h = " & integer'image(convert_SL(EX_hazard))
-						 & ", MEM_h = " & integer'image(convert_SL(MEM_hazard)) & ", GPIO_h = " & integer'image(convert_SL(ION_write_specul(ROB_in, LAB_inst, frst_branch_idx))); 
-						 
-			return (I2C_hazard or ID_hazard or EX_hazard or MEM_hazard or ION_write_specul(ROB_in, LAB_inst, frst_branch_idx));
+			EX_hazard		:= '1';
+		else
+			EX_hazard		:= '0';
+		end if;
+		
+		--if either registers match, as appropriate, raise MEM_hazard
+		if (MEM_IW(11 downto 7) = LAB_inst(11 downto 7) or (MEM_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and 
+			MEM_IW(15 downto 12) /= "1111" and MEM_reset = '1' then
+			
+			MEM_hazard := '1';
+		else
+			MEM_hazard := '0';
+		end if;
+		
+		--section below handles I2C hazards. if there is an issued I2C read, or there is currently an I2C op running 
+		if ((ID_IW(11 downto 7) = LAB_inst(11 downto 7) or (ID_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and ID_IW(15 downto 12) = "1011" and ID_IW(1 downto 0) = "10" and ID_reset = '1') or
+			((EX_IW(11 downto 7) = LAB_inst(11 downto 7) or (EX_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and EX_IW(15 downto 12) = "1011" and EX_IW(1 downto 0) = "10" and EX_reset = '1') or
+			((MEM_IW(11 downto 7) = LAB_inst(11 downto 7) or (MEM_IW(11 downto 7) = LAB_inst(6 downto 2) and reg2_used = '1')) and MEM_IW(15 downto 12) = "1011" and MEM_IW(1 downto 0) = "10" and MEM_reset = '1') then
+			
+			--can't issue an I2C instruction if there is another I2C operation currently in pipeline
+			I2C_hazard := '1';
+		else
+			--since IW may not be in pipeline (running in ION), need to determine if this LAB instruction is a speculative I2C read
+			I2C_hazard := ION_read_hazard(ROB_in, LAB_inst);
+		end if;
+--			report "LAB_func: I2C_h = " & integer'image(convert_SL(I2C_hazard)) & ", ID_h = " & integer'image(convert_SL(ID_hazard)) & ", EX_h = " & integer'image(convert_SL(EX_hazard))
+--						 & ", MEM_h = " & integer'image(convert_SL(MEM_hazard)) & ", GPIO_h = " & integer'image(convert_SL(ION_write_specul(ROB_in, LAB_inst, frst_branch_idx))); 
+					 
+		return (I2C_hazard or ID_hazard or EX_hazard or MEM_hazard or specul_write_haz(ROB_in, LAB_inst, frst_branch_idx));
 
-		end loop;
 	end function;
 end package body LAB_functions;

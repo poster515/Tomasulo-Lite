@@ -31,7 +31,6 @@ entity IFetch is
 		
 		PC							: out std_logic_vector(10 downto 0);
 		IW							: out std_logic_vector(15 downto 0);
-		IW_out_specul			: out std_logic;	--denotes that the outgoing IW is speculative
 		MEM						: out std_logic_vector(15 downto 0); --MEM is the IW representing the next IW as part of LD, ST, JMP, BNE(Z) operations
 		LAB_reset_out			: out std_logic; --reset signal for ID stage
 		LAB_stall				: out std_logic;
@@ -112,8 +111,8 @@ architecture arch of IFetch is
 	--signals for intra-ROB branch status determination, set in "ROB_branch" process
 	signal branch_exists, is_unresolved, bne_from_ROB, bnez_from_ROB	: std_logic;
 	
-	--signal which goes to '1' when PM_data_in is an instruction requiring use of an actual Reg2, vice an immediate value
-	signal reg2_used		: std_logic;
+	--signal which goes to '1' when PM_data_in/LAB(i) is an instruction requiring use of an actual Reg2, vice an immediate value
+	signal reg2_used, LAB_inst_reg2_used	: std_logic;
 	
 	--signal to store bits that indicate that various pipeline stages should be cleared due to an incorrectly taken branch
 	signal clear_IW_outs : std_logic_vector(0 to 2);
@@ -124,7 +123,7 @@ architecture arch of IFetch is
 	--signal to help determine when the LAB isn't full anymore so we can adjust PC_reg accordingly
 	signal previous_LAB_full : std_logic;
 	
-	--signal representing that the ith LAB instruction requires use of the second register (used in data forwarding scheme)
+	--signal representing that the ith LAB instruction requires use of the second register during hazard detection algorithm (used in data forwarding scheme)
 	signal LAB_i_reg2_used	: std_logic;
 	
 	--need a signal, duplicated from ROB for readability, that signifies that the zeroth ROB entry can be committed to RF
@@ -168,13 +167,30 @@ begin
 			LAB_datahaz_status 	<= "00000";
 		else
 			for i in 0 to LAB_MAX - 1 loop
-				report "LAB: checking PL and LAB datahaz status.";
-				LAB_i_reg2_used 		<= (not(LAB(i).inst(15)) and not(LAB(i).inst(1)) and not(LAB(i).inst(0))) or 
-														(not(LAB(i).inst(15)) and LAB(i).inst(14) and not(LAB(i).inst(1))) or
-														(LAB(i).inst(15) and not(LAB(i).inst(14)) and not(LAB(i).inst(13)) and not(LAB(i).inst(12)) and not(LAB(i).inst(0))) or 
-														(LAB(i).inst(15) and LAB(i).inst(14) and not(LAB(i).inst(13)) and LAB(i).inst(12));
-														
-				PL_datahaz_status(i) 	<= PL_datahaz(LAB(i).inst, ID_IW, EX_IW, MEM_IW, ID_reset, EX_reset, MEM_reset, reg2_used, ROB_in, frst_branch_idx, LAB_MAX);
+				
+				LAB_i_reg2_used 		<= ((not(LAB(i).inst(15)) and not(LAB(i).inst(1)) and not(LAB(i).inst(0))) or 
+													(not(LAB(i).inst(15)) and LAB(i).inst(14) and not(LAB(i).inst(1))) or
+													(LAB(i).inst(15) and not(LAB(i).inst(14)) and not(LAB(i).inst(13)) and not(LAB(i).inst(12)) and not(LAB(i).inst(0))) or 
+													(LAB(i).inst(15) and LAB(i).inst(14) and not(LAB(i).inst(13)) and LAB(i).inst(12))) and LAB(i).inst_valid;
+												
+				report "LAB: DH status, i = " & integer'image(i) & ", reg2_used = " & integer'image(convert_SL(reg2_used)) &
+						", opcode = " & integer'image(convert_SL(LAB(i).inst(15))) & integer'image(convert_SL(LAB(i).inst(14))) & integer'image(convert_SL(LAB(i).inst(13))) & integer'image(convert_SL(LAB(i).inst(12))) &
+						", inst_sel = " & integer'image(convert_SL(LAB(i).inst(1))) & integer'image(convert_SL(LAB(i).inst(0)));
+				
+--				PL_datahaz_status(i) 	<= PL_datahaz(LAB(i).inst, ID_IW, EX_IW, MEM_IW, ID_reset, EX_reset, MEM_reset, reg2_used, ROB_in, frst_branch_idx, LAB_MAX);
+				PL_datahaz_status(i) 	<= PL_datahaz(LAB(i).inst, ID_IW, EX_IW, MEM_IW, ID_reset, EX_reset, MEM_reset, 
+				
+													(
+													
+													(not(LAB(i).inst(15)) and not(LAB(i).inst(1)) and not(LAB(i).inst(0))) or 
+													(not(LAB(i).inst(15)) and LAB(i).inst(14) and not(LAB(i).inst(1))) or
+													(LAB(i).inst(15) and not(LAB(i).inst(14)) and not(LAB(i).inst(13)) and not(LAB(i).inst(12)) and not(LAB(i).inst(0))) or 
+													(LAB(i).inst(15) and LAB(i).inst(14) and not(LAB(i).inst(13)) and LAB(i).inst(12))
+													
+													) and LAB(i).inst_valid, 
+													
+													ROB_in, frst_branch_idx, LAB_MAX);
+				
 				LAB_datahaz_status(i) 	<= LAB_datahaz(LAB, i, LAB_MAX);
 			end loop;
 		end if;
@@ -196,6 +212,7 @@ begin
 			condition_met 		<= '0';
 			ALU_fwd_reg_1 		<= '0';
 			ALU_fwd_reg_2		<= '0';
+			LAB_inst_reg2_used <= '0';
 
 		elsif rising_edge(sys_clock) then
 			LAB_reset_out		<= '1';
@@ -246,6 +263,11 @@ begin
 				else
 
 					for i in 0 to LAB_MAX - 1 loop
+					
+						LAB_inst_reg2_used 	<= (not(LAB(i).inst(15)) and not(LAB(i).inst(1)) and not(LAB(i).inst(0))) or 
+														(not(LAB(i).inst(15)) and LAB(i).inst(14) and not(LAB(i).inst(1))) or
+														(LAB(i).inst(15) and not(LAB(i).inst(14)) and not(LAB(i).inst(13)) and not(LAB(i).inst(12)) and not(LAB(i).inst(0))) or 
+														(LAB(i).inst(15) and LAB(i).inst(14) and not(LAB(i).inst(13)) and LAB(i).inst(12));
 
 						if PL_datahaz_status(i) = '0' and LAB_datahaz_status(i) = '0' and
 							LAB(i).addr_valid = '1' and LAB(i).inst_valid = '1' then --we don't have any conflict in pipeline and LAB instruction is valid
@@ -257,29 +279,30 @@ begin
 							
 							--shift LAB down and buffer PM_data_in
 							LAB 			<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg or branch_reg);
-
+							report "LAB: LAB(i).reg2_used = " & integer'image(convert_SL(LAB_inst_reg2_used)) & ", i = " & integer'image(i);
+							
 							if (EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) and EX_reset = '1' and EX_IW(15 downto 12) /= "1111") then
 								--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_1
 								ALU_fwd_reg_1 		<= '1';
 								
-								if (EX_IW(11 downto 7) = LAB(i).inst(6 downto 2) and LAB_i_reg2_used = '1') then 
+								if (EX_IW(11 downto 7) = LAB(i).inst(6 downto 2) and LAB_inst_reg2_used = '1') then 
 									--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
 									ALU_fwd_reg_2 	<= '1';
-									--report "LAB: LAB(i).inst reg1 and reg2 match ID stage output IW, setting ALU_fwd_reg_1_reg and ALU_fwd_reg_2_reg.";
+									report "LAB: LAB(i).inst reg1 and reg2 match ID stage output IW, setting ALU_fwd_reg_1_reg and ALU_fwd_reg_2_reg.";
 								else
 									ALU_fwd_reg_2 	<= '0';
-									--report "LAB: LAB(i).inst reg1 matches ID stage output IW, setting ALU_fwd_reg_1_reg.";
+									report "LAB: LAB(i).inst reg1 matches ID stage output IW, setting ALU_fwd_reg_1_reg.";
 								end if;
 								
-							elsif (EX_IW(11 downto 7) = LAB(i).inst(6 downto 2) and LAB_i_reg2_used = '1') then 
+							elsif (EX_IW(11 downto 7) = LAB(i).inst(6 downto 2) and LAB_inst_reg2_used = '1') then 
 								--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
 								ALU_fwd_reg_2 	<= '1';
 								ALU_fwd_reg_1 	<= '0';
 								
-								--report "LAB: LAB(i).inst reg2 matches ID stage output IW, setting ALU_fwd_reg_2_reg.";
+								report "LAB: LAB(i).inst reg2 matches ID stage output IW, setting ALU_fwd_reg_2_reg.";
 
 							else
-								--report "LAB: Can't forward ALU data for LAB(i).inst.";
+								report "LAB: Can't forward ALU data for LAB(i).inst.";
 								ALU_fwd_reg_1 	<= '0';
 								ALU_fwd_reg_2	<= '0';
 							end if;	
@@ -308,10 +331,10 @@ begin
 									if (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1') then 
 										--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
 										ALU_fwd_reg_2 	<= '1';
-										--report "LAB: PM_data_in reg1 and reg2 match ID stage output IW, setting ALU_fwd_reg_1_reg and ALU_fwd_reg_2_reg.";
+										report "LAB: PM_data_in reg1 and reg2 match ID stage output IW, setting ALU_fwd_reg_1_reg and ALU_fwd_reg_2_reg.";
 									else
 										ALU_fwd_reg_2 	<= '0';
-										--report "LAB: PM_data_in reg1 matches ID stage output IW, setting ALU_fwd_reg_1_reg.";
+										report "LAB: PM_data_in reg1 matches ID stage output IW, setting ALU_fwd_reg_1_reg.";
 									end if;
 									
 								elsif (EX_IW(11 downto 7) = PM_data_in(6 downto 2) and reg2_used = '1') then 
@@ -319,10 +342,10 @@ begin
 									ALU_fwd_reg_2 	<= '1';
 									ALU_fwd_reg_1 	<= '0';
 									
-									--report "LAB: PM_data_in reg2 matches ID stage output IW, setting ALU_fwd_reg_2_reg.";
+									report "LAB: PM_data_in reg2 matches ID stage output IW, setting ALU_fwd_reg_2_reg.";
 
 								else
-									--report "LAB: Can't forward ALU data for PM_data_in.";
+									report "LAB: Can't forward ALU data for PM_data_in.";
 									ALU_fwd_reg_1 	<= '0';
 									ALU_fwd_reg_2	<= '0';
 								end if;	

@@ -2,12 +2,16 @@ library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use ieee.numeric_std.all;
 use work.arrays.ALL;
+use work.control_unit_types.all;
+use work.RF_top_functions.all;
 
 entity RF_top is
    port ( 
 		--Input data and clock
 		clk 			: in std_logic;
 		WB_data_in	: in std_logic_vector(15 downto 0);
+		IW_in			: in std_logic_vector(15 downto 0);
+		ROB_in		: in ROB;
 
 		--Control signals
 		reset_n			: in std_logic; --all registers reset to 0 when this goes low
@@ -17,6 +21,7 @@ entity RF_top is
 		RF_out_1_en, RF_out_2_en		: in std_logic;
 		RF_out_3_en, RF_out_4_en		: in std_logic;
 		RF_in_demux		: in std_logic_vector(4 downto 0);	--(WB) controls which register to write data to
+		RF_revalidate	: in std_logic_vector(31 downto 0);
 
 		--Outputs
 		RF_out_1, RF_out_2	: out std_logic_vector(15 downto 0);
@@ -33,9 +38,11 @@ architecture behavioral of RF_top is
 	signal in_index					: integer range 0 to 31;
 	signal out1_index, out2_index	: integer range 0 to 31;
 	signal out3_index, out4_index	: integer range 0 to 31;
+	signal store_inst					: std_logic;
 
 begin
-
+	store_inst		<= IW_in(15) and not(IW_in(14)) and not(IW_in(13)) and not(IW_in(12)) and IW_in(1);
+	
 	--process to write back results to RF
 	--process(reset_n, clk, wr_en, RF_in_demux, RF_out_1_en, RF_out_2_en, RF_out_3_en, RF_out_4_en, RF_out_1_mux, RF_out_2_mux, RF_out_3_mux, RF_out_4_mux)
 	process(reset_n, clk)
@@ -58,13 +65,19 @@ begin
 			for i in 0 to 31 loop
 				--only declare a register "valid" if it is written back and no instruction is requesting that register concurrently
 				
-				if RF_out_1_en = '1' and to_integer(unsigned(RF_out_1_mux)) = i then
+				if RF_revalidate /= "00000000000000000000000000000000" then
+				--then we had a failed branch - this signal will re-validate all necessary registers that were incorrectly fetched
+					RF_valid <= RF_valid or RF_revalidate;
+					RF_valid(to_integer(unsigned(RF_in_demux))) 	<= '1';
+				
+				elsif RF_out_1_en = '1' and to_integer(unsigned(RF_out_1_mux)) = i and store_inst = '0' then
 					RF_valid(i) 	<= '0';
 					--report "RF: setting RF(" & Integer'image(i) & ").valid to '0'";
-
-				elsif RF_out_2_en = '1' and to_integer(unsigned(RF_out_2_mux)) = i then
-					RF_valid(i) 	<= '0';
-					--report "RF: setting RF(" & Integer'image(i) & ").valid to '0'";
+				
+				--Not sure what this case was intended for.
+--				elsif RF_out_2_en = '1' and to_integer(unsigned(RF_out_2_mux)) = i and store_inst = '0' then
+--					RF_valid(i) 	<= '0';
+--					--report "RF: setting RF(" & Integer'image(i) & ").valid to '0'";
 
 				elsif wr_en = '1' then
 					if to_integer(unsigned(RF_in_demux)) = i and to_integer(unsigned(RF_out_1_mux)) = i and RF_out_1_en = '1' then
@@ -80,6 +93,7 @@ begin
 						RF_valid(i)		<= RF_valid(i);
 						--report "RF: setting RF(" & Integer'image(i) & ").valid to RF(" & Integer'image(i) & ").valid";
 					end if;
+				
 				end if;
 			end loop;
 			
@@ -153,24 +167,40 @@ begin
 		elsif rising_edge(clk) then
 		
 			--latch outputs
-			if RF_in_demux = RF_out_1_mux and wr_en = '1' then
-				if (RF_out_1_en = '1') then
-					RF_out_1 	<= WB_data_in;
+			if RF_complete_in_ROB(ROB_in, RF_out_1_mux) = '0' then
+				report "RF_top: reg1 found/found complete in ROB.";
+				--ORIGINAL CODE----------------
+				if RF_in_demux = RF_out_1_mux and wr_en = '1' then
+					if (RF_out_1_en = '1') then
+						RF_out_1 	<= WB_data_in;
+					end if;
+				else
+					if (RF_out_1_en = '1') then
+						RF_out_1 	<= RF(out1_index);
+					end if;
 				end if;
+				--END ORIGINAL CODE----------------
 			else
-				if (RF_out_1_en = '1') then
-					RF_out_1 	<= RF(out1_index);
-				end if;
+				report "RF_top: reg1 found complete in ROB.";
+				RF_out_1 	<= get_RF_data_from_ROB(ROB_in, RF_out_1_mux);
 			end if;
 			
-			if RF_in_demux = RF_out_2_mux and wr_en = '1' then
-				if (RF_out_2_en = '1') then
-					RF_out_2 	<= WB_data_in;
+			if RF_complete_in_ROB(ROB_in, RF_out_2_mux) = '0' then
+				report "RF_top: reg2 not found/found complete in ROB.";
+				--ORIGINAL CODE----------------
+				if RF_in_demux = RF_out_2_mux and wr_en = '1' then
+					if (RF_out_2_en = '1') then
+						RF_out_2 	<= WB_data_in;
+					end if;
+				else
+					if (RF_out_2_en = '1') then
+						RF_out_2 	<= RF(out2_index);
+					end if;
 				end if;
+				--END ORIGINAL CODE----------------
 			else
-				if (RF_out_2_en = '1') then
-					RF_out_2 	<= RF(out2_index);
-				end if;
+				report "RF_top: reg2 found complete in ROB.";
+				RF_out_2 	<= get_RF_data_from_ROB(ROB_in, RF_out_2_mux);
 			end if;
 			
 		end if; --reset_n

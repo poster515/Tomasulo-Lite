@@ -27,28 +27,17 @@ package ROB_functions is
 		clear_zero			: in std_logic;			--this remains '0' if the ROB(0).specul = '1'
 		results_avail		: in std_logic;
 		condition_met		: in std_logic;
-		--speculate_res		: in std_logic;			--ONLY FOR PM_data_in (this is set upon receiving a branch, to let ROB know that subsequent instructions are speculative)
 		frst_branch_idx	: in integer;
 		scnd_branch_idx	: in integer;
 		ROB_DEPTH			: in integer)
 
 		return ROB;
-		
---	--function to determine whether a given loop index, i, is greater than or equal to the first branch index of the ROB
---	function loop_i_gtoet_FBI(	i			: integer;
---										branch	: integer)
---		return std_logic;
 	
 	--function to determine whether a given loop index, i, is greater than or equal to the first branch index of the ROB
 	function loop_i_gtoet_FBI(	i			: integer;
 										branch	: integer;
 										offset	: integer	)
 		return std_logic;	
-	
---	--function to determine whether a given loop index, i, is less than the second branch index of the ROB
---	function loop_i_lt_SBI(	i			: integer;
---									branch	: integer)
---		return std_logic;
 
 	--function to determine whether a given loop index, i, is less than the second branch index of the ROB
 	function loop_i_lt_SBI(	i			: integer;
@@ -125,7 +114,6 @@ package body ROB_functions is
 		clear_zero			: in std_logic;			--this remains '0' if the ROB(0).specul = '1'
 		results_avail		: in std_logic;
 		condition_met		: in std_logic;
-		--speculate_res		: in std_logic;			--ONLY FOR PM_data_in (this is set upon receiving a branch, to let ROB know that subsequent instructions are speculative)
 		frst_branch_idx	: in integer;
 		scnd_branch_idx	: in integer;
 		ROB_DEPTH			: in integer
@@ -135,7 +123,6 @@ package body ROB_functions is
 	
 	variable ROB_temp			: ROB 			:= ROB_in;
 	variable i					: integer range 0 to 9;
-	variable n_clear_zero	: integer 		:= 0;
 	variable target_index	: integer		:= 0;
 	variable speculate		: std_logic		:= '0';
 	variable PM_data_buffered : std_logic 	:= '0';
@@ -143,8 +130,6 @@ package body ROB_functions is
 	variable actual_index 	: integer		:= 0;
 	 
 	begin
-		
-		n_clear_zero 	:= convert_CZ(not(clear_zero));
 		
 		for i in 0 to ROB_DEPTH - 1 loop
 		
@@ -166,20 +151,21 @@ package body ROB_functions is
 				
 				if results_avail = '1' and condition_met = '1' and loop_i_gtoet_FBI(i, frst_branch_idx, convert_CZ(clear_zero)) = '1' then
 					--need to purge all instruction subsequent to first_branch_idx, since these were incorrectly buffered
-					--report "ROB_func: 2. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
+					report "ROB_func: 2. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
 					--first check if we need to/can buffer PM_data_in
 					ROB_temp(actual_index)	:= ((others => '0'), '0', '0', (others => '0'), '0');
 
 				elsif IW_in = ROB_temp(target_index).inst and IW_result_en = '1' and IW_updated = '0' then
-					--report "ROB_func: 1. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
+					report "ROB_func: 1. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
 					ROB_temp(actual_index).inst		:= ROB_temp(target_index).inst;
 					ROB_temp(actual_index).complete	:= '1';
 					ROB_temp(actual_index).valid		:= ROB_temp(target_index).valid;
 					ROB_temp(actual_index).result 	:= IW_result;
 					ROB_temp(actual_index).specul		:= speculate;
+					IW_updated 								:= '1'; 
 
 				elsif ROB_temp(target_index).valid = '0' and PM_buffer_en = '1' and PM_data_buffered = '0' then
-					--report "ROB_func: 3. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
+					report "ROB_func: 3. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
 					ROB_temp(actual_index).inst		:= PM_data_in;
 					ROB_temp(actual_index).valid		:= '1';
 					ROB_temp(actual_index).complete	:= '0';
@@ -194,7 +180,7 @@ package body ROB_functions is
 					PM_data_buffered := '1';
 					
 				else
-					--report "ROB_func: 4. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
+					report "ROB_func: 4. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
 					ROB_temp(actual_index).inst		:= ROB_temp(target_index).inst;
 					ROB_temp(actual_index).complete	:= ROB_temp(target_index).complete;
 					ROB_temp(actual_index).valid		:= ROB_temp(target_index).valid;
@@ -209,7 +195,7 @@ package body ROB_functions is
 				
 					if (results_avail = '1' and condition_met = '0' and loop_i_gtoet_FBI(i, frst_branch_idx, convert_CZ(clear_zero)) = '1') or clear_zero = '1' then
 					
-						--report "ROB_func: 5. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
+						report "ROB_func: 5. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
 						ROB_temp(actual_index).inst		:= PM_data_in;
 						ROB_temp(actual_index).valid		:= '1';
 						--ROB_temp(actual_index).specul		:= not(loop_i_lt_SBI(i, scnd_branch_idx, convert_CZ(clear_zero)));
@@ -218,16 +204,16 @@ package body ROB_functions is
 						PM_data_buffered						:= '1';
 						
 					else
-						--report "ROB_func: 7. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
+						report "ROB_func: 7. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
 						ROB_temp(actual_index)				:= ((others => '0'), '0', '0', (others => '0'), '0');
 					end if;
 				else
-					--report "ROB_func: 6. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
+					report "ROB_func: 6. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
 					ROB_temp(actual_index)				:= ((others => '0'), '0', '0', (others => '0'), '0');
 				end if;
 				
 			else
-				--report "ROB_func: 8. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
+				report "ROB_func: 8. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
 				ROB_temp(actual_index)	:= ROB_temp(target_index);
 			end if;
 		end loop;

@@ -55,9 +55,9 @@ architecture behavioral of WB is
 	);
 	end component mux_4_new;
 
-	signal WB_out_mux_sel								: std_logic_vector(1 downto 0); --selects data input to redirect to RF
+	signal WB_out_mux_sel, ROB_in_mux_sel			: std_logic_vector(1 downto 0); --selects data input to redirect to RF
 	signal stall, zero_inst_match						: std_logic; 					--overall stall signal;
-	signal WB_data, WB_data_out_reg					: std_logic_vector(15 downto 0);
+	signal WB_data, WB_data_out_reg, ROB_data_in	: std_logic_vector(15 downto 0);
 	signal clear_zero_inst								: std_logic;
 	signal speculate_results							: std_logic;
 	signal i, j												: integer range 0 to ROB_DEPTH;
@@ -79,6 +79,17 @@ begin
 		sel 		=> WB_out_mux_sel,
 		result  	=> WB_data
 	);
+	
+		--mux for WB output
+	ROB_in_mux	: mux_4_new
+	port map (
+		data0x	=> "0000000000000000",
+		data1x  	=> MEM_out_top, 		
+		data2x  	=> GPIO_out,
+		data3x	=> I2C_out,
+		sel 		=> ROB_in_mux_sel,
+		result  	=> ROB_data_in
+	);
 
 	--update whether ROB zeroth instruction matches the new IW_in, does not depend on ROB(0).inst itself since it won't change
 	process(IW_in, ROB_actual, results_available, condition_met)
@@ -98,24 +109,30 @@ begin
 		end if;
 		
 	end process;
---	
---	--update speculate_results, which informs main process whether to mark each incoming instruction as speculative after a branch inst is received
---	process(reset_n, PM_data_in, results_available, condition_met, frst_branch_index)
---	begin
---		if reset_n = '0' then
---			speculate_results <= '0';
---			
---		elsif PM_data_in(15 downto 12) = "1010" then
---			--report "WB: PM_data_in is a branch.";
---			speculate_results 	<= '1';
---			
---		elsif results_available = '1' and condition_met = '1' and frst_branch_index < ROB_DEPTH then
---			--report "WB: results_avail = 1 and cond_met = 1";
---			--speculate_results 	<= check_ROB_for_valid_branch(ROB_actual);
---			speculate_results 	<= '0';
---		
---		end if;
---	end process;
+	
+	process(reset_n, ROB_actual, IW_in)
+	begin
+		if reset_n = '0' then
+			ROB_in_mux_sel 	<= "01";
+		else
+			if (IW_in(15 downto 12) = "1000") or (IW_in(15) = '0') or (IW_in(15 downto 13) = "110") then
+				ROB_in_mux_sel <= "01";
+				
+			--GPIO reads
+			elsif (IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "00") then
+				ROB_in_mux_sel <= "10";
+							
+			--I2C reads	
+			elsif (IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "10") then
+				ROB_in_mux_sel <= "11";
+				
+			else
+				ROB_in_mux_sel <= "00";
+				
+			end if; ----IW_in (various)
+		end if;
+	
+	end process;
 
 	process(reset_n, ROB_actual, clear_zero_inst, IW_in)
 	begin
@@ -194,7 +211,9 @@ begin
 					report "WB: 1. writing back ROB(0) results to RF";
 					--incoming MEM IW matches zeroth ROB entry which should be committed in specul = '0'
 					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
-														IW_in, WB_data, '0', '1', results_available, condition_met, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+--														IW_in, ROB_data_in, '0', '1', results_available, condition_met, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+														--set IW_result_en = clear_zero_inst for this case to account for when the newly shifted ROB(0) already has a complete IW, and incoming IW must be written to ROB
+														IW_in, ROB_data_in, clear_zero_inst, '1', results_available, condition_met, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 					if zero_inst_match = '1' then
 						RF_in_demux 		<= IW_in(11 downto 7);	--use IW to find destination register for the aforementioned instructions
 						WB_IW_out			<= IW_in;
@@ -220,7 +239,7 @@ begin
 					report "WB: 2. can't write speculative ROB(0) results to RF";
 					--incoming MEM IW matches zeroth ROB entry which can't be committed since specul = '1'
 					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
-														IW_in, WB_data, '1', results_available and condition_met, results_available, condition_met, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+														IW_in, ROB_data_in, '1', results_available and condition_met, results_available, condition_met, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 					clear_zero_inst 	<= '0'; 
 					RF_wr_en 			<= '0';
 					WB_IW_out			<= "1111111111111111";
@@ -229,7 +248,7 @@ begin
 					report "WB: 3. can't write ROB(0) results (if applicable) to RF";
 					--incoming MEM IW does not match zeroth ROB entry so just update ROB entry for IW_in and buffer PM_data_in, if not a jump
 					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
-														IW_in, WB_data, '1', '0', results_available, condition_met, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+														IW_in, ROB_data_in, '1', '0', results_available, condition_met, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 					clear_zero_inst 	<= '0'; 
 					RF_wr_en 			<= '0';
 					WB_IW_out			<= "1111111111111111";
@@ -238,7 +257,7 @@ begin
 					report "WB: 4. can write complete, non-speculative ROB(1) results to RF";
 					--previous clock cycle had a non-speculative zero_inst_match, and it happened again this clock cycle
 					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
-														IW_in, WB_data, '1', clear_zero_inst, results_available, condition_met, 
+														IW_in, ROB_data_in, '1', clear_zero_inst, results_available, condition_met, 
 														frst_branch_index, scnd_branch_index, ROB_DEPTH);
 					clear_zero_inst 	<= '0'; 	
 					
@@ -259,7 +278,7 @@ begin
 				else
 					report "WB: 5. not sure. buffering PM_data_in and updating ROB with results.";
 					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr),
-														IW_in, WB_data, '1', clear_zero_inst, results_available, condition_met, frst_branch_index, scnd_branch_index, ROB_DEPTH);
+														IW_in, ROB_data_in, '1', clear_zero_inst, results_available, condition_met, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 					clear_zero_inst 	<= '0'; 	
 					RF_wr_en 			<= '0';	
 					WB_IW_out			<= "1111111111111111";
@@ -268,7 +287,7 @@ begin
 			else
 				report "WB: 7. reached else statement.";
 				
-				ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, '0', IW_in, WB_data, '0', clear_zero_inst, 
+				ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, '0', IW_in, ROB_data_in, '0', clear_zero_inst, 
 													results_available, condition_met, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 				clear_zero_inst 	<= '0'; 	
 				RF_wr_en 			<= '0';

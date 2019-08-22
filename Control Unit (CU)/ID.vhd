@@ -79,10 +79,10 @@ begin
 						RF_out1_en <= '0'; 
 						RF_out2_en <= '0';
 					
-					--for BNEZ (1010..00), loads (1000..00), stores (1000..11), GPIO/I2C writes (1011..X1), LOGI (1100), ADDI/SUBI/MULTI/DIVI (00XX...X1), 
+					--for BNEZ (1010..00), stores (1000..11), GPIO/I2C writes (1011..X1), LOGI (1100), ADDI/SUBI/MULTI/DIVI (00XX...X1), 
 					--SLAI, SRAI, SLLI, SRLI (0111..1X, 0110..1X) only need 1 RF output
 					elsif (IW_in(15 downto 12) = "1010" and IW_in(1 downto 0) = "00") or
-							(IW_in(15 downto 12) = "1000" and (IW_in(1 downto 0) = "00" or IW_in(1 downto 0) = "11")) or
+							(IW_in(15 downto 12) = "1000" and (IW_in(1 downto 0) = "11")) or
 							(IW_in(15 downto 12) = "1011" and IW_in(1 downto 0) = "X1") or 
 							(IW_in(15 downto 12) = "1100") or
 							((not(IW_in(15)) and not(IW_in(14)) and IW_in(0)) = '1') or 
@@ -91,6 +91,11 @@ begin
 							
 						RF_out1_en <= '1'; 
 						RF_out2_en <= '0';
+						
+					--for loads (1000..00), need RF_out_2 since reg2 provides the data to offset the address
+					elsif IW_in(15 downto 12) = "1000" and IW_in(1 downto 0) = "00" then
+						RF_out1_en <= '0'; 
+						RF_out2_en <= '1';
 						
 					--for all other instructions, need both RF outputs
 					else
@@ -107,23 +112,11 @@ begin
 				--not sure need to use inst_sel since calculating this immediate value doesn't impact anything else
 				--LD/ST
 				if IW_in(15 downto 12) = "1000" then
-					immediate_val_reg <= "00000000000" & IW_in(6 downto 2);
+					
 					mem_addr_reg 		<= mem_addr_in;
-					
-				--JMP
-				elsif IW_in(15 downto 12) = "1001" then
-					immediate_val_reg <= "000000" & IW_in(11 downto 2);
-					
-				--ADDI (0000..10), SUBI (0001..10), MULTI (0010..10), DIVI (0011..10), LOGI (1100),
-				--SLAI, SRAI, SLLI, SRLI, RTLI, RTRI (0111..1X, 0110..1X, 0101..1X) 
-				elsif ((IW_in(15 downto 14) = "00" and IW_in(1 downto 0) = "10") or IW_in(15 downto 12) = "1100") or
-					((not(IW_in(15)) and not(IW_in(14)) and IW_in(0)) = '1') or
-					(IW_in(15 downto 13) = "011" and IW_in(1) = '1') or
-					(IW_in(15 downto 12) = "0101" and IW_in(1) = '1') then
-						
-					immediate_val_reg <= "00000000000" & IW_in(6 downto 2);
-					
-				end if; --IW_in
+				end if;
+			
+				immediate_val_reg <= "00000000000" & IW_in(6 downto 2);
 				
 				IW_out <= IW_in;	--forward IW to EX stage
 
