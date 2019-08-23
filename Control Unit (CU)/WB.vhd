@@ -210,7 +210,7 @@ begin
 				elsif (zero_inst_match = '1' and (ROB_actual(0).specul = '0' or (results_available = '1' and condition_met = '0'))) or (ROB_actual(0).complete = '1' and ROB_actual(0).specul = '0') then 
 					report "WB: 1. writing back ROB(0) results to RF";
 					--incoming MEM IW matches zeroth ROB entry which should be committed in specul = '0'
-					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
+					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr) and not(results_available and condition_met), 
 --														IW_in, ROB_data_in, '0', '1', results_available, condition_met, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 														--set IW_result_en = clear_zero_inst for this case to account for when the newly shifted ROB(0) already has a complete IW, and incoming IW must be written to ROB
 														IW_in, ROB_data_in, clear_zero_inst, '1', results_available, condition_met, frst_branch_index, scnd_branch_index, ROB_DEPTH);
@@ -238,7 +238,7 @@ begin
 				
 					report "WB: 2. can't write speculative ROB(0) results to RF";
 					--incoming MEM IW matches zeroth ROB entry which can't be committed since specul = '1'
-					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
+					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr)and not(results_available and condition_met), 
 														IW_in, ROB_data_in, '1', results_available and condition_met, results_available, condition_met, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 					clear_zero_inst 	<= '0'; 
 					RF_wr_en 			<= '0';
@@ -247,7 +247,7 @@ begin
 				elsif zero_inst_match = '0' and ROB_actual(0).complete = '0' then 
 					report "WB: 3. can't write ROB(0) results (if applicable) to RF";
 					--incoming MEM IW does not match zeroth ROB entry so just update ROB entry for IW_in and buffer PM_data_in, if not a jump
-					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
+					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr) and not(results_available and condition_met), 
 														IW_in, ROB_data_in, '1', '0', results_available, condition_met, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 					clear_zero_inst 	<= '0'; 
 					RF_wr_en 			<= '0';
@@ -256,7 +256,7 @@ begin
 				elsif ROB_actual(1).complete = '1' and clear_zero_inst = '1' and ROB_actual(1).specul = '0' and ROB_actual(0).specul = '0' then		
 					report "WB: 4. can write complete, non-speculative ROB(1) results to RF";
 					--previous clock cycle had a non-speculative zero_inst_match, and it happened again this clock cycle
-					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr), 
+					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr) and not(results_available and condition_met), 
 														IW_in, ROB_data_in, '1', clear_zero_inst, results_available, condition_met, 
 														frst_branch_index, scnd_branch_index, ROB_DEPTH);
 					clear_zero_inst 	<= '0'; 	
@@ -277,7 +277,7 @@ begin
 					
 				else
 					report "WB: 5. not sure. buffering PM_data_in and updating ROB with results.";
-					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr),
+					ROB_actual 	<= update_ROB(	ROB_actual, PM_data_in, not(PM_data_in(15) and not(PM_data_in(14)) and not(PM_data_in(13)) and PM_data_in(12)) and not(next_IW_is_addr) and not(results_available and condition_met),
 														IW_in, ROB_data_in, '1', clear_zero_inst, results_available, condition_met, frst_branch_index, scnd_branch_index, ROB_DEPTH);
 					clear_zero_inst 	<= '0'; 	
 					RF_wr_en 			<= '0';	

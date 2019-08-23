@@ -112,7 +112,7 @@ architecture arch of IFetch is
 	signal branch_exists, is_unresolved, bne_from_ROB, bnez_from_ROB	: std_logic;
 	
 	--signal which goes to '1' when PM_data_in/LAB(i) is an instruction requiring use of an actual Reg2, vice an immediate value
-	signal reg2_used, LAB_inst_reg2_used	: std_logic;
+	signal reg2_used		: std_logic;
 	
 	--signal to store bits that indicate that various pipeline stages should be cleared due to an incorrectly taken branch
 	signal clear_IW_outs : std_logic_vector(0 to 2);
@@ -212,7 +212,6 @@ begin
 			condition_met 		<= '0';
 			ALU_fwd_reg_1 		<= '0';
 			ALU_fwd_reg_2		<= '0';
-			LAB_inst_reg2_used <= '0';
 
 		elsif rising_edge(sys_clock) then
 			LAB_reset_out		<= '1';
@@ -263,29 +262,24 @@ begin
 				else
 
 					for i in 0 to LAB_MAX - 1 loop
-					
-						LAB_inst_reg2_used 	<= (not(LAB(i).inst(15)) and not(LAB(i).inst(1)) and not(LAB(i).inst(0))) or 
-														(not(LAB(i).inst(15)) and LAB(i).inst(14) and not(LAB(i).inst(1))) or
-														(LAB(i).inst(15) and not(LAB(i).inst(14)) and not(LAB(i).inst(13)) and not(LAB(i).inst(12)) and not(LAB(i).inst(0))) or 
-														(LAB(i).inst(15) and LAB(i).inst(14) and not(LAB(i).inst(13)) and LAB(i).inst(12));
 
 						if PL_datahaz_status(i) = '0' and LAB_datahaz_status(i) = '0' and
 							LAB(i).addr_valid = '1' and LAB(i).inst_valid = '1' then --we don't have any conflict in pipeline and LAB instruction is valid
 							
-							--report "LAB: Issuing instruction and buffering LAB(i).inst, i = " & integer'image(i);
+							--report "LAB: Issuing instru2ction and buffering LAB(i).inst, i = " & integer'image(i);
 							--if so, we can issue the ith instruction
 							IW_reg 		<= LAB(i).inst;
 							MEM_reg 		<= LAB(i).addr;
 							
 							--shift LAB down and buffer PM_data_in
 							LAB 			<= shiftLAB_and_bufferPM(LAB, PM_data_in, i, LAB_MAX, '1', ld_st_reg or branch_reg);
-							report "LAB: LAB(i).reg2_used = " & integer'image(convert_SL(LAB_inst_reg2_used)) & ", i = " & integer'image(i);
+							report "LAB: LAB(i).reg2_used = " & integer'image(convert_SL(is_reg2_used(LAB(i).inst))) & ", i = " & integer'image(i);
 							
 							if (EX_IW(11 downto 7) = LAB(i).inst(11 downto 7) and EX_reset = '1' and EX_IW(15 downto 12) /= "1111") then
 								--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_1
 								ALU_fwd_reg_1 		<= '1';
 								
-								if (EX_IW(11 downto 7) = LAB(i).inst(6 downto 2) and LAB_inst_reg2_used = '1') then 
+								if (EX_IW(11 downto 7) = LAB(i).inst(6 downto 2) and is_reg2_used(LAB(i).inst) = '1') then 
 									--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
 									ALU_fwd_reg_2 	<= '1';
 									report "LAB: LAB(i).inst reg1 and reg2 match ID stage output IW, setting ALU_fwd_reg_1_reg and ALU_fwd_reg_2_reg.";
@@ -294,7 +288,7 @@ begin
 									report "LAB: LAB(i).inst reg1 matches ID stage output IW, setting ALU_fwd_reg_1_reg.";
 								end if;
 								
-							elsif (EX_IW(11 downto 7) = LAB(i).inst(6 downto 2) and LAB_inst_reg2_used = '1') then 
+							elsif (EX_IW(11 downto 7) = LAB(i).inst(6 downto 2) and is_reg2_used(LAB(i).inst) = '1') then 
 								--we have a conflict but can forward data from the MEM_out data going into ALU_top, into ALU_in_2
 								ALU_fwd_reg_2 	<= '1';
 								ALU_fwd_reg_1 	<= '0';

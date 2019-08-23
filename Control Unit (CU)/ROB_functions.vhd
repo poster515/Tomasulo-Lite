@@ -155,7 +155,7 @@ package body ROB_functions is
 					--first check if we need to/can buffer PM_data_in
 					ROB_temp(actual_index)	:= ((others => '0'), '0', '0', (others => '0'), '0');
 
-				elsif IW_in = ROB_temp(target_index).inst and IW_result_en = '1' and IW_updated = '0' then
+				elsif IW_in = ROB_temp(target_index).inst and IW_result_en = '1' and IW_updated = '0' and ROB_temp(target_index).valid = '1' then
 					report "ROB_func: 1. i = " & integer'image(i) & ", target_index = " & integer'image(target_index) & ", actual_index = " & integer'image(actual_index);
 					ROB_temp(actual_index).inst		:= ROB_temp(target_index).inst;
 					ROB_temp(actual_index).complete	:= '1';

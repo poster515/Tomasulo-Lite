@@ -111,6 +111,11 @@ package LAB_functions is
 								LAB_MAX		: in integer)
 		return std_logic;
 	
+--called whenever we're evaluating the particular LAB isntruction	
+	function is_reg2_used(LAB_i_in		: in std_logic_vector(15 downto 0))
+	
+		return std_logic;
+	
 end LAB_functions; 
 
 package body LAB_functions is
@@ -781,5 +786,25 @@ package body LAB_functions is
 					 
 		return (I2C_hazard or ID_hazard or EX_hazard or MEM_hazard or specul_write_haz(ROB_in, LAB_inst, frst_branch_idx));
 
+	end function;
+	
+	function is_reg2_used(LAB_i_in		: in std_logic_vector(15 downto 0))
+	
+		return std_logic is
+	
+	begin
+	
+		if ((not(LAB_i_in(15)) and not(LAB_i_in(1)) and not(LAB_i_in(0))) or 
+			(not(LAB_i_in(15)) and LAB_i_in(14) and not(LAB_i_in(1))) or
+			(LAB_i_in(15) and not(LAB_i_in(14)) and not(LAB_i_in(13)) and not(LAB_i_in(12)) and not(LAB_i_in(0))) or 
+			(LAB_i_in(15) and LAB_i_in(14) and not(LAB_i_in(13)) and LAB_i_in(12))) = '1' then
+			
+			return '1';
+			
+		else
+			return '0';
+			
+		end if;
+	
 	end function;
 end package body LAB_functions;
