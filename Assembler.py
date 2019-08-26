@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[665]:
+# In[9]:
 
 
 # create dictionary for all opcodes
@@ -18,7 +18,7 @@ valid_inst_sels = {'ADD':"00", 'ADDI':"01",                   'SUB':"00", 'SUBI'
 errors = []
 
 
-# In[666]:
+# In[10]:
 
 
 def valid_op_code_found_in(line, label_found):
@@ -55,37 +55,38 @@ def valid_label_found_in(line, index):
         return 0
 
 
-# In[667]:
+# In[11]:
 
 
 def determine_reg2(line, label_found):
 
     # determine temp and binary reg2
-    if len(line.split()) > 2 and "(" not in line.split()[label_found + 2]:
-        print("Determining reg2 value, line = {}".format(line))
-        # grab raw r2 value
-        r2 = line.split()[label_found + 2].split(',')[0]
+    if len(line.split()) > label_found + 2:
+        if "(" not in line.split()[label_found + 2]:
+            print("Determining reg2 value, line = {}".format(line))
+            # grab raw r2 value
+            r2 = line.split()[label_found + 2].split(',')[0]
 
-        # enter this line for most arithmetic instructions, if it's a valid r2 value
-        if ")" not in line.split()[label_found + 2] and r2 in register_translator:
+            # enter this line for most arithmetic instructions, if it's a valid r2 value
+            if ")" not in line.split()[label_found + 2] and r2 in register_translator:
+                return register_translator[r2]
+                print("Reg2 element is a register reference")
+
+            # enter this line for loads and stores without a register offset
+            elif ")" not in line.split()[label_found + 2]:
+                print("Could not find valid reg2 in line")
+                return None
+            else:
+                print("Error: Illegal parenthesis on line {}".format(index))
+                errors.append("Error: Illegal parenthesis on line {}".format(index))
+                return None
+
+        elif len(line.split()) > 2 and "(" and ")" in line.split()[label_found + 2] and             line.split()[label_found + 2].split("(")[1].split(")")[0] in register_translator:
+
+            print("Parenthesis found in reg2 element")
+
+            r2 = line.split()[label_found + 2].split("(")[1].split(")")[0] 
             return register_translator[r2]
-            print("Reg2 element is a register reference")
-
-        # enter this line for loads and stores without a register offset
-        elif ")" not in line.split()[label_found + 2]:
-            print("Could not find valid reg2 in line")
-            return None
-        else:
-            print("Error: Illegal parenthesis on line {}".format(index))
-            errors.append("Error: Illegal parenthesis on line {}".format(index))
-            return None
-
-    elif len(line.split()) > 2 and "(" and ")" in line.split()[label_found + 2] and         line.split()[label_found + 2].split("(")[1].split(")")[0] in register_translator:
-
-        print("Parenthesis found in reg2 element")
-
-        r2 = line.split()[label_found + 2].split("(")[1].split(")")[0] 
-        return register_translator[r2]
     
     else:
         print("Warning: Unknown reg2 field on line {}".format(index))
@@ -119,7 +120,7 @@ def determine_immed_val(line, label_found):
         return None
 
 
-# In[668]:
+# In[12]:
 
 
 #create empty dictionary for all label addresses
