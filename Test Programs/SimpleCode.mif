@@ -1,0 +1,21 @@
+DEPTH = 2048; 			% Memory depth and width are required %
+						% DEPTH is the number of addresses %
+WIDTH = 16; 			% WIDTH is the number of bits of data per word %
+						% DEPTH and WIDTH should be entered as decimal numbers %
+ADDRESS_RADIX 	= BIN; 	% Address and value radixes are required %
+DATA_RADIX 		= BIN; 	% Enter BIN, DEC, HEX, OCT, or UNS; unless %
+						% otherwise specified, radixes = HEX %
+-- Specify values for addresses, which can be single address or range
+CONTENT
+BEGIN
+
+00000000000	: 1100000000000000;			%		ANDI R0,  #0												%
+00000000001	: 1100000000001101;			%		ORI  R0,  #3	--initialize loop counter					%
+00000000010	: 1100111110000000;			%		ANDI R0,  #0												%
+00000000011	: 1100111110010101;			%		ORI  R31, #5	--initialize data memory index				%			
+00000000100	: 0110000001111100;		 	%		SLL  R0,  R31	--shift left logically R0 by R31 (i.e., 5)	%		
+00000000101	: 0111111110000111;		 	%		SRAI R31, #1	--shift right arithmetically R31 by 1		%		
+00000000110	: 1101000011111100;			%		CP	 R31, R1	--copy R31 to R1							%
+00000000111	: 1001000000001110;			%done:	JUMP done													%
+
+END;

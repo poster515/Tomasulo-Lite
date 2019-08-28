@@ -1,0 +1,34 @@
+% Written by: Joseph Post	%
+% This code will modify R0 and R31 to a value of 3, store R0 in 0x0000(R31), then load 0x0000(R31) in R1 %
+
+DEPTH = 2048; 			% Memory depth and width are required %
+						% DEPTH is the number of addresses %
+WIDTH = 16; 			% WIDTH is the number of bits of data per word %
+						% DEPTH and WIDTH should be entered as decimal numbers %
+ADDRESS_RADIX 	= BIN; 	% Address and value radixes are required %
+DATA_RADIX 		= BIN; 	% Enter BIN, DEC, HEX, OCT, or UNS; unless %
+						% otherwise specified, radixes = HEX %
+-- Specify values for addresses, which can be single address or range
+CONTENT
+BEGIN
+
+00000000000	: 1100101010000000;			%				ANDI R21, #0												% 
+00000000001	: 1100101010010101;			%				ORI  R21, #5			--R21 = 5							% 
+00000000010 : 0101101010000111;			%				RTRI R21, #1			--R21 = 1000000000000010			%
+00000000011	: 1100000010000000;			%				ANDI R1,  #0			--R1 = 0							% 
+00000000100	: 1100000010001101;			%				ORI R1,   #3			--R1 = 3							% 
+00000000101	: 1100000010000011;			%				NOT R1					--R1 = 0xFFFF						% 
+00000000110	: 1100000010000000;			%				ANDI R1,  #0			--R1 = 0							% 
+00000000111	: 1010000010000000;			%				BNEZ R1,  n_zero											%
+00000001000	: 0000000000001111;			%				[n_zero address]											%
+00000001001	: 1000101010001011;			%				ST 	 R21, 0x0006  		--store value in R21 in 0x0006		% 
+00000001010 : 0000000000000100;			%																			% 
+00000001011	: 1100111110000101;			%				ORI  R31, #1			--R31 = 1							% 
+00000001100	: 1100000000000011;			%				NOT  R0					--R0 = 0xFFFF						% 
+00000001101	: 1010000000000000;			%				BNEZ R1,  n_zero											%
+00000001110	: 0000000000001111;			%				[n_zero address]											%
+00000001111 : 0101101011111100;			%	n_zero	:	RTL  R21, R31			--R21 = 5							%
+00000010000	: 1000000011010100;			%				LD   R1,  0x0001(R21)  	--R1 = 1000000000000010				%
+00000010001 : 0000000000000001;			%																			%
+00000010010	: 1001000000100100;			%	done	:	JUMP done													%
+END;

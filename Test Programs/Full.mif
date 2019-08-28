@@ -1,0 +1,37 @@
+% Written by: Joseph Post	%
+% This code will modify R0 and R31 to a value of 3, store R0 in 0x0000(R31), then load 0x0000(R31) in R1 %
+
+DEPTH = 2048; 			% Memory depth and width are required %
+						% DEPTH is the number of addresses %
+WIDTH = 16; 			% WIDTH is the number of bits of data per word %
+						% DEPTH and WIDTH should be entered as decimal numbers %
+ADDRESS_RADIX 	= BIN; 	% Address and value radixes are required %
+DATA_RADIX 		= BIN; 	% Enter BIN, DEC, HEX, OCT, or UNS; unless %
+						% otherwise specified, radixes = HEX %
+-- Specify values for addresses, which can be single address or range
+CONTENT
+BEGIN
+
+00000000000	: 1100101010000000;			%				ANDI R21, #0												% 
+00000000001	: 1100101010010101;			%				ORI  R21, #5			--R21 = 5							% 
+00000000010	: 1100000000000000;			%				ANDI R0,  #0												%
+00000000011	: 1100000000001101;			%				ORI  R0,  #3			--R0 = 3							%
+00000000100	: 0000000000000000;			%				ADD  R0,  R0			--R0 = 6							% 
+00000000101	: 0001000000010001;			%				SUBI R0,  #4			--R0 = 2							% 
+00000000110	: 0010000000000000;			%				MULT R0,  R0			--R0 = 4							% 
+00000000111	: 0111000001010101;			%				SFRA R0,  R21			--R0 = 0							% 
+00000001000	: 1010000000000000;			%				BNEZ R0, n_zero												%
+00000001001	: 0000000000010011;			%				[n_zero address]											%
+00000001010	: 1100000000001101;			%				ORI  R0,  #3			--R0 = 3							%
+00000001011	: 1011000000000001;			%				IOW  R0														%
+00000001100	: 1011000000000000;			%				IOR  R0					--R0 = digital_in					%
+00000001101	: 1010000000000001;			%				BNE R0,  R0													%
+00000001110	: 0000000000010011;			%				[n_zero address]											%
+00000001111	: 0001000000010001;			%				SUBI R0,  #4			--R0 = digital_in - 2				% 
+00000010000	: 0010000000000000;			%				MULT R0,  R0			--R0 = (digital_in - 2)^2			% 
+00000010001	: 0111000001010101;			%				SFRA R0,  R21			--R0 = (digital_in - 2)^2 >> R21	% 
+00000010010	: 1001000000100100;			%	zero		JUMP zero													%
+00000010011	: 1100000000001101;			%	n_zero	:	ORI  R0,  #3			--R0 = 7							%
+00000010100	: 1001000000101000;			%	done:		JUMP done													% 
+
+END;

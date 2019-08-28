@@ -1,0 +1,28 @@
+% Written by: Joseph Post	%
+% This code will modify R0 and R31 to a value of 3, store R0 in 0x0000(R31), then load 0x0000(R31) in R1 %
+
+DEPTH = 2048; 			% Memory depth and width are required %
+						% DEPTH is the number of addresses %
+WIDTH = 16; 			% WIDTH is the number of bits of data per word %
+						% DEPTH and WIDTH should be entered as decimal numbers %
+ADDRESS_RADIX 	= BIN; 	% Address and value radixes are required %
+DATA_RADIX 		= BIN; 	% Enter BIN, DEC, HEX, OCT, or UNS; unless %
+						% otherwise specified, radixes = HEX %
+-- Specify values for addresses, which can be single address or range
+CONTENT
+BEGIN
+
+00000000000	: 1100101010000000;			%				ANDI R21,  #0												%
+00000000001	: 1100101010010101;			%				ORI  R21,  #5			--									%
+00000000010	: 1100000000000000;			%				ANDI R0,  #0												%
+00000000011	: 1100000000001101;			%				ORI  R0,  #3			--									%	
+00000000100	: 1010000000000000;			%				BNEZ R0, n_zero												%
+00000000101	: 0000000000001011;			%				[n_zero address]											%
+00000000110	: 1000101011010110;			%				ST 	 R21,  0x0001(R21)  	--store value in R0 in 0x0004		%
+00000000111 : 0000000000000001;			%																			%
+00000001000	: 1000000011010100;			%				LD   R1,  0x0001(R21)  	--store value in 0x0004 in R1		%	
+00000001001 : 0000000000000001;			%																			%
+00000001010	: 1001000000010100;			%	zero		JUMP zero													%
+00000001011	: 1001000000010110;			%	n_zero	:	JUMP not_zero												%
+
+END;

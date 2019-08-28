@@ -1,0 +1,42 @@
+% Written by: Joseph Post	%
+% This code will modify R0 and R31 to a value of 3, store R0 in 0x0000(R31), then load 0x0000(R31) in R1 %
+
+DEPTH = 2048; 			% Memory depth and width are required %
+						% DEPTH is the number of addresses %
+WIDTH = 16; 			% WIDTH is the number of bits of data per word %
+						% DEPTH and WIDTH should be entered as decimal numbers %
+ADDRESS_RADIX 	= BIN; 	% Address and value radixes are required %
+DATA_RADIX 		= BIN; 	% Enter BIN, DEC, HEX, OCT, or UNS; unless %
+						% otherwise specified, radixes = HEX %
+-- Specify values for addresses, which can be single address or range
+CONTENT
+BEGIN
+
+% first, initialize the loop index and a random register %
+
+00000000000	: 1100101010000000;			%				ANDI R21, #0												% 
+00000000001	: 1100101010001101;			%				ORI  R21, #3			--R21 = 3; initialize loop counter	% 
+00000000010	: 1100000000000000;			%				ANDI R0,  #0												%
+00000000011	: 1100000000001101;			%				ORI  R0,  #3			--R0 = 3; Data Memory index			%
+
+% now on to the loop %
+
+00000000100 : 0001101010000101;			%	loop:		SUBI R21, #1			--R21 -= 1							% 
+00000000101	: 1101011100000000;			%				CP 	 R14, R0 			--R14 = R0							% 
+00000000110	: 0001000000001001;			%				SUBI R0,  #2			--R0 -= 2							% 
+00000000111	: 0010000001010100;			%				MULT R0,  R21			--R0 = R21 * R0						% 
+00000001000	: 1000011100000010;			%				ST 	 R14,  0x0001(R0)   --store R14 value in data memory 	% 
+00000001001 : 0000000000000001;			%																			% 
+00000001010	: 1000111110000000;			%				LD   R31,  0x0001(R0)   --R31 = R14							% 
+00000001011 : 0000000000000001;			%																			% 
+00000001100	: 0000000000000000;			%				ADD  R0,  R0			--R0 = R0 * 2						% 
+00000001101	: 1010101010000000;			%				BNEZ R21, loop												% 
+00000001110	: 0000000000000100 ;		%				[loop address]												% 
+
+% create some speculative instructions that will get executed after the loop is done %
+
+00000001111 : 1100000000000011;			%				NOT  R0					--R0 ~= R0							% 
+00000010000	: 0101101011010100;			%				ROTL  R21, R21			--R21<<(R21)						% 
+00000010001	: 1001000000100010;			%	done:		JUMP done													% 
+
+END;
